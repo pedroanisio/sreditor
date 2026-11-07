@@ -208,7 +208,6 @@ def issuer_token(access: ChannelAccess) -> UUID:
 def base_link(access: ChannelAccess, kind: LinkKind) -> NewLink:
     """A link of this kind for the asker's channel, before its target is filled in."""
     return NewLink(
-        user_id=access.user.id,
         token_id=issuer_token(access),
         channel=access.channel.slug,
         kind=kind,

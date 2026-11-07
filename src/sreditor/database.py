@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -114,6 +115,8 @@ CREATE TABLE IF NOT EXISTS channel_library (
     UNIQUE (channel_slug, kind, name_key)
 );
 CREATE INDEX IF NOT EXISTS channel_library_by_kind ON channel_library (channel_slug, kind, position);
+-- Lets rows that link two items name the channel in the foreign key, so both are of one channel.
+CREATE UNIQUE INDEX IF NOT EXISTS channel_library_in_channel ON channel_library (channel_slug, id);
 CREATE TABLE IF NOT EXISTS library_sheets (
     entry_id TEXT PRIMARY KEY REFERENCES channel_library (id) ON DELETE CASCADE,
     channel_slug TEXT NOT NULL,
@@ -129,10 +132,14 @@ CREATE TABLE IF NOT EXISTS library_relationships (
     position INTEGER PRIMARY KEY AUTOINCREMENT,
     id TEXT NOT NULL UNIQUE,
     channel_slug TEXT NOT NULL REFERENCES channels (slug) ON DELETE CASCADE,
-    first_id TEXT NOT NULL REFERENCES channel_library (id) ON DELETE CASCADE,
-    second_id TEXT NOT NULL REFERENCES channel_library (id) ON DELETE CASCADE,
+    first_id TEXT NOT NULL,
+    second_id TEXT NOT NULL,
     data TEXT NOT NULL,
-    revision INTEGER NOT NULL
+    revision INTEGER NOT NULL,
+    FOREIGN KEY (channel_slug, first_id) REFERENCES channel_library (channel_slug, id)
+        ON DELETE CASCADE,
+    FOREIGN KEY (channel_slug, second_id) REFERENCES channel_library (channel_slug, id)
+        ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS episode_slugs (
     channel_slug TEXT NOT NULL,
@@ -325,6 +332,7 @@ CREATE TABLE IF NOT EXISTS pitches (
     updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS pitches_by_channel ON pitches (channel_slug, position);
+CREATE UNIQUE INDEX IF NOT EXISTS pitches_in_channel ON pitches (channel_slug, id);
 CREATE TABLE IF NOT EXISTS pitch_notes (
     pitch_id TEXT PRIMARY KEY REFERENCES pitches (id) ON DELETE CASCADE,
     text TEXT NOT NULL,
@@ -349,11 +357,12 @@ CREATE INDEX IF NOT EXISTS pitch_sources_by_pitch ON pitch_sources (pitch_id, po
 CREATE TABLE IF NOT EXISTS episode_pitches (
     channel_slug TEXT NOT NULL,
     number INTEGER NOT NULL,
-    pitch_id TEXT NOT NULL REFERENCES pitches (id) ON DELETE CASCADE,
+    pitch_id TEXT NOT NULL,
     position INTEGER NOT NULL,
     PRIMARY KEY (channel_slug, number, pitch_id),
     FOREIGN KEY (channel_slug, number) REFERENCES episodes (channel_slug, number)
-        ON DELETE CASCADE
+        ON DELETE CASCADE,
+    FOREIGN KEY (channel_slug, pitch_id) REFERENCES pitches (channel_slug, id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS episode_pitches_by_pitch ON episode_pitches (pitch_id);
 CREATE TABLE IF NOT EXISTS external_media (
@@ -379,12 +388,13 @@ CREATE TABLE IF NOT EXISTS external_media (
     updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS external_media_by_channel ON external_media (channel_slug, position);
+CREATE UNIQUE INDEX IF NOT EXISTS external_media_in_channel ON external_media (channel_slug, id);
 CREATE TABLE IF NOT EXISTS episode_media_uses (
     position INTEGER PRIMARY KEY AUTOINCREMENT,
     id TEXT NOT NULL UNIQUE,
     channel_slug TEXT NOT NULL,
     number INTEGER NOT NULL,
-    media_id TEXT NOT NULL REFERENCES external_media (id),
+    media_id TEXT NOT NULL,
     purpose TEXT NOT NULL,
     start_seconds INTEGER,
     end_seconds INTEGER,
@@ -395,7 +405,9 @@ CREATE TABLE IF NOT EXISTS episode_media_uses (
     revision INTEGER NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    FOREIGN KEY (channel_slug, number) REFERENCES episodes (channel_slug, number) ON DELETE CASCADE
+    FOREIGN KEY (channel_slug, number) REFERENCES episodes (channel_slug, number) ON DELETE CASCADE,
+    -- No cascade: an item in use cannot be removed until its episodes drop it.
+    FOREIGN KEY (channel_slug, media_id) REFERENCES external_media (channel_slug, id)
 );
 CREATE INDEX IF NOT EXISTS episode_media_uses_by_episode
     ON episode_media_uses (channel_slug, number, position);
@@ -465,6 +477,13 @@ CREATE TRIGGER IF NOT EXISTS channel_library_forget_context AFTER DELETE ON chan
     DELETE FROM item_contexts WHERE item_kind = OLD.kind AND item_id = OLD.id;
     DELETE FROM item_links WHERE (source_kind = OLD.kind AND source_id = OLD.id)
         OR (target_kind = OLD.kind AND target_id = OLD.id);
+END;
+-- A token limited to some channels stops naming one that goes, so a new channel that later takes
+-- the same slug is not reached by it. A list left empty reaches no channel, never all of them.
+CREATE TRIGGER IF NOT EXISTS channels_leave_token_lists AFTER DELETE ON channels BEGIN
+    UPDATE api_tokens
+        SET channels = TRIM(REPLACE(' ' || channels || ' ', ' ' || OLD.slug || ' ', ' '))
+        WHERE instr(' ' || channels || ' ', ' ' || OLD.slug || ' ') > 0;
 END;
 CREATE INDEX IF NOT EXISTS memberships_by_user ON memberships (user_id);
 CREATE INDEX IF NOT EXISTS api_tokens_by_user ON api_tokens (user_id);
@@ -548,7 +567,6 @@ CREATE INDEX IF NOT EXISTS post_snapshots_by_channel
     ON post_snapshots (channel_slug, number, platform, captured_on);
 CREATE TABLE IF NOT EXISTS file_links (
     link_hash TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     token_id TEXT NOT NULL REFERENCES api_tokens (id) ON DELETE CASCADE,
     channel_slug TEXT NOT NULL REFERENCES channels (slug) ON DELETE CASCADE,
     kind TEXT NOT NULL,
@@ -633,6 +651,82 @@ def add_column(connection: sqlite3.Connection, table: str, definition: str) -> N
         connection.execute(f"ALTER TABLE {table} ADD COLUMN {definition}")
 
 
+# Tables whose foreign keys did not name the channel, with the parent each must now share it with.
+CHANNEL_SCOPED_LINKS = {
+    "library_relationships": "channel_library",
+    "episode_pitches": "pitches",
+    "episode_media_uses": "external_media",
+}
+LEGACY_SUFFIX = "_legacy"
+
+
+class MigrationError(RuntimeError):
+    """Stored rows break a constraint the new schema adds, so the database cannot be upgraded."""
+
+
+def table_definitions(table: str) -> list[str]:
+    """The CREATE TABLE and CREATE INDEX statements SCHEMA holds for one table."""
+    created = re.search(rf"CREATE TABLE IF NOT EXISTS {table} \(.*?\n\);", SCHEMA, re.DOTALL)
+    if created is None:
+        raise KeyError(table)
+    indexes = re.findall(
+        rf"CREATE (?:UNIQUE )?INDEX IF NOT EXISTS \w+\s+ON {table} \(.*?\);", SCHEMA
+    )
+    return [created.group(0), *indexes]
+
+
+def column_names(connection: sqlite3.Connection, table: str) -> list[str]:
+    """The table's columns, in order."""
+    return [row["name"] for row in connection.execute(f"PRAGMA table_info({table})")]
+
+
+def rebuild_table(connection: sqlite3.Connection, table: str) -> None:
+    """Recreate a table from SCHEMA and copy its rows, since SQLite cannot alter constraints.
+
+    Runs in a savepoint, so a row the new constraints refuse leaves the old table as it was.
+    """
+    legacy = table + LEGACY_SUFFIX
+    connection.execute("SAVEPOINT rebuild")
+    try:
+        old_columns = set(column_names(connection, table))
+        connection.execute(f"ALTER TABLE {table} RENAME TO {legacy}")
+        for index in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL",
+            (legacy,),
+        ).fetchall():
+            connection.execute(f"DROP INDEX {index['name']}")
+        for statement in table_definitions(table):
+            connection.execute(statement)
+        kept = ", ".join(name for name in column_names(connection, table) if name in old_columns)
+        connection.execute(f"INSERT INTO {table} ({kept}) SELECT {kept} FROM {legacy}")
+        connection.execute(f"DROP TABLE {legacy}")
+    except sqlite3.IntegrityError as error:
+        connection.execute("ROLLBACK TO rebuild")
+        connection.execute("RELEASE rebuild")
+        raise MigrationError(
+            f"{table}: a stored row breaks the new constraints ({error})"
+        ) from error
+    connection.execute("RELEASE rebuild")
+
+
+def names_channel_in_link(connection: sqlite3.Connection, table: str, parent: str) -> bool:
+    """Whether the table's foreign key to `parent` already includes the channel."""
+    return any(
+        row["table"] == parent and row["from"] == "channel_slug"
+        for row in connection.execute(f"PRAGMA foreign_key_list({table})")
+    )
+
+
+def scope_links_to_channel(connection: sqlite3.Connection) -> None:
+    """Rebuild link tables whose foreign keys let them join items of two channels."""
+    for table, parent in CHANNEL_SCOPED_LINKS.items():
+        if not names_channel_in_link(connection, table, parent):
+            rebuild_table(connection, table)
+    # Links once stored their user too, which their token already names.
+    if "user_id" in column_names(connection, "file_links"):
+        rebuild_table(connection, "file_links")
+
+
 def migrate(connection: sqlite3.Connection) -> None:
     """Bring databases created by earlier versions up to the current schema."""
     columns = {row["name"] for row in connection.execute("PRAGMA table_info(channels)")}
@@ -653,6 +747,7 @@ def migrate(connection: sqlite3.Connection) -> None:
     # Takes from before license records get theirs when BlockTakeStore opens.
     add_column(connection, "voice_block_takes", "license TEXT")
     move_single_pitches(connection)
+    scope_links_to_channel(connection)
 
 
 LEGACY_PITCHES = "episode_pitches_single"

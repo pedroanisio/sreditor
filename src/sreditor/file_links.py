@@ -41,11 +41,11 @@ class LinkKind(StrEnum):
 
 
 class NewLink(BaseModel):
-    """A link to issue: who asks, for which channel and what it is bound to."""
+    """A link to issue: the token that asks, for which channel and what it is bound to."""
 
     model_config = ConfigDict(frozen=True)
 
-    user_id: UUID
+    # The token names its user, so the link does not store the user again.
     token_id: UUID
     channel: ChannelSlug
     kind: LinkKind
@@ -83,7 +83,6 @@ class LinkGone(Exception):
 def to_link(row: sqlite3.Row) -> FileLink:
     """A link from its database row."""
     return FileLink(
-        user_id=UUID(row["user_id"]),
         token_id=UUID(row["token_id"]),
         channel=row["channel_slug"],
         kind=LinkKind(row["kind"]),
@@ -111,12 +110,11 @@ class FileLinkStore:
                 "DELETE FROM file_links WHERE expires_at <= ?", (stamp(now - RETENTION),)
             )
             connection.execute(
-                "INSERT INTO file_links (link_hash, user_id, token_id, channel_slug, kind, number,"
+                "INSERT INTO file_links (link_hash, token_id, channel_slug, kind, number,"
                 " reference, name, note, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?,"
-                " ?, ?, ?)",
+                " ?, ?)",
                 (
                     hash_token(secret),
-                    str(new.user_id),
                     str(new.token_id),
                     new.channel,
                     new.kind,
