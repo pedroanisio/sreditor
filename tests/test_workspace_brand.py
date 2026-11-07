@@ -376,3 +376,169 @@ def test_editorial_empty_text_reopens_its_dialog(owner: TestClient) -> None:
 def test_editorial_without_guidelines_says_not_set(owner: TestClient) -> None:
     page = owner.get(f"{CHANNEL}/editorial").text
     assert "Not set yet." in page and "None yet." in page
+
+
+# Color roles
+
+
+def add_color(client: TestClient, name: str, hex_value: str, role: str) -> Response:
+    data = {"name": name, "hex": hex_value, "role": role}
+    return submit(client, f"{CHANNEL}/brand/colors", data)
+
+
+def test_brand_color_with_role_shows_the_role(owner: TestClient) -> None:
+    add_color(owner, "Pink", "#ff0066", "primary")
+    page = owner.get(f"{CHANNEL}/brand").text
+    assert 'fill="#ff0066"' in page and ">Primary<" in page
+
+
+def test_brand_color_taking_a_role_demotes_the_holder_to_accent(owner: TestClient) -> None:
+    add_color(owner, "Pink", "#ff0066", "primary")
+    add_color(owner, "Blue", "#0000ff", "primary")
+    page = owner.get(f"{CHANNEL}/brand").text
+    assert ">Accent<" in page
+
+
+def test_brand_color_unknown_role_answers_422(owner: TestClient) -> None:
+    response = add_color(owner, "Pink", "#ff0066", "loud")
+    assert response.status_code == 422 and 'id="color-role-error"' in response.text
+
+
+def test_brand_page_in_portuguese_names_roles_and_fonts(owner: TestClient) -> None:
+    page = owner.get(f"{CHANNEL}/brand?lang=pt-BR").text
+    assert "Fontes" in page and "Fonte dos títulos" in page and "Primária" in page
+
+
+# Fonts
+
+WOFF2 = b"wOF2" + b"\x00" * 60
+
+
+def save_font(
+    client: TestClient, role: str, family: str, weight: str, platform: str = ""
+) -> Response:
+    data = {"family": family, "weight": weight, "platform": platform}
+    return submit(client, f"{CHANNEL}/brand/fonts/{role}", data)
+
+
+def upload_font(client: TestClient, role: str, content: bytes, name: str = "f.woff2") -> Response:
+    files = {"file": (name, content, "font/woff2")}
+    return submit(client, f"{CHANNEL}/brand/fonts/{role}/file", {}, files=files)
+
+
+def test_brand_font_saved_shows_family_and_weight(owner: TestClient) -> None:
+    page = flash_after(owner, save_font(owner, "heading", "Bebas Neue", "700"))
+    assert "Bebas Neue · 700" in page
+
+
+def test_brand_font_blank_weight_defaults_to_400(owner: TestClient) -> None:
+    save_font(owner, "body", "Inter", "")
+    assert "Inter · 400" in owner.get(f"{CHANNEL}/brand").text
+
+
+def test_brand_font_saved_weight_is_the_selected_option(owner: TestClient) -> None:
+    save_font(owner, "body", "Inter", "700")
+    assert '<option value="700" selected>' in owner.get(f"{CHANNEL}/brand").text
+
+
+def test_brand_font_without_family_answers_422_next_to_field(owner: TestClient) -> None:
+    response = save_font(owner, "body", "", "400")
+    assert response.status_code == 422 and 'id="body-family-error"' in response.text
+
+
+def test_brand_font_with_weight_out_of_range_answers_422_and_keeps_input(
+    owner: TestClient,
+) -> None:
+    response = save_font(owner, "body", "Inter", "950")
+    assert response.status_code == 422 and 'id="body-weight-error"' in response.text
+    assert 'value="Inter"' in response.text
+
+
+def test_brand_font_stale_revision_answers_409(owner: TestClient) -> None:
+    data = {"family": "Inter", "weight": "400", "revision": "1"}
+    assert submit(owner, f"{CHANNEL}/brand/fonts/body", data).status_code == 409
+
+
+def test_brand_font_file_is_stored_and_served_as_attachment(owner: TestClient) -> None:
+    save_font(owner, "body", "Inter", "400")
+    assert "File uploaded." in flash_after(owner, upload_font(owner, "body", WOFF2))
+    page = owner.get(f"{CHANNEL}/brand").text
+    name = page.split(f"{CHANNEL}/files/")[1].split('"')[0]
+    served = owner.get(f"{CHANNEL}/files/{name}")
+    assert served.headers["content-disposition"].startswith("attachment")
+
+
+def test_brand_font_file_before_the_family_answers_422(owner: TestClient) -> None:
+    response = upload_font(owner, "body", WOFF2)
+    assert response.status_code == 422 and "family first" in response.text
+
+
+def test_brand_font_file_that_is_a_picture_answers_422(owner: TestClient) -> None:
+    save_font(owner, "body", "Inter", "400")
+    response = upload_font(owner, "body", png(), name="f.png")
+    assert response.status_code == 422 and 'id="body-file-error"' in response.text
+
+
+def test_brand_font_file_without_a_file_answers_422(owner: TestClient) -> None:
+    save_font(owner, "body", "Inter", "400")
+    response = submit(owner, f"{CHANNEL}/brand/fonts/body/file", {})
+    assert response.status_code == 422 and "Choose a file." in response.text
+
+
+def test_brand_font_file_over_rate_limit_answers_429(
+    owner: TestClient, app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    save_font(owner, "body", "Inter", "400")
+    monkeypatch.setattr(app.state.services.limiter, "allow", lambda key: False)
+    assert upload_font(owner, "body", WOFF2).status_code == 429
+
+
+def test_brand_font_removed_is_gone(owner: TestClient) -> None:
+    save_font(owner, "body", "Inter", "400")
+    response = submit(owner, f"{CHANNEL}/brand/fonts/body/remove", {})
+    assert "Removed." in flash_after(owner, response)
+    assert "Inter · 400" not in owner.get(f"{CHANNEL}/brand").text
+
+
+def test_brand_font_on_platform_shows_on_its_tab_only(owner: TestClient) -> None:
+    save_font(owner, "body", "Inter", "400", platform="tiktok")
+    assert "Inter · 400" in owner.get(f"{CHANNEL}/brand?platform=tiktok").text
+    assert "Inter · 400" not in owner.get(f"{CHANNEL}/brand").text
+
+
+def test_brand_font_platform_tab_shows_channel_font_as_inherited(owner: TestClient) -> None:
+    save_font(owner, "body", "Inter", "400")
+    page = owner.get(f"{CHANNEL}/brand?platform=tiktok").text
+    assert "Inter · 400" in page and "From the channel" in page
+
+
+def test_brand_font_for_missing_account_answers_404(owner: TestClient) -> None:
+    assert save_font(owner, "body", "Inter", "400", platform="x").status_code == 404
+
+
+def test_brand_font_unknown_role_answers_422(owner: TestClient) -> None:
+    assert save_font(owner, "title", "Inter", "400").status_code == 422
+
+
+def test_brand_font_viewer_answers_403(
+    owner: TestClient, app: FastAPI, mailer: RecordingMailer
+) -> None:
+    viewer = join(app, mailer, owner, "vic@example.com", "viewer")
+    assert save_font(viewer, "body", "Inter", "400").status_code == 403
+
+
+# Stings
+
+
+def test_brand_sting_in_quicktime_answers_422(owner: TestClient) -> None:
+    quicktime = b"\x00\x00\x00\x14ftypqt  \x00\x00\x00\x00"
+    files = {"file": ("s.mov", quicktime, "video/quicktime")}
+    response = submit(owner, f"{CHANNEL}/brand/files/intro", {}, files=files)
+    assert response.status_code == 422 and "MP4, WEBM" in response.text
+
+
+def test_brand_sting_in_mp4_is_stored(owner: TestClient) -> None:
+    mp4 = b"\x00\x00\x00\x18ftypisom\x00\x00\x00\x00" + b"\x00" * 32
+    files = {"file": ("s.mp4", mp4, "video/mp4")}
+    response = submit(owner, f"{CHANNEL}/brand/files/outro", {}, files=files)
+    assert "File uploaded." in flash_after(owner, response)

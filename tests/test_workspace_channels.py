@@ -163,6 +163,21 @@ def test_settings_stale_revision_answers_409(owner: TestClient) -> None:
     assert response.status_code == 409 and "Someone changed this channel" in response.text
 
 
+def test_settings_editor_renames_the_channel_and_pages_show_the_new_name(
+    owner: TestClient, app: FastAPI, mailer: RecordingMailer
+) -> None:
+    editor = join(app, mailer, owner, "ed@example.com", "editor")
+    data = {
+        "name": "Bater pra Cima",
+        "language": "en",
+        "status": "draft",
+        "revision": revision(editor),
+    }
+    response = submit(editor, f"{CHANNEL}/settings", data)
+    assert "Bater pra Cima" in flash_after(editor, response)
+    assert "Bater pra Cima" in owner.get("/app").text
+
+
 def test_settings_unknown_status_answers_422(owner: TestClient) -> None:
     data = {"name": "Memes", "language": "en", "status": "gone", "revision": ""}
     response = submit(owner, f"{CHANNEL}/settings", data)
