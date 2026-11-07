@@ -81,7 +81,7 @@ def media_store(tmp_path: Path) -> ExternalMediaStore:
 
 def test_copy_formats_of_web_page_names_pdf_and_screenshots() -> None:
     assert "PDF" in copy_formats(ExternalKind.WEB_PAGE)
-    assert copy_accept(ExternalKind.DOCUMENT) == "application/pdf"
+    assert copy_accept(ExternalKind.DOCUMENT) == "application/pdf,.pdf"
 
 
 def test_use_input_end_before_start_is_refused() -> None:

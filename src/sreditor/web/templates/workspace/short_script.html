@@ -13,61 +13,117 @@
 {% endcall %}
 {% endif %}
 {% if may_write %}
-{% call ui.form(script_link, csrf_field, csrf_token) %}
+{% set voice_errors = errors.get("duration_s") or errors.get("language") or errors.get("model") or errors.get("voice_id") %}
+{% call ui.form(script_link, csrf_field, csrf_token, autosave=true) %}
+  {{ ui.default_submit(_("Save short script")) }}
   {{ ui.hidden("revision", script.revision) }}
   {{ ui.hidden("block_count", blocks | length) }}
   {{ ui.hidden("text_count", texts | length) }}
-  {% call ui.panel(_("Length and voice"), id="voice-choice") %}
-    {% call ui.fields_row() %}
-      {{ ui.field("duration_s", _("Length in seconds"), errors, value=duration, hint=_("How long the video runs.")) }}
-      {{ ui.select("language", _("Language"), language_options, errors, value=voice_values.language) }}
-    {% endcall %}
-    {{ ui.select("model", _("Voice model"), model_options, errors, value=voice_values.model, hint=_("v3 understands every voice tag; v2 keeps only timed pauses.")) }}
-    {% if voices is not none %}
-    {{ ui.select("voice_id", _("Voice"), voice_options, errors, value=voice_values.voice_id) }}
-    {% else %}
-    {{ ui.field("voice_id", _("ElevenLabs voice id"), errors, value=voice_values.voice_id, required=false, hint=voices_note or _("The id of the ElevenLabs voice that speaks the script.")) }}
-    {% endif %}
-  {% endcall %}
   {% call ui.panel(_("Blocks"), id="blocks") %}
-    <p class="muted">{{ _("Each block runs from its start to its end. Clear a block's speech to remove it; the empty block at the end adds a new one.") }}</p>
-    {% for row in blocks %}
-    {% set prefix = "block-" ~ loop.index0 ~ "-" %}
-    {% call ui.subsection(_("Block %(number)s", number=loop.index) if row.speech else _("New block"), "block-" ~ loop.index0) %}
+    {% call ui.summary_line(_("Voice:") ~ " " ~ voice_summary, _("Change"), open=voice_errors) %}
+      <p class="muted">{{ _("Blocks the narrator speaks use this voice; a character speaks with the voice on their srstudio sheet.") }}</p>
       {% call ui.fields_row() %}
-        {{ ui.field(prefix ~ "start_s", _("Starts at (s)"), errors, value=row.start_s, required=false) }}
-        {{ ui.field(prefix ~ "end_s", _("Ends at (s)"), errors, value=row.end_s, required=false) }}
-        {{ ui.select(prefix ~ "function", _("Function"), function_options, errors, value=row.function) }}
-        {{ ui.select(prefix ~ "speaker", _("Who speaks"), speaker_options, errors, value=row.speaker or "") }}
+        {{ ui.field("duration_s", _("Length in seconds"), errors, value=duration, hint=_("How long the video runs.")) }}
+        {{ ui.select("language", _("Language"), language_options, errors, value=voice_values.language) }}
       {% endcall %}
-      {{ ui.hidden(prefix ~ "beats", row.beats or "") }}
-      {{ ui.textarea(prefix ~ "speech", _("Speech"), errors, value=row.speech, limit=speech_limit, rows=3, hint=_("What is said, with voice tags such as [pause:0.5] or [irony]…[/irony].")) }}
-      {% call ui.fields_row() %}
+      {{ ui.select("model", _("Voice model"), model_options, errors, value=voice_values.model, hint=_("v3 understands every voice tag; v2 keeps only timed pauses.")) }}
+      {% if voices is not none %}
+      {{ ui.select("voice_id", _("Voice"), voice_options, errors, value=voice_values.voice_id) }}
+      {% else %}
+      {{ ui.field("voice_id", _("ElevenLabs voice id"), errors, value=voice_values.voice_id, required=false, hint=voices_note or _("The id of the ElevenLabs voice that speaks the script.")) }}
+      {% endif %}
+    {% endcall %}
+    <p class="muted">{{ _("One row per block. Times follow each other on their own: leave the seconds blank to estimate them from the words. Direct the voice with tags such as [pause:0.5] or [irony]…[/irony]; the list is at the end of the page.") }}</p>
+    {% call ui.script_rows(_("Blocks"), words_per_second=words_per_second) %}
+    {% for row in blocks %}
+    {% set index = loop.index0 %}
+    {% set prefix = "block-" ~ index ~ "-" %}
+    {% set details_errors = errors.get(prefix ~ "reaction") or errors.get(prefix ~ "intensity") or errors.get(prefix ~ "note") %}
+    {% call ui.script_row(row.range, id="block-" ~ index, state="is-new" if row.is_new else "") %}
+      <div class="script-main">
+        <div class="script-chips">
+          {{ ui.select(prefix ~ "function", _("Function"), function_options, errors, value=row.function, label_hidden=true) }}
+          {{ ui.select(prefix ~ "speaker", _("Who speaks"), speaker_options, errors, value=row.speaker or "", label_hidden=true) }}
+        </div>
+        {{ ui.textarea(prefix ~ "speech", _("Speech"), errors, value=row.speech, limit=speech_limit, rows=1, label_hidden=true) }}
+      </div>
+      <div class="script-side">
+        {{ ui.field(prefix ~ "duration_s", _("Seconds"), errors, value=row.duration_s, required=false, label_hidden=true, placeholder=_("auto")) }}
+        {% if not loop.first %}{{ ui.icon_button("up", _("Move up"), submit_name="action", submit_value="up-block-" ~ index) }}{% endif %}
+        {% if not loop.last %}{{ ui.icon_button("down", _("Move down"), submit_name="action", submit_value="down-block-" ~ index) }}{% endif %}
+        {{ ui.icon_button("close", _("Remove block"), submit_name="action", submit_value="remove-block-" ~ index, danger=true) }}
+      </div>
+      {% call ui.more(_("Details"), open=details_errors) %}
+        <div class="wide">{{ ui.textarea(prefix ~ "note", _("What should click for the viewer"), errors, value=row.note, rows=2) }}</div>
         {{ ui.select(prefix ~ "reaction", _("Expected reaction"), reaction_options, errors, value=row.reaction) }}
         {{ ui.select(prefix ~ "intensity", _("Intensity"), intensity_options, errors, value=row.intensity) }}
       {% endcall %}
-      {{ ui.field(prefix ~ "note", _("What should click for the viewer"), errors, value=row.note, required=false) }}
+      {% if beat_characters | length > 1 %}
+      {% set beats = beat_rows[index] %}
+      {% set beat_prefix = prefix ~ "beat-" %}
+      {% set beats_open = index in blocks_with_beat_errors %}
+      {{ ui.hidden(prefix ~ "beat_count", beats | length) }}
+      {% call ui.more(_("Beats") ~ " · " ~ (beats | length - 1), open=beats_open) %}
+        <p class="muted wide">{{ _("How the cast moves in srstudio: each beat holds a pose from its second in the block until the next one. The first starts at 0; leave the last row's character empty to add none.") }}</p>
+        {% if errors.get(prefix ~ "beats") %}<p class="error wide">{{ errors[prefix ~ "beats"] }}</p>{% endif %}
+        {% for beat in beats %}
+        {% set at = beat_prefix ~ loop.index0 ~ "-" %}
+        <div class="wide">
+        {% call ui.subsection(_("Beat %(number)s", number=loop.index) if not loop.last else _("New beat"), at ~ "title") %}
+          {% call ui.fields_row() %}
+            {{ ui.field(at ~ "at_s", _("From (s)"), errors, value=beat.at_s, required=false) }}
+            {{ ui.select(at ~ "character", _("Character"), beat_characters, errors, value=beat.character) }}
+          {% endcall %}
+          {% call ui.fields_row() %}
+            {{ ui.select(at ~ "eyes", _("Eyes"), eyes_options, errors, value=beat.eyes) }}
+            {{ ui.select(at ~ "mouth", _("Mouth"), mouth_options, errors, value=beat.mouth) }}
+            {{ ui.select(at ~ "arms", _("Arms"), arms_options, errors, value=beat.arms) }}
+          {% endcall %}
+          {{ ui.pills(at ~ "wear", _("Wears"), wear_options, errors, selected=beat.wear) }}
+          {% call ui.fields_row() %}
+            {{ ui.select(at ~ "prop", _("Prop"), beat_props, errors, value=beat.prop) }}
+            {{ ui.field(at ~ "action", _("Prop action"), errors, value=beat.action, required=false, maxlength=40, hint=_("Optional, such as open or drop.")) }}
+          {% endcall %}
+        {% endcall %}
+        </div>
+        {% endfor %}
+      {% endcall %}
+      {% endif %}
     {% endcall %}
+    {{ ui.insert_button(_("Add block"), "action", "add-block-" ~ index) }}
     {% endfor %}
+    {% endcall %}
+    {% call ui.panel_actions() %}{{ ui.button(_("Save short script")) }}{{ ui.autosave_status(_("Saving…"), _("Saved at %(time)s"), _("Could not save. Press the button to try again."), _("Someone else changed this text. Reload the page to see their changes; saving as you type is paused."), _("This text is over the limit, so it was not saved. Shorten it.")) }}{% endcall %}
   {% endcall %}
   {% call ui.panel(_("On-screen text"), id="screen-texts") %}
     <p class="muted">{{ _("Words on screen carry the video for people watching without sound.") }}</p>
+    {% if texts %}
+    {% call ui.script_rows(_("On-screen text")) %}
     {% for row in texts %}
-    {% set prefix = "text-" ~ loop.index0 ~ "-" %}
-    {% call ui.subsection(_("Text %(number)s", number=loop.index) if row.text else _("New text"), "text-" ~ loop.index0) %}
-      {{ ui.field(prefix ~ "text", _("Text"), errors, value=row.text, maxlength=screen_text_limit, required=false) }}
-      {% call ui.fields_row() %}
-        {{ ui.select(prefix ~ "shown", _("Shown"), shown_options, errors, value=row.shown) }}
-        {{ ui.field(prefix ~ "start_s", _("From (s)"), errors, value=row.start_s, required=false) }}
-        {{ ui.field(prefix ~ "end_s", _("Until (s)"), errors, value=row.end_s, required=false) }}
-      {% endcall %}
+    {% set index = loop.index0 %}
+    {% set prefix = "text-" ~ index ~ "-" %}
+    {% call ui.script_row("", id="text-" ~ index, state="is-new" if row.is_new else "") %}
+      <div class="script-main">
+        {{ ui.field(prefix ~ "text", _("Text"), errors, value=row.text, maxlength=screen_text_limit, required=false, label_hidden=true) }}
+        <div class="script-chips">
+          {{ ui.select(prefix ~ "shown", _("Shown"), shown_options, errors, value=row.shown, label_hidden=true) }}
+          {{ ui.field(prefix ~ "start_s", _("From (s)"), errors, value=row.start_s, required=false, label_hidden=true, placeholder=_("From (s)")) }}
+          {{ ui.field(prefix ~ "end_s", _("Until (s)"), errors, value=row.end_s, required=false, label_hidden=true, placeholder=_("Until (s)")) }}
+        </div>
+      </div>
+      <div class="script-side">
+        {{ ui.icon_button("close", _("Remove text"), submit_name="action", submit_value="remove-text-" ~ index, danger=true) }}
+      </div>
     {% endcall %}
     {% endfor %}
-    {% call ui.panel_actions() %}{{ ui.button(_("Save short script")) }}{% endcall %}
+    {% endcall %}
+    {% endif %}
+    {{ ui.insert_button(_("Add text"), "action", "add-text-" ~ (texts | length - 1)) }}
   {% endcall %}
 {% endcall %}
 {% else %}
 {% call ui.panel(_("Blocks"), id="blocks") %}
+  <p class="muted">{{ _("Voice:") }} {{ voice_summary }}</p>
   {% if script.blocks %}
   {% call(block) ui.items(script.blocks, _("Blocks")) %}
     {% call ui.item_body() %}
@@ -107,10 +163,14 @@
   {% endif %}
 {% endcall %}
 {% call ui.panel(_("Voice tags"), id="voice-tags") %}
+  {% call ui.more(_("Show every tag")) %}
   {% for class_label, entries in tag_guide %}
+  <div class="wide">
   {% call ui.subsection(class_label, "tags-" ~ loop.index) %}
     {{ ui.facts(entries) }}
   {% endcall %}
+  </div>
   {% endfor %}
+  {% endcall %}
 {% endcall %}
 {% endblock %}

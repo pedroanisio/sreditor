@@ -1,0 +1,31 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{#
+  An episode's srstudio page (rule project.srstudio): the slug and seed srstudio rebuilds it with,
+  what the export still lacks, each linked to the page that fixes it, and the zip once nothing does.
+#}
+{% block page_title %}srstudio · {{ episode.title }}{% endblock %}
+{% block page %}
+{% set lead = _("Export the episode as the zip srstudio renders: one WAV take per block, the channel bible and the beats.") %}
+{% include "workspace/_episode_header.html" %}
+{{ ui.form_error(errors) }}
+{% call ui.panel(_("Export"), id="export") %}
+  {% if missing %}
+  <p class="muted">{{ _("Before srstudio can render this episode:") }}</p>
+  {{ ui.checklist(missing) }}
+  {% else %}
+  {% call ui.alert("success") %}{{ _("Everything srstudio needs is here.") }}{% endcall %}
+  {% call ui.panel_actions() %}{{ ui.link_button(zip_link, _("Download srstudio zip"), download=true) }}{% endcall %}
+  {% endif %}
+{% endcall %}
+{% call ui.panel(_("Slug and seed"), id="slug") %}
+  {% call ui.form(action, csrf_field, csrf_token) %}
+    {{ ui.hidden("revision", stored.revision) }}
+    {% call ui.fields_row() %}
+      {{ ui.field("slug", _("Slug"), errors, value=slug_value, maxlength=80, hint=_("How srstudio names the episode: lowercase words joined by hyphens.")) }}
+      {{ ui.field("seed", _("Seed"), errors, type="number", value=seed_value, hint=_("The same seed draws the same frames when srstudio rebuilds the episode.")) }}
+    {% endcall %}
+    {% call ui.panel_actions() %}{{ ui.button(_("Save changes")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% endblock %}

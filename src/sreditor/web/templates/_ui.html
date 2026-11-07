@@ -62,6 +62,9 @@
   {%- elif name == "back" %}<path d="m15 18-6-6 6-6"/>
   {%- elif name == "search" %}<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
   {%- elif name == "close" %}<path d="M18 6 6 18M6 6l12 12"/>
+  {%- elif name == "up" %}<path d="m18 15-6-6-6 6"/>
+  {%- elif name == "down" %}<path d="m6 9 6 6 6-6"/>
+  {%- elif name == "more" %}<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>
   {%- else %}<path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/>{% endif -%}
 </svg>
 {%- endmacro %}
@@ -79,16 +82,17 @@
 {% if errors.get("form") %}{% call alert("error") %}{{ errors["form"] }}{% endcall %}{% endif %}
 {%- endmacro %}
 
-{% macro field(name, label, errors, type="text", value="", autocomplete="", hint="", minlength=none, state="", required=true, maxlength=none, id="") -%}
+{% macro field(name, label, errors, type="text", value="", autocomplete="", hint="", minlength=none, state="", required=true, maxlength=none, id="", label_hidden=false, placeholder="") -%}
 {% set error = errors.get(name) %}
 {% set field_id = id or name %}
 <div class="field{% if error %} invalid{% endif %}">
-  <label for="{{ field_id }}">{{ label }}</label>
+  <label for="{{ field_id }}"{% if label_hidden %} class="visually-hidden"{% endif %}>{{ label }}</label>
   <input id="{{ field_id }}" class="input{% if state %} {{ state }}{% endif %}" name="{{ name }}" type="{{ type }}" value="{{ value }}"
     {%- if required %} required{% endif %}
     {%- if autocomplete %} autocomplete="{{ autocomplete }}"{% endif %}
     {%- if minlength %} minlength="{{ minlength }}"{% endif %}
     {%- if maxlength %} maxlength="{{ maxlength }}"{% endif %}
+    {%- if placeholder %} placeholder="{{ placeholder }}"{% endif %}
     {%- if error %} aria-invalid="true" aria-describedby="{{ field_id }}-error"{% elif hint %} aria-describedby="{{ field_id }}-hint"{% endif %}>
   {% if error %}<p class="error" id="{{ field_id }}-error">{{ error }}</p>
   {% elif hint %}<p class="hint" id="{{ field_id }}-hint">{{ hint }}</p>{% endif %}
@@ -115,13 +119,13 @@
 {# Longer text. With `limit`, a counter shows the characters used; workspace.js keeps it live and
    the server shows it too, so it works without JavaScript. Going over the limit is allowed while
    typing, so a pasted text can be trimmed, and refused on submit. #}
-{% macro textarea(name, label, errors, value="", hint="", limit=none, rows=4, required=false, id="", state="", mono=false) -%}
+{% macro textarea(name, label, errors, value="", hint="", limit=none, rows=4, required=false, id="", state="", mono=false, label_hidden=false) -%}
 {% set error = errors.get(name) %}
 {# The counter shows from four fifths of the limit on, where it starts to matter. #}
 {% set counter_from = (limit * 4) // 5 if limit else 0 %}
 {% set field_id = id or name %}
 <div class="field{% if error %} invalid{% endif %}">
-  <label for="{{ field_id }}">{{ label }}</label>
+  <label for="{{ field_id }}"{% if label_hidden %} class="visually-hidden"{% endif %}>{{ label }}</label>
   <textarea id="{{ field_id }}" class="input{% if mono %} mono{% endif %}{% if state %} {{ state }}{% endif %}" name="{{ name }}" rows="{{ rows }}"
     {%- if required %} required{% endif %}
     {%- if limit %} data-limit="{{ limit }}" data-counter-from="{{ counter_from }}"{% endif %}
@@ -340,8 +344,21 @@
 {%- endmacro %}
 
 {# A small button that is only an icon; `label` is what screen readers hear. #}
-{% macro icon_button(name, label, type="submit", state="") -%}
-<button class="icon-button{% if state %} {{ state }}{% endif %}" type="{{ type }}" aria-label="{{ label }}">{{ icon(name) }}</button>
+{# An icon-only button; with `submit_name`, it also posts that name and value, so one form can
+   offer several actions, such as moving or removing one row of a list. #}
+{% macro icon_button(name, label, type="submit", state="", submit_name="", submit_value="", danger=false) -%}
+<button class="icon-button{% if danger %} danger{% endif %}{% if state %} {{ state }}{% endif %}" type="{{ type }}" aria-label="{{ label }}" title="{{ label }}"{% if submit_name %} name="{{ submit_name }}" value="{{ submit_value }}" formnovalidate{% endif %}>{{ icon(name) }}</button>
+{%- endmacro %}
+
+{# A small button that posts one action of a list form, such as adding a row after another. #}
+{% macro insert_button(label, submit_name, submit_value) -%}
+<div class="script-insert"><button class="button ghost small" type="submit" name="{{ submit_name }}" value="{{ submit_value }}" formnovalidate>{{ icon("plus") }}{{ label }}</button></div>
+{%- endmacro %}
+
+{# The first button of a form with several submit buttons: Enter in a field presses the first
+   one, so it must be the plain save, not a row's move or remove. Hidden from everyone. #}
+{% macro default_submit(label) -%}
+<button class="visually-hidden" type="submit" tabindex="-1" aria-hidden="true">{{ label }}</button>
 {%- endmacro %}
 
 {% macro dialog_button(target, label, variant="", size="", plus=false) -%}
@@ -443,6 +460,36 @@
   {% if title %}<h2 id="{{ id or title|lower|replace(' ', '-') }}-title">{{ title }}</h2>{% endif %}
   {{ caller() }}
 </section>
+{%- endmacro %}
+
+{# An ordered list of editable rows, such as a short script's blocks; each row is a script_row.
+   Rows with data-duration inputs show their chained time range live (workspace.js). #}
+{% macro script_rows(label, words_per_second="") -%}
+<ol class="script-rows" aria-label="{{ label }}" data-script-rows{% if words_per_second %} data-words-per-second="{{ words_per_second }}"{% endif %}>{{ caller() }}</ol>
+{%- endmacro %}
+
+{# One compact row: its time range on the left, the fields in the middle, actions on the right. #}
+{% macro script_row(range_label, id="", state="") -%}
+<li class="script-row{% if state %} {{ state }}{% endif %}"{% if id %} id="{{ id }}"{% endif %} data-script-row>
+  <span class="script-range" data-range>{{ range_label }}</span>
+  {{ caller() }}
+</li>
+{%- endmacro %}
+
+{# The secondary fields of a row, closed until asked for; it works without JavaScript. #}
+{% macro more(label, open=false, state="") -%}
+<details class="more{% if state %} {{ state }}{% endif %}"{% if open %} open{% endif %}>
+  <summary class="button ghost small">{{ icon("more") }}{{ label }}</summary>
+  <div class="more-body">{{ caller() }}</div>
+</details>
+{%- endmacro %}
+
+{# A short summary line that opens into the fields it sums up, such as a script's voice. #}
+{% macro summary_line(summary, action_label, open=false) -%}
+<details class="summary-line"{% if open %} open{% endif %}>
+  <summary><span>{{ summary }}</span><span class="summary-action">{{ action_label }}</span></summary>
+  <div class="summary-body">{{ caller() }}</div>
+</details>
 {%- endmacro %}
 
 {# A labelled block inside a panel, set apart from the form above it. #}

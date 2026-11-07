@@ -108,7 +108,8 @@ def add_library_items(server: MCPServer, services: Services) -> None:
     @server.tool(annotations=tool_annotations("Add third-party media", Effect.CREATE))
     def add_external_media(context: Context, slug: str, item: ExternalMediaInput) -> ExternalMedia:
         """Add an item made by others to a channel's library, such as a NASA clip, a video
-        the channel reacts to, a credited photo or a paper: its kind, title, the page where it
+        the channel reacts to, a credited photo, a paper or a CC BY 3D model, texture or
+        shader: its kind, title, the page where it
         lives, creator, rights and credit line. sreditor never downloads from the link. Each
         call adds another item, so check list_external_media first. Needs content:write."""
         return external_reported(

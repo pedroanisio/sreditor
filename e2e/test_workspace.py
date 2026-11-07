@@ -433,11 +433,18 @@ def write_short_script(page: Page, translate: Translator, evidence: Evidence) ->
     tabs.get_by_role("link", name=translate("Short script")).click()
     evidence.capture("short-script-empty")
     script = page.locator("form", has=page.locator("#block-0-speech"))
+    # The voice settings hide behind their one-line summary until opened.
+    script.locator(".summary-line > summary").click()
     script.locator("#duration_s").fill("3")
     script.locator("#voice_id").fill("EXAVITQu4vr4xnSDxMaL")
-    script.locator("#block-0-start_s").fill("0")
-    script.locator("#block-0-end_s").fill("3")
     script.locator("#block-0-speech").fill("Monday [pause:0.3] [emphasis]again[/emphasis]?")
+    script.locator("#block-0-duration_s").fill("3")
+    expect(script.locator("#block-0 [data-range]")).to_have_text("0.0–3.0 s")
+    script.get_by_role("button", name=translate("Add text")).click()
+    script = page.locator("form", has=page.locator("#text-0-text"))
+    expect(script.locator("#block-0-speech")).to_have_value(
+        "Monday [pause:0.3] [emphasis]again[/emphasis]?"
+    )
     script.locator("#text-0-text").fill("Monday again")
     script.locator("#text-0-shown").select_option("throughout")
     script.get_by_role("button", name=translate("Save short script")).click()

@@ -5,7 +5,7 @@ Copied from the npm package `three@0.186.1`
 MIT license (see LICENSE), so the 3D viewer loads nothing from a CDN (rule web.security.headers).
 
 Only the files the viewer needs are kept: `build/three.module.js`, `build/three.core.js`, and the
-GLTF and FBX loaders, OrbitControls and their helpers under `examples/jsm/`.
+GLTF and FBX loaders, OrbitControls, RoomEnvironment and their helpers under `examples/jsm/`.
 
 One change from the package: in the `examples/jsm` files, `from 'three'` became a relative path to
 `build/three.module.js`, because the CSP forbids the inline import map that a bare `'three'`

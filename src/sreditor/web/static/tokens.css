@@ -195,6 +195,8 @@
   --offset-search-top: 12vh;
   --height-board-min: 12rem;
   --width-item-min: 10rem;
+  --width-script-range: 6.5rem;
+  --width-script-seconds: 5.5rem;
   /* Media queries cannot read custom properties, so style.css writes this value in its
      @media rules; tests/test_design.py checks they match. Below it the sidebar becomes a top bar. */
   --breakpoint-compact: 48rem;

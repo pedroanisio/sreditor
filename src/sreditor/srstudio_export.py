@@ -315,17 +315,46 @@ def episode_document(app: Services, script: ShortScript, style: Style) -> dict[s
     }
 
 
-def bundle(app: Services, access: ChannelAccess, number: int, folder: Path) -> Bundle:
-    """Check every piece, convert the takes and build the documents; SrstudioNotReady lists what is missing."""
-    channel = episode_access(app, access, number, Permission.WRITE_CHANNEL)
+class Checked(BaseModel):
+    """What the export read and every piece it found missing, before any audio is converted."""
+
+    model_config = ConfigDict(frozen=True)
+
+    gathered: Gathered
+    library: Library
+    style: Style | None
+    has_beats: bool
+    missing: list[Missing]
+
+
+def checked(app: Services, channel: str, number: int) -> Checked:
+    """Read the script, takes, library and style, and list what srstudio would lack."""
     gathered = gather_takes(app, app.short_scripts.short_script(channel, number))
     library = channel_library(app, channel)
     style = episode_style(app, channel, number)
     beat_gaps, has_beats = beat_documents(gathered.script, style, library)
     missing = [*gathered.missing, *library_gaps(app, channel, library), *beat_gaps]
     missing += [] if style else [Missing(message=NO_STYLE)]
-    if missing or style is None:
-        raise SrstudioNotReady(missing)
+    return Checked(
+        gathered=gathered, library=library, style=style, has_beats=has_beats, missing=missing
+    )
+
+
+def missing_pieces(app: Services, access: ChannelAccess, number: int) -> list[Missing]:
+    """What keeps the episode from exporting to srstudio; empty when it is ready (owners and editors)."""
+    channel = episode_access(app, access, number, Permission.WRITE_CHANNEL)
+    return checked(app, channel, number).missing
+
+
+def bundle(app: Services, access: ChannelAccess, number: int, folder: Path) -> Bundle:
+    """Check every piece, convert the takes and build the documents; SrstudioNotReady lists what is missing."""
+    channel = episode_access(app, access, number, Permission.WRITE_CHANNEL)
+    found = checked(app, channel, number)
+    gathered, library, style, has_beats = (
+        found.gathered, found.library, found.style, found.has_beats
+    )  # fmt: skip
+    if found.missing or style is None:
+        raise SrstudioNotReady(found.missing)
     timed, wav_gaps = timed_blocks(gathered, library, folder, app)
     if wav_gaps:
         raise SrstudioNotReady(wav_gaps)

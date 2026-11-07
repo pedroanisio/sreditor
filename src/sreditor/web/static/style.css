@@ -1172,3 +1172,79 @@ video.player { max-block-size: var(--height-player); background: var(--color-bg)
   .app-content { padding-top: var(--space-5); }
   .toast { inset-inline: var(--space-4); max-width: none; }
 }
+
+/* Script rows: a short script's blocks, one compact row each. The time range on the left follows
+   from the durations; the speech takes the room; actions sit on the right. */
+.script-rows { list-style: none; padding: var(--space-0); margin: var(--space-0); }
+.script-row {
+  display: grid;
+  grid-template-columns: var(--width-script-range) minmax(var(--space-0), 1fr) auto;
+  gap: var(--space-2) var(--space-3);
+  align-items: start;
+  padding: var(--space-3) var(--space-0);
+  border-top: var(--border-width) solid var(--color-border);
+}
+.script-row:first-child { border-top: var(--space-0); }
+.script-row .field { margin: var(--space-0); }
+.script-range {
+  padding-top: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.script-main { display: grid; grid-template-columns: minmax(var(--space-0), 1fr); gap: var(--space-2); min-width: var(--space-0); }
+.script-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.script-chips .field { min-width: var(--space-0); max-width: 100%; }
+.script-chips .input { width: auto; max-width: 100%; height: var(--size-control-small); padding-block: var(--space-1); font-size: var(--font-size-sm); }
+.script-chips input.input { width: var(--width-script-seconds); }
+.script-side { display: flex; align-items: start; gap: var(--space-1); }
+.script-side .input { width: var(--width-script-seconds); height: var(--size-control-small); padding-block: var(--space-1); text-align: end; font-variant-numeric: tabular-nums; }
+.script-row .more { grid-column: 2 / -1; }
+.script-row.is-new { background: var(--color-accent-soft); border-radius: var(--radius-md); }
+.icon-button.danger:hover, .icon-button.danger.is-hover { color: var(--color-danger); background: var(--color-danger-soft); }
+.script-insert { display: flex; justify-content: center; margin: var(--space-1) var(--space-0); }
+
+/* More: a row's secondary fields, closed until asked for. */
+.more > summary { list-style: none; width: fit-content; }
+.more > summary::-webkit-details-marker { display: none; }
+.more-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--width-feature-min), 1fr));
+  gap: var(--space-3) var(--space-4);
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  border: var(--border-width) solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+.more-body .field { margin: var(--space-0); }
+.more-body .wide { grid-column: 1 / -1; }
+
+/* Summary line: settings set once, such as a script's voice, shown as one line until opened. */
+.summary-line > summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2);
+  list-style: none;
+  cursor: pointer;
+}
+.summary-line > summary::-webkit-details-marker { display: none; }
+.summary-line .summary-action { color: var(--color-accent); font-weight: var(--font-weight-semibold); }
+.summary-line > summary:hover .summary-action { text-decoration: underline; }
+.summary-line[open] .summary-action { visibility: hidden; }
+.summary-body { margin-top: var(--space-3); }
+
+/* Narrow screens: the range and the actions share the first line; the fields take the full
+   width below, so nothing overlaps. */
+@media (width < 48rem) {
+  .script-row {
+    grid-template-columns: minmax(var(--space-0), 1fr) auto;
+    grid-template-areas: "range side" "main main" "more more";
+  }
+  .script-range { grid-area: range; }
+  .script-side { grid-area: side; }
+  .script-main { grid-area: main; }
+  .script-row .more { grid-area: more; }
+}

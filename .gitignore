@@ -3,7 +3,8 @@ __pycache__/
 *.py[cod]
 .venv/
 dist/
-build/
+# Only the top-level build output: vendored libraries keep their own build/ folders.
+/build/
 *.egg-info/
 
 # Tests and coverage
@@ -21,3 +22,4 @@ store/*.sqlite-journal
 
 # Playwright evidence: screenshots and failure traces (rule ui.e2e.evidence)
 e2e-evidence/
+_tmp/video-classification-1.0.0.zip

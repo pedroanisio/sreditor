@@ -23,6 +23,10 @@
 // - Ctrl+K (Cmd+K on a Mac), or the sidebar's Search link, opens the quick search dialog instead
 //   of the search page; arrow keys move between its results.
 // - A menu closes when one of its choices is picked, on a click elsewhere and on Escape.
+// - In a short script's block list (data-words-per-second), each row's time range follows the
+//   rows above it as people type: a row lasts its seconds, or, when blank, its words at that
+//   rate in half seconds (at least 1 s); a row without speech takes no time. The server works
+//   out the same chain on save, so this is only a preview.
 // - A 3D model viewer loads model-viewer.js (and three.js with it) only on the pages that show
 //   one, from this script's own origin, so the CSP stays self-only.
 (function () {
@@ -408,6 +412,47 @@
     form.prepend(notice);
   });
 
+  var ESTIMATE_STEP_S = 0.5;
+  var MIN_ESTIMATE_S = 1;
+  var VOICE_TAG = /\[[^\]]*\]/g;
+  var SPOKEN_TOKEN = /[\p{L}\p{N}$_]+/gu;
+
+  // Counts like the server: a number takes one word per digit.
+  function countWords(speech) {
+    var tokens = speech.replace(VOICE_TAG, " ").match(SPOKEN_TOKEN) || [];
+    return tokens.reduce(function (total, token) {
+      return total + (/^\d/.test(token) ? token.replace(/\D/g, "").length : 1);
+    }, 0);
+  }
+
+  function rowSeconds(row, rate) {
+    var speech = row.querySelector("textarea[name$='-speech']");
+    if (!speech || !speech.value.trim()) {
+      return 0;
+    }
+    var typed = row.querySelector("input[name$='-duration_s']");
+    if (typed && typed.value.trim() !== "") {
+      var seconds = parseFloat(typed.value.replace(",", "."));
+      return seconds > 0 ? seconds : 0;
+    }
+    var steps = Math.ceil(countWords(speech.value) / rate / ESTIMATE_STEP_S);
+    return Math.max(MIN_ESTIMATE_S, steps * ESTIMATE_STEP_S);
+  }
+
+  function bindScriptRows(list) {
+    var rate = parseFloat(list.getAttribute("data-words-per-second"));
+    function update() {
+      var clock = 0;
+      list.querySelectorAll("[data-script-row]").forEach(function (row) {
+        var end = Math.round((clock + rowSeconds(row, rate)) * 10) / 10;
+        row.querySelector("[data-range]").textContent =
+          clock.toFixed(1) + "–" + end.toFixed(1) + " s";
+        clock = end;
+      });
+    }
+    list.addEventListener("input", update);
+  }
+
   // htmx also fires htmx:load for the first page, so bind each element only once.
   function once(bind) {
     return function (element) {
@@ -436,6 +481,7 @@
     root.querySelectorAll("form[data-autosave]").forEach(once(bindAutosave));
     root.querySelectorAll("form.board-move").forEach(once(bindBoardMove));
     root.querySelectorAll("[data-board-card]").forEach(once(bindBoardCard));
+    root.querySelectorAll("ol[data-words-per-second]").forEach(once(bindScriptRows));
     root.querySelectorAll(".board-column[data-stage]").forEach(once(bindBoardColumn));
     loadViewers(root);
   }

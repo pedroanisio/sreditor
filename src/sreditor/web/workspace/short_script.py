@@ -1,7 +1,9 @@
 """An episode's short script page: timed blocks, on-screen texts and the generated voice-over.
 
-The whole script is one form, so it saves as one revision (project.short-script). Owners and
-editors also see the voice-over panel: generate a take with ElevenLabs, listen to it and use
+The whole script is one form, so it saves as one revision (project.short-script). Each block is
+one compact row: its function, who speaks, the speech and how long it lasts, with the rest
+behind "Details"; buttons add, move and remove rows, and the form saves itself as people type.
+Owners and editors also see the voice-over panel: generate a take with ElevenLabs, listen to it and use
 its measured times (project.voice-generation).
 """
 
@@ -10,12 +12,13 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Request, Response
-from pydantic import BaseModel, ConfigDict, TypeAdapter
+from pydantic import BaseModel, ConfigDict
 
 from sreditor.deps import ChannelAccess, Services, ServicesDep
 from sreditor.elevenlabs import ElevenLabsError, Voice
 from sreditor.episode_texts import PartChanged
 from sreditor.i18n import N_, Translator
+from sreditor.language_guess import guess_language, primary_subtag
 from sreditor.library import LibraryKind
 from sreditor.members import Permission
 from sreditor.short_script import (
@@ -25,7 +28,7 @@ from sreditor.short_script import (
     SPEECH_LANGUAGES,
     SPEECH_LENGTH,
     WARNING_MESSAGES,
-    Beat,
+    WORDS_PER_SECOND,
     BlockFunction,
     Reaction,
     ScriptWarning,
@@ -47,24 +50,41 @@ from sreditor.voice_generation import Take
 from sreditor.voice_markup import TAGS, Tag, TagClass, TagForm, TtsModel, ValueKind
 from sreditor.web.forms import CSRF_FIELD
 from sreditor.web.routes import rejected_form, translator
+from sreditor.web.workspace.beat_rows import (
+    beat_choices,
+    beat_rows,
+    blocks_with_beat_errors,
+    stored_beat_fields,
+)
 from sreditor.web.workspace.episodes import episode_frame, episodes_url, found_episode, labels
 from sreditor.web.workspace.forms import revision_of
 from sreditor.web.workspace.media import media_url
 from sreditor.web.workspace.script_form import (
+    ACTION_FIELD,
+    ADD,
     BLOCK_PREFIX,
+    LIST_SEPARATOR,
     SHOWN_THROUGHOUT,
     SHOWN_TIMED,
     TEXT_PREFIX,
     Errors,
+    apply_row_action,
+    estimated_seconds,
     parse_script,
+    row_action,
+    seconds,
+    sent_rows,
 )
 from sreditor.web.workspace.shell import (
     Flash,
     Outcome,
     PageAccess,
     View,
+    autosave_refused,
+    autosaved,
     channel_page,
     done,
+    is_autosave,
     require,
 )
 
@@ -115,8 +135,13 @@ NARRATOR = N_("The narrator")
 NOT_IN_LIBRARY = N_(
     "This character or prop is no longer in the library. Pick another and save again."
 )
-BEATS: TypeAdapter[list[Beat]] = TypeAdapter(list[Beat])
 CHOOSE_VOICE = N_("Choose a voice")
+NO_VOICE = N_("no voice chosen")
+LANGUAGE_MISMATCH = N_(
+    "The speech looks written in %(found)s, but the voice is set to speak %(language)s. Change "
+    "the language, or the speech, before generating the voice-over."
+)
+LANGUAGE_NAMES = {"en": N_("English"), "pt": N_("Portuguese"), "es": N_("Spanish")}
 BLOCK_NUMBER = N_("Block %(number)s")
 
 
@@ -164,32 +189,51 @@ def example_of(tag: Tag) -> str:
 
 
 def block_rows(script: ShortScript, sent: dict[str, str] | None) -> list[dict[str, str]]:
-    """Each block as form values, plus a spare row for a new one."""
+    """Each block as form values with its time range; one empty row when there are none."""
     if sent is not None:
-        return sent_rows(sent, BLOCK_PREFIX)
+        return with_ranges(sent_rows(sent, BLOCK_PREFIX))
     rows = [
         {
-            "start_s": f"{block.start_s:g}",
-            "end_s": f"{block.end_s:g}",
+            "duration_s": f"{block.end_s - block.start_s:g}",
             "function": block.function.value,
             "speech": block.speech,
             "reaction": block.impact.reaction.value if block.impact else "",
             "intensity": str(block.impact.intensity) if block.impact else "",
             "note": block.impact.note if block.impact else "",
             "speaker": str(block.speaker or ""),
-            "beats": BEATS.dump_json(block.beats).decode() if block.beats else "",
+            **stored_beat_fields(block.beats),
         }
         for block in script.blocks
     ]
-    last_end = f"{script.blocks[-1].end_s:g}" if script.blocks else "0"
-    return [*rows, {"start_s": last_end, "function": BlockFunction.HOOK.value if not rows else ""}]
+    return with_ranges(rows or [{"function": BlockFunction.HOOK.value, "is_new": "1"}])
+
+
+def row_length(row: dict[str, str]) -> float:
+    """How long a row's block lasts: as typed, or estimated from its words; 0 when unreadable."""
+    try:
+        typed = seconds(row.get("duration_s", ""))
+    except ValueError:
+        return 0.0
+    return typed if typed is not None else estimated_seconds(row.get("speech", ""))
+
+
+def with_ranges(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    """The rows with the time range each block's place in the chain gives it."""
+    clock = 0.0
+    shown: list[dict[str, str]] = []
+    for row in rows:
+        length = row_length(row) if row.get("speech", "").strip() else 0.0
+        end = round(clock + length, 1)
+        shown.append({**row, "range": f"{clock:.1f}–{end:.1f} s"})
+        clock = end
+    return shown
 
 
 def text_rows(script: ShortScript, sent: dict[str, str] | None) -> list[dict[str, str]]:
-    """Each on-screen text as form values, plus a spare row for a new one."""
+    """Each on-screen text as form values."""
     if sent is not None:
         return sent_rows(sent, TEXT_PREFIX)
-    rows = [
+    return [
         {
             "text": item.text,
             "start_s": "" if item.start_s is None else f"{item.start_s:g}",
@@ -198,20 +242,25 @@ def text_rows(script: ShortScript, sent: dict[str, str] | None) -> list[dict[str
         }
         for item in script.screen_texts
     ]
-    return [*rows, {}]
 
 
-def sent_rows(sent: dict[str, str], prefix: str) -> list[dict[str, str]]:
-    """The rows a failed form posted, so nobody loses what they typed."""
-    count = int(sent.get(f"{prefix}_count", "0") or 0)
-    marker = f"{prefix}-"
-    rows: list[dict[str, str]] = [{} for _ in range(count)]
-    for name, value in sent.items():
-        if name.startswith(marker):
-            index, _, field = name[len(marker) :].partition("-")
-            if index.isdigit() and int(index) < count:
-                rows[int(index)][field] = value
-    return rows
+def language_warning(script: ShortScript, translate: Translator) -> str | None:
+    """A warning when the speech looks written in another language than the voice speaks."""
+    found = guess_language(" ".join(block.speech for block in script.blocks))
+    if found is None or found == primary_subtag(script.voice.language):
+        return None
+    names = {code: translate(name) for code, name in LANGUAGE_NAMES.items()}
+    spoken = SPEECH_LANGUAGES.get(script.voice.language, script.voice.language)
+    return translate(LANGUAGE_MISMATCH, found=names.get(found, found), language=spoken)
+
+
+def voice_summary(script: ShortScript, voices: list[Voice] | None, translate: Translator) -> str:
+    """One line for the voice settings: who speaks, the model, the language and the length."""
+    names = {voice.voice_id: voice.name for voice in voices or []}
+    voice_id = script.voice.voice_id
+    speaker = names.get(voice_id, voice_id) if voice_id else translate(NO_VOICE)
+    language = SPEECH_LANGUAGES.get(script.voice.language, script.voice.language)
+    return f"{speaker} · {script.voice.model.value} · {language} · {script.duration_s:g} s"
 
 
 def voice_choices(app: Services, access: ChannelAccess) -> tuple[list[Voice] | None, str]:
@@ -255,7 +304,8 @@ def form_context(script: ShortScript, shown: ScriptView, translate: Translator) 
             "voice_id": sent.get("voice_id", "") if sent else script.voice.voice_id,
             "language": sent.get("language", "") if sent else script.voice.language,
         },
-        "blocks": block_rows(script, sent),
+        "blocks": (blocks := block_rows(script, sent)),
+        "beat_rows": [beat_rows(row) for row in blocks],
         "texts": text_rows(script, sent),
         "function_options": options(FUNCTION_LABELS, translate),
         "language_options": list(SPEECH_LANGUAGES.items()),
@@ -302,17 +352,24 @@ def short_script_page(
     context = {
         "episode": current.episode,
         "script": script,
-        "warnings": [warning_text(found, translate) for found in script.warnings],
+        "warnings": [
+            *filter(None, [language_warning(script, translate)]),
+            *(warning_text(found, translate) for found in script.warnings),
+        ],
+        "voice_summary": voice_summary(script, voices, translate),
         "errors": shown.outcome.errors,
         "voices": voices,
         "voice_options": voice_options(voices, translate),
         "speaker_options": speaker_options(app, access, translate),
+        **beat_choices(app, access.channel.slug, translate),
+        "blocks_with_beat_errors": blocks_with_beat_errors(shown.outcome.errors),
         "function_labels": FUNCTION_LABELS,
         "voices_note": translate(voices_note) if voices_note else "",
         "may_generate": app.voice is not None and access.can(Permission.GENERATE_VOICE),
         "script_link": short_script_url(access.channel.slug, shown.number),
         "tag_guide": tag_guide(translate),
         "speech_limit": SPEECH_LENGTH,
+        "words_per_second": min(WORDS_PER_SECOND),
         "screen_text_limit": SCREEN_TEXT_LENGTH,
         "episode_tab": "short-script",
         **episode_frame(app, access, shown.number, translate),
@@ -338,43 +395,63 @@ def short_script(request: Request, app: ServicesDep, access: PageAccess, number:
 async def posted(request: Request) -> dict[str, str]:
     """The form's text fields."""
     form = await request.form()
-    return {name: value for name, value in form.items() if isinstance(value, str)}
+    # A checkbox group (what a beat wears) posts one value per ticked box; keep them all.
+    return {
+        name: LIST_SEPARATOR.join(value for value in form.getlist(name) if isinstance(value, str))
+        for name in form
+    }
 
 
 @router.post(PAGE)
 async def save_short_script(
     request: Request, app: ServicesDep, access: PageAccess, number: int
 ) -> Response:
-    """Save the whole short script."""
+    """Save the whole short script, after the row a button added, moved or removed."""
     sent = await posted(request)
     if rejected := rejected_form(request, app, sent.get(CSRF_FIELD, "")):
         return rejected
     require(access, Permission.WRITE_CONTENT)
     found_episode(app, access, number)
-    return saved_or_shown(request, app, access, ScriptView(number=number, sent=sent))
+    action = row_action(sent)
+    if action is None:
+        sent.pop(ACTION_FIELD, None)
+        return saved_or_shown(request, app, access, ScriptView(number=number, sent=sent))
+    changed = apply_row_action(sent, action)
+    if action.verb == ADD:
+        # A new row is empty and an empty row is not saved, so show it to be filled in.
+        return short_script_page(request, app, access, ScriptView(number=number, sent=changed))
+    return saved_or_shown(request, app, access, ScriptView(number=number, sent=changed))
 
 
 def saved_or_shown(
     request: Request, app: Services, access: ChannelAccess, shown: ScriptView
 ) -> Response:
-    """Write the script and go back to it, or show the form again with its errors."""
+    """Write the script and go back to it, or show the form again with its errors.
+
+    An autosave gets only the new revision, or the status that says why it did not save.
+    """
     sent = shown.sent or {}
-    parsed = parse_script(sent, translator(request))
+    translate = translator(request)
+    parsed = parse_script(sent, translate)
     errors: Errors = parsed.errors
     if parsed.script is not None:
         try:
-            write_short_script(
+            saved = write_short_script(
                 app, access, shown.number, parsed.script, revision_of(sent.get("revision", ""))
             )
         except PartChanged:
-            errors = {"form": translator(request)(SCRIPT_CHANGED)}
+            errors = {"form": translate(SCRIPT_CHANGED)}
         except NotInLibrary as missing:
-            errors = library_error(sent, missing, translator(request))
+            errors = library_error(sent, missing, translate)
         else:
+            if is_autosave(request):
+                return autosaved(saved.revision)
             return done(
                 request, app, short_script_url(access.channel.slug, shown.number), Flash.SAVED
             )
     outcome = Outcome.conflict(errors) if "form" in errors else Outcome.invalid(errors)
+    if is_autosave(request):
+        return autosave_refused(outcome)
     return short_script_page(request, app, access, shown.model_copy(update={"outcome": outcome}))
 
 

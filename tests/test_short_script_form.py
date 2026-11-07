@@ -15,12 +15,10 @@ def form(**fields: str) -> dict[str, str]:
         "language": "pt-BR",
         "block_count": "2",
         "text_count": "1",
-        "block-0-start_s": "0",
-        "block-0-end_s": "3",
+        "block-0-duration_s": "3",
         "block-0-function": "hook",
         "block-0-speech": "Hook [pause:0.3] here.",
-        "block-1-start_s": "3",
-        "block-1-end_s": "15",
+        "block-1-duration_s": "12",
         "block-1-function": "punch",
         "block-1-speech": "",
         "text-0-text": "",
@@ -56,7 +54,7 @@ def test_parse_script_reads_impact_and_screen_text() -> None:
 
 
 def test_parse_script_accepts_comma_decimals() -> None:
-    parsed = parse_script(form(**{"block-0-end_s": "2,5"}), ENGLISH)
+    parsed = parse_script(form(**{"block-0-duration_s": "2,5"}), ENGLISH)
     assert parsed.script is not None and parsed.script.blocks[0].end_s == 2.5
 
 
@@ -68,13 +66,13 @@ def test_parse_script_with_bad_tag_shows_translated_error_on_speech() -> None:
 
 
 def test_parse_script_with_text_for_seconds_shows_error_on_field() -> None:
-    parsed = parse_script(form(**{"block-0-start_s": "soon"}), ENGLISH)
-    assert parsed.errors == {"block-0-start_s": "Enter a number of seconds, such as 2.5."}
+    parsed = parse_script(form(**{"block-0-duration_s": "soon"}), ENGLISH)
+    assert parsed.errors == {"block-0-duration_s": "Enter a number of seconds, such as 2.5."}
 
 
-def test_parse_script_with_block_ending_first_shows_error_on_end() -> None:
-    parsed = parse_script(form(**{"block-0-end_s": "0"}), ENGLISH)
-    assert parsed.errors == {"block-0-end_s": "A block must end after it starts."}
+def test_parse_script_with_zero_duration_shows_error_on_duration() -> None:
+    parsed = parse_script(form(**{"block-0-duration_s": "0"}), ENGLISH)
+    assert parsed.errors == {"block-0-duration_s": "A block must last more than 0 seconds."}
 
 
 def test_parse_script_with_reaction_but_no_intensity_asks_for_it() -> None:
@@ -82,9 +80,15 @@ def test_parse_script_with_reaction_but_no_intensity_asks_for_it() -> None:
     assert parsed.errors == {"block-0-intensity": "Pick how strong the reaction is."}
 
 
-def test_parse_script_with_missing_start_shows_error_on_start() -> None:
-    parsed = parse_script(form(**{"block-0-start_s": ""}), ENGLISH)
-    assert set(parsed.errors) == {"block-0-start_s"}
+def test_parse_script_with_blank_duration_estimates_it_from_words() -> None:
+    parsed = parse_script(form(**{"block-0-duration_s": "", "block-0-speech": "Oi."}), ENGLISH)
+    assert parsed.script is not None and parsed.script.blocks[0].end_s == 1
+
+
+def test_parse_script_chains_each_block_after_the_one_before() -> None:
+    parsed = parse_script(form(**{"block-1-speech": "Bye."}), ENGLISH)
+    assert parsed.script is not None
+    assert [(block.start_s, block.end_s) for block in parsed.script.blocks] == [(0, 3), (3, 15)]
 
 
 def test_parse_script_with_bad_function_shows_error_on_function() -> None:

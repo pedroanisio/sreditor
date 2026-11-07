@@ -168,6 +168,25 @@
         {% call ui.item_side() %}{{ ui.confirm(_("Remove"), _("Remove %(name)s?", name=color[1]), "/design", csrf_field, csrf_token, _("Remove color")) }}{% endcall %}
       {% endcall %}
     {% endcall %}
+    {% call ui.panel(_("Blocks"), id=theme ~ "-script") %}
+      {% call ui.summary_line(_("Voice:") ~ " Rachel · eleven_v3 · pt-BR · 30 s", _("Change")) %}{{ ui.field(theme ~ "-length", _("Length in seconds"), {}, value="30") }}{% endcall %}
+      {% call ui.script_rows(_("Blocks"), words_per_second="2.3") %}
+        {% call ui.script_row("0.0–2.5 s") %}
+          <div class="script-main">
+            <div class="script-chips">{{ ui.select(theme ~ "-function", _("Function"), [("hook", _("Hook"))], {}, label_hidden=true) }}{{ ui.select(theme ~ "-speaker", _("Who speaks"), [("", _("The narrator"))], {}, label_hidden=true) }}</div>
+            {{ ui.textarea(theme ~ "-speech", _("Speech"), {}, value="Você já viu um cachorro pedir folga?", rows=1, label_hidden=true) }}
+          </div>
+          <div class="script-side">{{ ui.field(theme ~ "-seconds", _("Seconds"), {}, value="2.5", required=false, label_hidden=true) }}{{ ui.field(theme ~ "-seconds-auto", _("Seconds"), {}, required=false, label_hidden=true, placeholder=_("auto")) }}{{ ui.icon_button("down", _("Move down"), type="button") }}{{ ui.icon_button("close", _("Remove block"), type="button", danger=true) }}</div>
+          {% call ui.more(_("Details"), open=true) %}{{ ui.select(theme ~ "-reaction", _("Expected reaction"), [("", _("None"))], {}) }}{{ ui.select(theme ~ "-intensity", _("Intensity"), [("3", "3")], {}) }}{% endcall %}
+        {% endcall %}
+        {{ ui.insert_button(_("Add block"), "action", "add-block-0") }}
+        {% call ui.script_row("2.5–2.5 s", state="is-new") %}
+          <div class="script-main">{{ ui.textarea(theme ~ "-speech-new", _("Speech"), {theme ~ "-speech-new": _("A block must last more than 0 seconds.")}, rows=1, label_hidden=true) }}</div>
+          <div class="script-side">{{ ui.icon_button("up", _("Move up"), type="button", state="is-hover") }}{{ ui.icon_button("close", _("Remove block"), type="button", danger=true, state="is-focus") }}</div>
+          {% call ui.more(_("Details")) %}{% endcall %}
+        {% endcall %}
+      {% endcall %}
+    {% endcall %}
     {% call ui.panel(_("Files"), id=theme ~ "-files") %}
       {% call(entry) ui.tiles([("avatar", _("Avatar")), ("video", _("Intro video")), ("font", _("Font"))], _("Files")) %}
         {% set slot, label = entry %}

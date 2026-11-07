@@ -6,6 +6,7 @@ import base64
 import io
 import json
 import shutil
+import subprocess
 import zipfile
 from collections.abc import Callable
 from typing import Any
@@ -30,12 +31,12 @@ ZIP = f"{EPISODE}/srstudio.zip"
 HAS_FFMPEG = shutil.which("ffmpeg") is not None
 
 
-def spoken(text: str) -> tuple[int, bytes]:
+def spoken(text: str, audio: bytes = MP3_TAGGED) -> tuple[int, bytes]:
     """An ElevenLabs answer for this text, a tenth of a second per character."""
     steps = range(len(text))
     return ok(
         {
-            "audio_base64": base64.b64encode(MP3_TAGGED).decode(),
+            "audio_base64": base64.b64encode(audio).decode(),
             "alignment": {
                 "characters": list(text),
                 "character_start_times_seconds": [round(i * 0.1, 2) for i in steps],
@@ -55,6 +56,17 @@ def created(client: TestClient, path: str, body: dict[str, Any]) -> dict[str, An
 def saved(client: TestClient, path: str, body: dict[str, Any]) -> None:
     response = client.put(path, json=body)
     assert response.status_code == 200, response.text
+
+
+@pytest.fixture(scope="module")
+def take_audio(tmp_path_factory: pytest.TempPathFactory) -> bytes:
+    """A real, decodable MP3 when ffmpeg is here, so the export can turn it into WAV."""
+    if not HAS_FFMPEG:
+        return MP3_TAGGED
+    target = tmp_path_factory.mktemp("audio") / "tone.mp3"
+    command = ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=duration=1", str(target)]
+    subprocess.run(command, check=True, timeout=60)
+    return target.read_bytes()
 
 
 @pytest.fixture
@@ -128,20 +140,27 @@ def script(rex: str) -> dict[str, Any]:
 
 @pytest.fixture
 def voiced(
-    owner: TestClient, rex: str, toon_style: None, voice: Callable[..., FakeTransport]
+    owner: TestClient,
+    rex: str,
+    toon_style: None,
+    voice: Callable[..., FakeTransport],
+    take_audio: bytes,
 ) -> FakeTransport:
     """The script saved and voiced: one take per block, then the voice names."""
     saved(owner, f"{EPISODE}/short-script", script(rex))
-    transport = voice(spoken("Oi."), spoken("[sighs] Tchau [pause] AGORA."), ok(VOICES))
+    said = spoken("[sighs] Tchau [pause] AGORA.", take_audio)
+    transport = voice(spoken("Oi.", take_audio), said, ok(VOICES))
     assert owner.post(f"{EPISODE}/voice-over-takes").status_code == 201
     return transport
 
 
 def test_generate_speaks_each_block_in_its_speakers_voice(voiced: FakeTransport) -> None:
     narrator, dog = voiced.sent[0], voiced.sent[1]
+    tuning = (dog[3] or {})["voice_settings"]
+    assert isinstance(tuning, dict)
     assert "/text-to-speech/v1/" in narrator[1] and "voice_settings" not in (narrator[3] or {})
     assert "/text-to-speech/dog1/" in dog[1]
-    assert (dog[3] or {})["voice_settings"]["stability"] == 0.3
+    assert tuning["stability"] == 0.3
 
 
 def test_generate_after_one_block_changed_speaks_only_that_block(
@@ -251,7 +270,9 @@ def test_export_bible_writes_empty_texts_as_open_questions(
 
 
 @pytest.mark.skipif(not HAS_FFMPEG, reason="needs ffmpeg to turn takes into WAV")
-def test_export_poses_show_the_toon_each_beat_draws(owner: TestClient, voiced: FakeTransport) -> None:
+def test_export_poses_show_the_toon_each_beat_draws(
+    owner: TestClient, voiced: FakeTransport
+) -> None:
     archive = zipfile.ZipFile(io.BytesIO(owner.get(ZIP).content))
     poses = json.loads(archive.read("assets/poses.json"))
     assert [appearance["who"] for appearance in poses] == ["dog"]

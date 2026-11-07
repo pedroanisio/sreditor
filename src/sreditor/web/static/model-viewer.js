@@ -7,11 +7,13 @@ import {
   DirectionalLight,
   HemisphereLight,
   PerspectiveCamera,
+  PMREMGenerator,
   Scene,
   Vector3,
   WebGLRenderer,
 } from "./vendor/three/build/three.module.js";
 import { OrbitControls } from "./vendor/three/examples/jsm/controls/OrbitControls.js";
+import { RoomEnvironment } from "./vendor/three/examples/jsm/environments/RoomEnvironment.js";
 
 var FIELD_OF_VIEW = 40;
 // How far past the model's bounding sphere the camera starts, so it fits with a margin.
@@ -43,8 +45,13 @@ function say(figure, state) {
   figure.querySelector("[data-model-reset]").disabled = state !== "ready";
 }
 
-function lights(scene) {
-  scene.add(new HemisphereLight(SKY_LIGHT, GROUND_LIGHT, 2));
+// A neutral studio for metal to reflect (glTF materials are metallic unless they say otherwise,
+// and metal with nothing to reflect looks black), plus a key light for shape.
+function lights(scene, renderer) {
+  var studio = new PMREMGenerator(renderer);
+  scene.environment = studio.fromScene(new RoomEnvironment()).texture;
+  studio.dispose();
+  scene.add(new HemisphereLight(SKY_LIGHT, GROUND_LIGHT, 1));
   var key = new DirectionalLight(SKY_LIGHT, 2);
   key.position.fromArray(KEY_LIGHT_POSITION);
   scene.add(key);
@@ -79,7 +86,7 @@ export function mount(figure) {
   var camera = new PerspectiveCamera(FIELD_OF_VIEW, 1);
   var controls = new OrbitControls(camera, canvas);
   controls.listenToKeyEvents(canvas);
-  lights(scene);
+  lights(scene, renderer);
 
   function draw() {
     renderer.render(scene, camera);
