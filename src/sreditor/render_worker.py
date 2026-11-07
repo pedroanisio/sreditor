@@ -29,6 +29,7 @@ from sreditor.worker_engine import (
     CommandFailed,
     EncodeJob,
     Engine,
+    NotRendered,
     WorkerSettings,
 )
 
@@ -222,10 +223,13 @@ def run_job(
         LOGGER.info("job %s done", job_id)
     except Canceled:
         LOGGER.info("job %s canceled or lost; stopped", job_id)
-    except (CommandFailed, zipfile.BadZipFile, OSError, ValueError) as failure:
+    except (CommandFailed, NotRendered, zipfile.BadZipFile, OSError, ValueError) as failure:
         LOGGER.warning("job %s failed: %s", job_id, failure)
-        # A build that fails on the episode's data fails again; the engine or disk may recover.
-        is_retryable = not (isinstance(failure, CommandFailed) and failure.is_build)
+        # A build that fails on the episode's data fails again, and so does a scene the pinned
+        # engine cannot draw; the engine or disk may recover from anything else.
+        is_retryable = not isinstance(failure, NotRendered) and not (
+            isinstance(failure, CommandFailed) and failure.is_build
+        )
         client.fail(job_id, Failure(reason=str(failure)[:MAX_REASON], is_retryable=is_retryable))
     finally:
         shutil.rmtree(folder, ignore_errors=True)
@@ -233,7 +237,11 @@ def run_job(
 
 def hello(engine: Engine) -> Hello:
     """What the worker tells sreditor about itself when it asks for work."""
-    return Hello(engine_version=engine.version(), gpus=engine.gpus())
+    return Hello(
+        engine_version=engine.version(),
+        builder_version=engine.settings.builder_version,
+        gpus=engine.gpus(),
+    )
 
 
 def run_once(client: WorkerClient, engine: Engine, settings: WorkerSettings) -> bool:

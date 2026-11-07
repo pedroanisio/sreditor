@@ -31,6 +31,7 @@ from sreditor.renders import (
     Lease,
     NewJob,
     NewWorker,
+    Pinned,
     Progress,
     RenderJob,
     RenderNotFound,
@@ -89,10 +90,10 @@ class NotAdmin(PermissionError):
 
 
 class EngineMismatch(ValueError):
-    """The worker runs another scene-render version than the instance pins."""
+    """The worker runs another scene-render or srstudio version than the instance pins."""
 
-    def __init__(self, found: str, wanted: str) -> None:
-        super().__init__(f"This worker runs scene-render {found}; install {wanted} to take jobs")
+    def __init__(self, tool: str, found: str, wanted: str) -> None:
+        super().__init__(f"This worker runs {tool} {found}; install {wanted} to take jobs")
         self.found = found
         self.wanted = wanted
 
@@ -110,6 +111,7 @@ class Hello(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     engine_version: EngineVersion
+    builder_version: EngineVersion
     gpus: list[Gpu] = Field(default_factory=list, max_length=16)
 
 
@@ -204,6 +206,7 @@ def request_render(app: Services, access: ChannelAccess, request: RenderRequest)
             export_sha256=export_digest(archive),
             export_path="",
             engine_version=app.settings.render.engine_version,
+            builder_version=app.settings.render.builder_version,
             requested_by=owner_of(access.user, access.token).id,
         )
         earlier = app.renders.reusable(wanted)
@@ -291,11 +294,14 @@ def lease_for(app: Services, worker: RenderWorker) -> Lease:
 def claim_job(app: Services, worker: RenderWorker, hello: Hello) -> Claimed | None:
     """Give the worker the oldest job it can run, or None when the queue is empty."""
     app.renders.seen(worker.id, hello.engine_version, hello.gpus)
-    wanted = app.settings.render.engine_version
-    if hello.engine_version != wanted:
-        raise EngineMismatch(hello.engine_version, wanted)
+    pinned = app.settings.render
+    if hello.engine_version != pinned.engine_version:
+        raise EngineMismatch("scene-render", hello.engine_version, pinned.engine_version)
+    if hello.builder_version != pinned.builder_version:
+        raise EngineMismatch("srstudio", hello.builder_version, pinned.builder_version)
     app.render_parts.discard_abandoned()
-    job = app.renders.claim(lease_for(app, worker), wanted)
+    toolchain = Pinned(engine_version=pinned.engine_version, builder_version=pinned.builder_version)
+    job = app.renders.claim(lease_for(app, worker), toolchain)
     if job is None:
         return None
     return Claimed(
@@ -358,7 +364,10 @@ def store_video(app: Services, job: RenderJob, reader: BinaryIO) -> StoredFile:
 def render_media(job: RenderJob) -> NewMedia:
     """The media row a finished render becomes."""
     name = f"Render {job.preset.value} {job.created_at:%Y-%m-%d %H:%M}"
-    note = f"Render {job.id}, export {job.export_sha256[:12]}, scene-render {job.engine_version}"
+    note = (
+        f"Render {job.id}, export {job.export_sha256[:12]}, scene-render {job.engine_version},"
+        f" srstudio {job.builder_version[:12]}"
+    )
     return NewMedia(
         channel=job.channel,
         number=job.number,

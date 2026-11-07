@@ -32,6 +32,7 @@ from sreditor.render_worker import (
     run_once,
 )
 from sreditor.renders import RenderJob
+from sreditor.settings import DEFAULT_RENDER_BUILDER_VERSION
 from sreditor.worker_engine import (
     Canceled,
     Engine,
@@ -68,6 +69,8 @@ elif args[:1] == ["encode"] and {fails!r}:
     sys.exit(1)
 elif args[:1] == ["encode"]:
     shutil.copyfile({source!r}, args[args.index("-o") + 1])
+    if {unrendered!r}:
+        print("  note: not rendered yet: fx: GLSL compile/link failed; passed through.")
     finding = {{"code": "A07", "severity": "warning", "path": "/scene", "message": "size"}}
     Path(args[args.index("--report") + 1]).write_text(json.dumps({{"findings": [finding]}}))
 else:
@@ -105,7 +108,11 @@ def tools(tmp_path: Path) -> Tools:
         source.write_bytes(VIDEO)
         values = {"python": sys.executable, "calls": str(tmp_path / "calls.jsonl")}
         scene_render = SCENE_RENDER.format(
-            **values, version=version, fails=is_encode_failing, source=str(source)
+            **values,
+            version=version,
+            fails=is_encode_failing,
+            source=str(source),
+            unrendered=changes.pop("is_unrendered", False),
         )
         build = BUILD.format(python=sys.executable, fails=changes.pop("is_build_failing", False))
         settings = WorkerSettings(
@@ -115,6 +122,7 @@ def tools(tmp_path: Path) -> Tools:
             work_dir=tmp_path / "work",
             scene_render=executable(tmp_path / "scene-render", scene_render),
             gpu_lock=tmp_path / "gpu.lock",
+            builder_version=DEFAULT_RENDER_BUILDER_VERSION,
         )
         settings.work_dir.mkdir(exist_ok=True)
         return settings.model_copy(update=changes)
@@ -179,9 +187,22 @@ def test_worker_settings_from_environment_reads_each() -> None:
             "SREDITOR_WORKER_TOKEN": "srw_x",
             "SREDITOR_WORKER_BUILD_COMMAND": "srstudio build-export {export} {scene}",
             "SREDITOR_WORKER_PART_BYTES": "1000",
+            "SREDITOR_WORKER_BUILDER_VERSION": "41a43948",
         }
     )
     assert settings.server_url == "https://sreditor.example" and settings.part_bytes == 1000
+    assert settings.builder_version == "41a43948"
+
+
+def test_worker_settings_without_builder_version_names_it() -> None:
+    with pytest.raises(WorkerMisconfigured, match="builder_version"):
+        worker_settings(
+            {
+                "SREDITOR_WORKER_SERVER_URL": "https://x",
+                "SREDITOR_WORKER_TOKEN": "srw_x",
+                "SREDITOR_WORKER_BUILD_COMMAND": "b",
+            }
+        )
 
 
 def test_worker_settings_without_token_names_it() -> None:
@@ -259,6 +280,17 @@ def test_run_once_encode_failure_returns_job_to_queue(
     assert job["status"] == "queued" and "Not enough memory left" in job["failure"]
 
 
+def test_run_once_unrendered_content_fails_job_for_good(
+    owner: TestClient, client: WorkerClient, tools: Tools
+) -> None:
+    job_id = requested(owner)
+    settings = tools(is_unrendered=True)
+    run_once(client, Engine(settings), settings)
+    shown = render(owner, job_id)
+    assert shown["job"]["status"] == "failed" and shown["video"] is None
+    assert "GLSL compile/link failed" in shown["job"]["failure"]
+
+
 def test_run_once_canceled_job_stops_without_upload(
     owner: TestClient, client: WorkerClient, tools: Tools, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -283,6 +315,15 @@ def test_run_once_other_engine_version_is_refused(
     requested(owner)
     settings = tools(version="0.8.0")
     with pytest.raises(EngineRefused, match="0.8.0"):
+        run_once(client, Engine(settings), settings)
+
+
+def test_run_once_other_builder_version_is_refused(
+    owner: TestClient, client: WorkerClient, tools: Tools
+) -> None:
+    requested(owner)
+    settings = tools(builder_version="0123abc")
+    with pytest.raises(EngineRefused, match="0123abc"):
         run_once(client, Engine(settings), settings)
 
 

@@ -6,6 +6,9 @@ episode's data into a scene-render document. A job brings data only: the worker 
 that came with a job (Pedro's decision of 2026-11-07; user build.py waits for an isolated runner).
 Every scene-render call holds srstudio's GPU lock, the one flock file the machine's renders share;
 the build takes that lock itself around its own engine calls, so the worker does not hold it then.
+
+scene-render passes through what it cannot draw, such as a shader that fails to compile, and still
+exits 0 with a note; the worker fails such a render instead of delivering a picture that is wrong.
 """
 
 from __future__ import annotations
@@ -37,6 +40,8 @@ LOG_TAIL_CHARACTERS = 1500
 EXPORT_PLACEHOLDER = "{export}"
 SCENE_PLACEHOLDER = "{scene}"
 PREVIEW_FLAGS = ("--quality", "draft")
+# What scene-render prints for each thing it passed through rather than drew (its main.rs).
+NOT_RENDERED_NOTE = "note: not rendered yet:"
 
 
 class WorkerSetting(StrEnum):
@@ -51,6 +56,7 @@ class WorkerSetting(StrEnum):
     OUTPUT_ID = "SREDITOR_WORKER_OUTPUT_ID"
     POLL_SECONDS = "SREDITOR_WORKER_POLL_SECONDS"
     PART_BYTES = "SREDITOR_WORKER_PART_BYTES"
+    BUILDER_VERSION = "SREDITOR_WORKER_BUILDER_VERSION"
 
 
 class WorkerSettings(BaseModel):
@@ -67,6 +73,8 @@ class WorkerSettings(BaseModel):
     output_id: str = DEFAULT_OUTPUT_ID
     poll_seconds: float = Field(default=DEFAULT_POLL_SECONDS, gt=0)
     part_bytes: int = Field(default=DEFAULT_MAX_MEDIA_BYTES, gt=0)
+    # The srstudio commit the build command runs, which sreditor checks against the one it pins.
+    builder_version: str = Field(min_length=1)
 
 
 class WorkerMisconfigured(ValueError):
@@ -87,6 +95,7 @@ def worker_settings(environ: Mapping[str, str]) -> WorkerSettings:
             ("output_id", WorkerSetting.OUTPUT_ID),
             ("poll_seconds", WorkerSetting.POLL_SECONDS),
             ("part_bytes", WorkerSetting.PART_BYTES),
+            ("builder_version", WorkerSetting.BUILDER_VERSION),
         )
         if environ.get(variable)
     }
@@ -109,6 +118,21 @@ class CommandFailed(RuntimeError):
         super().__init__(f"{tool} exited with {code}: {tail.strip()}")
         self.tool = tool
         self.is_build = is_build
+
+
+class NotRendered(RuntimeError):
+    """scene-render finished but passed through part of the scene; the message lists what."""
+
+    def __init__(self, notes: list[str]) -> None:
+        super().__init__("scene-render did not render: " + "; ".join(notes))
+
+
+def not_rendered(log: Path) -> list[str]:
+    """What scene-render's output in `log` says it passed through instead of drawing."""
+    lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
+    return [
+        line.split(NOT_RENDERED_NOTE, 1)[1].strip() for line in lines if NOT_RENDERED_NOTE in line
+    ]
 
 
 class Step(BaseModel):
@@ -230,7 +254,8 @@ class Engine:
         run_command(Step(arguments=arguments, log=scene.parent / "build.log", is_build=True), stop)
 
     def encode(self, job: EncodeJob, stop: threading.Event) -> list[ReportFinding]:
-        """Render and encode the scene's output under the GPU lock; the report's findings."""
+        """Render and encode the scene's output under the GPU lock; the report's findings.
+        NotRendered when the engine passed through part of the scene."""
         arguments = [
             self.settings.scene_render,
             "encode",
@@ -246,6 +271,9 @@ class Engine:
             str(job.report),
             *(PREVIEW_FLAGS if job.preset is RenderPreset.PREVIEW else ()),
         ]
+        log = job.video.parent / "encode.log"
         with gpu_held(self.settings.gpu_lock, stop):
-            run_command(Step(arguments=arguments, log=job.video.parent / "encode.log"), stop)
+            run_command(Step(arguments=arguments, log=log), stop)
+        if notes := not_rendered(log):
+            raise NotRendered(notes)
         return findings_from(job.report)

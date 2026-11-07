@@ -394,6 +394,7 @@ def finished_render(app: FastAPI) -> UUID:
             export_sha256="a" * 64,
             export_path="x",
             engine_version="1",
+            builder_version="1",
             requested_by="test",
         )
     )
@@ -427,6 +428,7 @@ def test_file_link_render_not_done_says_to_wait(app: FastAPI, mcp: TestClient) -
             export_sha256="b" * 64,
             export_path="x",
             engine_version="1",
+            builder_version="1",
             requested_by="test",
         )
     )
