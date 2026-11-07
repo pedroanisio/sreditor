@@ -135,7 +135,9 @@ INSTRUCTIONS = (
     "import_retention_csv and compare the channel's posts with compare_posts. "
     "Files move through single-use links valid for 15 minutes: get_file_link for a brand file, "
     "media file, render, third-party copy or srstudio export, create_upload_link to attach a "
-    "media file, and check_srstudio_export to see what an srstudio export lacks."
+    "media file, and check_srstudio_export to see what an srstudio export lacks. "
+    "Rename a channel with update_channel and set its brand colors (with roles) and fonts with "
+    "update_brand, after reading them with get_brand."
 )
 
 # Domain errors an agent can act on, reported as tool errors with their message.
@@ -354,10 +356,22 @@ class ChannelView(BaseModel):
     revision: int
 
 
+class BrandView(BaseModel):
+    """A brand kit with the channel's name and the revision to pass as `expected_revision`."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    revision: int
+    platform: Platform | None = None
+    brand: BrandKit
+
+
 def build(services: Services) -> MCPServer:
     """The MCP server with sreditor's tools, bound to the app's services."""
     # Imported here: pitch_tools builds on this module's helpers, so a top-level import
     # would be circular.
+    from sreditor.brand_tools import add_brand_tools
     from sreditor.claims_tools import add_claim_tools
     from sreditor.classification_tools import add_classification_tools
     from sreditor.context_tools import add_context_tools
@@ -372,6 +386,7 @@ def build(services: Services) -> MCPServer:
     server: MCPServer = MCPServer(name="sreditor", instructions=INSTRUCTIONS)
     # Registration order is the order clients list the tools in.
     add_channel_tools(server, services)
+    add_brand_tools(server, services)
     add_editorial_tools(server, services)
     add_episode_tools(server, services)
     add_research_tools(server, services)
@@ -449,9 +464,19 @@ def add_channel_tools(server: MCPServer, services: Services) -> None:
         return reported(write)
 
     @server.tool(annotations=tool_annotations("Get brand kit", Effect.READ))
-    def get_brand(context: Context, slug: str, platform: Platform | None = None) -> BrandKit:
-        """The channel's brand kit; with a platform, that platform's overrides applied."""
-        return reported(lambda: operations.get_brand(access(context, slug), platform))
+    def get_brand(context: Context, slug: str, platform: Platform | None = None) -> BrandView:
+        """The channel's brand kit: colors with roles, fonts by role, logo, avatar and opening
+        and closing stings. With a platform, that platform's overrides are applied. Its
+        `revision` is the expected_revision for update_brand and update_channel."""
+
+        def read() -> BrandView:
+            found = access(context, slug)
+            kit = operations.get_brand(found, platform)
+            return BrandView(
+                name=found.channel.name, revision=found.revision, platform=platform, brand=kit
+            )
+
+        return reported(read)
 
 
 def add_editorial_tools(server: MCPServer, services: Services) -> None:

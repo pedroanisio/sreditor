@@ -265,6 +265,10 @@ class Outcome(BaseModel):
 
     errors: dict[str, str] = Field(default_factory=dict)
     status_code: int = status.HTTP_200_OK
+    # Which form of the page the errors belong to, and what was typed there, for a page with
+    # several forms of one kind (one per font role).
+    focus: str = ""
+    values: dict[str, str] = Field(default_factory=dict)
 
     @classmethod
     def invalid(cls, errors: dict[str, str]) -> Outcome:

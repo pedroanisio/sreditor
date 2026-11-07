@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from enum import StrEnum
-from typing import Annotated, Self
+from typing import Annotated, Any, Self
 
 from pydantic import (
     BaseModel,
@@ -112,13 +113,96 @@ class Asset(BaseModel):
         return path
 
 
+class ColorRole(StrEnum):
+    """What a brand color is for; each role is named once, except accent."""
+
+    PRIMARY = "primary"
+    SECONDARY = "secondary"
+    ACCENT = "accent"
+    TEXT = "text"
+    BACKGROUND = "background"
+
+
+class FontRole(StrEnum):
+    """Where a brand font is used."""
+
+    HEADING = "heading"
+    BODY = "body"
+    CAPTION = "caption"
+
+
+# Kits saved before colors had roles: the first color was the brand's main one, the second its
+# partner and the rest accents, which is how the books export already read them.
+LEGACY_ROLES = (ColorRole.PRIMARY, ColorRole.SECONDARY)
+FONT_WEIGHT_MIN = 100
+FONT_WEIGHT_MAX = 900
+DEFAULT_FONT_WEIGHT = 400
+FONT_MEDIA_PREFIX = "font/"
+
+
 class Color(BaseModel):
-    """A named brand color."""
+    """A named brand color and the role it plays."""
 
     model_config = ConfigDict(frozen=True)
 
     name: Text
     hex: Annotated[str, StringConstraints(pattern=HEX_PATTERN)]
+    role: ColorRole = ColorRole.ACCENT
+
+
+class FontInput(BaseModel):
+    """A font a person or agent chooses: a family and a weight, without any file."""
+
+    model_config = ConfigDict(frozen=True)
+
+    family: Text
+    weight: Annotated[int, Field(ge=FONT_WEIGHT_MIN, le=FONT_WEIGHT_MAX)] = DEFAULT_FONT_WEIGHT
+
+
+class FontSpec(FontInput):
+    """A brand font for one role, with the uploaded font file when there is one."""
+
+    file: Asset | None = None
+
+    @field_validator("file")
+    @classmethod
+    def file_is_a_font(cls, file: Asset | None) -> Asset | None:
+        """Only a font file (woff2, ttf or otf) can be the file behind a font."""
+        if file is not None and not file.media_type.startswith(FONT_MEDIA_PREFIX):
+            raise ValueError("A font file must be a font")
+        return file
+
+
+def with_legacy_roles(colors: object) -> object:
+    """Give colors saved without a role the first free legacy role, then accent."""
+    if not isinstance(colors, list):
+        return colors
+    taken = {item.get("role") for item in colors if isinstance(item, Mapping)}
+    free = [role.value for role in LEGACY_ROLES if role.value not in taken]
+    migrated: list[Any] = []
+    for item in colors:
+        if isinstance(item, Mapping) and "role" not in item:
+            role = free.pop(0) if free else ColorRole.ACCENT.value
+            item = {**item, "role": role}
+        migrated.append(item)
+    return migrated
+
+
+def check_palette(colors: list[Color]) -> list[Color]:
+    """Refuse a repeated name, or a role other than accent given to two colors."""
+    names = [color.name.casefold() for color in colors]
+    roles = [color.role for color in colors if color.role is not ColorRole.ACCENT]
+    if len(set(names)) != len(names):
+        raise ValueError("Each color needs its own name")
+    if len(set(roles)) != len(roles):
+        raise ValueError("Only accent colors may share a role; give each other role once")
+    return colors
+
+
+def primary_of(colors: list[Color]) -> Color | None:
+    """The color with the primary role, or the first when none has it; None without colors."""
+    primary = next((color for color in colors if color.role is ColorRole.PRIMARY), None)
+    return primary or (colors[0] if colors else None)
 
 
 class NarratorVoice(BaseModel):
@@ -134,14 +218,26 @@ class NarratorVoice(BaseModel):
 
 
 class BrandKit(BaseModel):
-    """A brand's avatar, files and colors; a platform's kit overrides the channel's."""
+    """A brand's avatar, files, colors and fonts; a platform's kit overrides the channel's.
+
+    The logo and the opening and closing stings are files in `assets` (logo, intro, outro).
+    """
 
     model_config = ConfigDict(frozen=True)
 
     avatar: Asset | None = None
     assets: dict[AssetKind, Asset] = Field(default_factory=dict)
     colors: list[Color] = Field(default_factory=list)
+    fonts: dict[FontRole, FontSpec] = Field(default_factory=dict)
     narrator_voice: NarratorVoice | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_colors(cls, data: object) -> object:
+        """Read kits saved before colors had roles (rule project.brand)."""
+        if isinstance(data, Mapping) and "colors" in data:
+            return {**data, "colors": with_legacy_roles(data["colors"])}
+        return data
 
     @field_validator("avatar")
     @classmethod
@@ -150,6 +246,17 @@ class BrandKit(BaseModel):
         if avatar is not None and avatar.width is not None and avatar.width != avatar.height:
             raise ValueError("Avatar must be square")
         return avatar
+
+    @field_validator("colors")
+    @classmethod
+    def colors_are_distinct(cls, colors: list[Color]) -> list[Color]:
+        """Refuse a repeated name, or a role other than accent given to two colors."""
+        return check_palette(colors)
+
+    @property
+    def primary_color(self) -> Color | None:
+        """The primary color, or the first one when none is marked primary."""
+        return primary_of(self.colors)
 
 
 class PlatformAccount(BaseModel):
@@ -174,6 +281,14 @@ class PlatformAccount(BaseModel):
                 f"the limit is {limit}"
             )
         return self
+
+
+class ChannelRename(BaseModel):
+    """A new display name for a channel; its slug never changes."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: Text
 
 
 class Channel(BaseModel):
@@ -210,4 +325,5 @@ class Channel(BaseModel):
             avatar=override.avatar or self.brand.avatar,
             assets={**self.brand.assets, **override.assets},
             colors=override.colors or self.brand.colors,
+            fonts={**self.brand.fonts, **override.fonts},
         )

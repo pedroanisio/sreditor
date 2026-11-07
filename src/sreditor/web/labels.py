@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from sreditor.assets import BrandSlot
-from sreditor.channels import Platform, Status
+from sreditor.channels import ColorRole, FontRole, Platform, Status
 from sreditor.editorial import GuidelineKind
 from sreditor.episodes import EpisodeStatus
 from sreditor.i18n import N_, Translator
@@ -60,6 +60,20 @@ SLOT_LABELS: dict[BrandSlot, str] = {
     BrandSlot.OUTRO: N_("Outro video"),
     BrandSlot.THUMBNAIL_TEMPLATE: N_("Thumbnail template"),
     BrandSlot.FONT: N_("Font"),
+}
+
+COLOR_ROLE_LABELS: dict[ColorRole, str] = {
+    ColorRole.PRIMARY: N_("Primary"),
+    ColorRole.SECONDARY: N_("Secondary"),
+    ColorRole.ACCENT: N_("Accent"),
+    ColorRole.TEXT: N_("Text"),
+    ColorRole.BACKGROUND: N_("Background"),
+}
+
+FONT_ROLE_LABELS: dict[FontRole, str] = {
+    FontRole.HEADING: N_("Heading font"),
+    FontRole.BODY: N_("Body font"),
+    FontRole.CAPTION: N_("Caption font"),
 }
 
 KIND_LABELS: dict[GuidelineKind, str] = {

@@ -33,13 +33,13 @@ from sreditor.brand import (
 )
 from sreditor.channels import BrandKit, Channel, Color, Platform
 from sreditor.deps import ChannelAccess, Services, ServicesDep, within_rate_limit
-from sreditor.i18n import N_
+from sreditor.i18n import N_, Translator
 from sreditor.members import Permission
 from sreditor.operations import replace_channel
 from sreditor.problems import ProblemError
 from sreditor.repository import RevisionMismatch
 from sreditor.web.forms import field_errors
-from sreditor.web.labels import SLOT_LABELS
+from sreditor.web.labels import COLOR_ROLE_LABELS, SLOT_LABELS
 from sreditor.web.routes import (
     SECURITY_HEADERS,
     TOO_MANY,
@@ -47,6 +47,7 @@ from sreditor.web.routes import (
     rejected_form,
     translator,
 )
+from sreditor.web.workspace.brand_rows import color_role_options, font_rows
 from sreditor.web.workspace.forms import (
     ColorFields,
     RevisionFields,
@@ -110,7 +111,20 @@ def file_rows(channel: Channel, platform: Platform | None) -> list[dict[str, Any
             "formats": slot_formats(slot),
         }
         for slot in BrandSlot
+        if slot is not BrandSlot.FONT or file_in(own, slot) is not None
     ]
+
+
+def colors_context(
+    channel: Channel, platform: Platform | None, translate: Translator
+) -> dict[str, Any]:
+    """The palette the brand page lists, with its role labels and the picker's options."""
+    return {
+        "colors": own_brand(channel, platform).colors,
+        "inherited_colors": channel.brand.colors if platform else [],
+        "color_roles": color_role_options(translate),
+        "role_labels": {role: translate(label) for role, label in COLOR_ROLE_LABELS.items()},
+    }
 
 
 def brand_page(
@@ -122,16 +136,18 @@ def brand_page(
 ) -> Response:
     """The kit at one level, with the tabs for the others."""
     channel = access.channel
-    own = own_brand(channel, platform)
+    translate = translator(request)
     context = {
         "errors": outcome.errors,
+        "focus": outcome.focus,
+        "values": outcome.values,
         "platform": platform,
-        "tabs": level_tabs(channel, BRAND_SUFFIX, translator(request)),
+        "tabs": level_tabs(channel, BRAND_SUFFIX, translate),
         "files": file_rows(channel, platform),
-        "colors": own.colors,
-        "inherited_colors": channel.brand.colors if platform else [],
+        "fonts": font_rows(channel, platform, translate),
         "image": FileFamily.IMAGE,
         "max_megabytes": app.assets.max_bytes // BYTES_PER_MEGABYTE,
+        **colors_context(channel, platform, translate),
     }
     view = View(
         template="workspace/brand.html",
@@ -260,7 +276,9 @@ def save_color(
     change = BrandChange.of(fields.platform, fields.revision)
     kit = writer.current(change)
     try:
-        color = Color(name=fields.name, hex=fields.hex.strip())
+        color = Color.model_validate(
+            {"name": fields.name, "hex": fields.hex.strip(), "role": fields.role}
+        )
     except ValidationError as invalid:
         outcome = Outcome.invalid(field_errors(invalid, translator(request)))
         return writer.failed(change, outcome)

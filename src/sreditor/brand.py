@@ -6,8 +6,22 @@ Channel.brand_for applies on top of the channel's kit.
 
 from __future__ import annotations
 
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from sreditor.assets import BrandSlot
-from sreditor.channels import Asset, AssetKind, BrandKit, Channel, Color, Platform
+from sreditor.channels import (
+    Asset,
+    AssetKind,
+    BrandKit,
+    Channel,
+    Color,
+    ColorRole,
+    FontInput,
+    FontRole,
+    FontSpec,
+    Platform,
+    check_palette,
+)
 
 
 class NoSuchAccount(LookupError):
@@ -56,8 +70,16 @@ def file_in(brand: BrandKit, slot: BrandSlot) -> Asset | None:
 
 
 def with_color(brand: BrandKit, color: Color) -> BrandKit:
-    """The kit with a color added, or recolored when one has the same name."""
+    """The kit with a color added, or recolored when one has the same name.
+
+    A role other than accent moves to this color: the color that held it becomes an accent.
+    """
     others = [item for item in brand.colors if item.name.casefold() != color.name.casefold()]
+    if color.role is not ColorRole.ACCENT:
+        others = [
+            item.model_copy(update={"role": ColorRole.ACCENT}) if item.role is color.role else item
+            for item in others
+        ]
     return brand.model_copy(update={"colors": [*others, color]})
 
 
@@ -65,6 +87,67 @@ def without_color(brand: BrandKit, name: str) -> BrandKit:
     """The kit without the named color."""
     colors = [item for item in brand.colors if item.name.casefold() != name.casefold()]
     return brand.model_copy(update={"colors": colors})
+
+
+class BrandPatch(BaseModel):
+    """A change to the colors and fonts of a kit; what is left out stays as it is.
+
+    `colors` replaces the whole palette. `fonts` sets the fonts of the roles it names and
+    removes the role whose value is null; other roles stay.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    colors: list[Color] | None = Field(
+        default=None,
+        description="The whole palette: #RRGGBB colors with a role; accent may repeat.",
+    )
+    fonts: dict[FontRole, FontInput | None] | None = Field(
+        default=None,
+        description="Fonts by role (heading, body, caption); null removes a role's font.",
+    )
+
+    @field_validator("colors")
+    @classmethod
+    def palette_is_valid(cls, colors: list[Color] | None) -> list[Color] | None:
+        """Refuse a palette the kit would refuse, so the caller gets a field error."""
+        return None if colors is None else check_palette(colors)
+
+
+def with_fonts(brand: BrandKit, fonts: dict[FontRole, FontInput | None]) -> BrandKit:
+    """The kit with fonts set or removed by role.
+
+    A font keeps its uploaded file only while its family stays the same, since a file belongs
+    to one family.
+    """
+    updated = dict(brand.fonts)
+    for role, chosen in fonts.items():
+        if chosen is None:
+            updated.pop(role, None)
+            continue
+        current = updated.get(role)
+        is_same_family = (
+            current is not None and current.family.casefold() == chosen.family.casefold()
+        )
+        file = current.file if current is not None and is_same_family else None
+        updated[role] = FontSpec(family=chosen.family, weight=chosen.weight, file=file)
+    return brand.model_copy(update={"fonts": updated})
+
+
+def with_font_file(brand: BrandKit, role: FontRole, file: Asset) -> BrandKit:
+    """The kit with a font file set for a role whose family is already chosen."""
+    spec = brand.fonts[role].model_copy(update={"file": file})
+    return brand.model_copy(update={"fonts": {**brand.fonts, role: spec}})
+
+
+def with_patch(brand: BrandKit, patch: BrandPatch) -> BrandKit:
+    """The kit after a patch; BrandKit validates the palette, so a bad one raises."""
+    updated = brand
+    if patch.fonts is not None:
+        updated = with_fonts(updated, patch.fonts)
+    if patch.colors is not None:
+        updated = BrandKit.model_validate({**updated.model_dump(), "colors": patch.colors})
+    return updated
 
 
 def referenced_assets(channel: Channel) -> list[Asset]:
@@ -75,4 +158,5 @@ def referenced_assets(channel: Channel) -> list[Asset]:
         if kit.avatar is not None:
             found.append(kit.avatar)
         found.extend(kit.assets.values())
+        found.extend(font.file for font in kit.fonts.values() if font.file is not None)
     return found

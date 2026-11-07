@@ -96,6 +96,16 @@ class ColorFields(SubmittedFields):
 
     name: str = ""
     hex: str = ""
+    role: str = "accent"
+    platform: str = ""
+    revision: str = ""
+
+
+class FontFields(SubmittedFields):
+    """A brand font's family and weight for one role."""
+
+    family: str = ""
+    weight: str = ""
     platform: str = ""
     revision: str = ""
 

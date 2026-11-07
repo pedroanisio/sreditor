@@ -98,7 +98,7 @@ def test_accept_attribute_image_slot_lists_media_types() -> None:
 
 
 def test_format_names_video_slot_lists_extensions() -> None:
-    assert format_names(BrandSlot.INTRO) == "MP4, MOV, WEBM"
+    assert format_names(BrandSlot.INTRO) == "MP4, WEBM"
 
 
 def test_asset_store_save_names_file_by_hash(tmp_path: Path) -> None:

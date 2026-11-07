@@ -14,6 +14,7 @@ from starlette.routing import Route
 from sreditor import (
     auth_routes,
     book_routes,
+    brand_routes,
     claim_routes,
     classification_routes,
     context_routes,
@@ -42,7 +43,7 @@ from sreditor import (
 )
 from sreditor.assets import AssetRejected, AssetStore, FileTooLarge
 from sreditor.block_takes import BlockTakeStore
-from sreditor.channels import BrandKit, Channel, Platform, PlatformAccount
+from sreditor.channels import Channel, Platform, PlatformAccount
 from sreditor.claims import ClaimStore
 from sreditor.classification import ClassificationStore
 from sreditor.context import ContextStore
@@ -223,6 +224,7 @@ def create_app(
     app.include_router(research_routes.router)
     app.include_router(pitch_routes.router)
     app.include_router(claim_routes.router)
+    app.include_router(brand_routes.router)
     app.include_router(context_routes.router)
     app.include_router(screenplay_routes.router)
     app.include_router(short_script_routes.router)
@@ -513,11 +515,6 @@ def add_account_routes(app: FastAPI) -> None:
 
 def add_brand_and_editorial_routes(app: FastAPI) -> None:
     """Read the brand kit and Editorial, and write or retire guidelines."""
-
-    @app.get("/channels/{slug}/brand", tags=["channels"], summary="Get the brand kit")
-    def get_brand(access: Access, platform: Platform | None = None) -> BrandKit:
-        """The channel's brand kit, with the platform's overrides applied when one is given."""
-        return operations.get_brand(access, platform)
 
     @app.get("/channels/{slug}/editorial", tags=["editorial"], summary="Get the Editorial")
     def get_editorial(

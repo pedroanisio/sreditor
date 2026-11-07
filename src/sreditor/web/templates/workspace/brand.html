@@ -4,7 +4,7 @@
 {% block page %}
 {% set may_write = can("write_channel") %}
 {% set level = platform.value if platform else "" %}
-{% call ui.page_header(_("Brand kit"), _("Files and colors at the channel's level. An account can override any of them; what it leaves empty comes from the channel.")) %}{% endcall %}
+{% call ui.page_header(_("Brand kit"), _("Files, colors and fonts at the channel's level. An account can override any of them; what it leaves empty comes from the channel.")) %}{% endcall %}
 {{ ui.tabs(tabs, level, _("Brand kit levels")) }}
 {{ ui.form_error(errors) }}
 {% call ui.panel(_("Files"), id="files") %}
@@ -47,10 +47,60 @@
 {% endcall %}
 {% endfor %}
 {% endif %}
+{% call ui.panel(_("Fonts"), id="fonts") %}
+  {% call(row) ui.items(fonts, _("Fonts")) %}
+    {% set font = row.own or row.inherited %}
+    {% call ui.item_body() %}
+      <strong>{{ row.label }}</strong>
+      {% if font %}
+      <p>{{ font.family }} · {{ font.weight }}{% if font.file %} · {{ font.file.media_type.split("/")[-1] | upper }}{% endif %}</p>
+      {% if not row.own %}{{ ui.inherited(_("From the channel")) }}{% endif %}
+      {% else %}
+      <p>{{ _("Not set") }}</p>
+      {% endif %}
+    {% endcall %}
+    {% if may_write %}
+    {% call ui.item_side() %}
+      {{ ui.dialog_button("font-" ~ row.role, _("Edit") if row.own else _("Set"), variant="ghost", size="small") }}
+      {% if row.own and row.own.file %}<a href="{{ channel_link }}/files/{{ row.own.file.path.split('/')[-1] }}" target="_blank" rel="noopener">{{ _("Open") }}</a>{% endif %}
+    {% endcall %}
+    {% endif %}
+  {% endcall %}
+{% endcall %}
+{% if may_write %}
+{% for row in fonts %}
+{% set is_sent = focus == row.role %}
+{% set shown_errors = errors if is_sent else {} %}
+{% set shown = row.own %}
+{% call ui.dialog("font-" ~ row.role, row.label, _("Close"), open=is_sent) %}
+  {% call ui.form(channel_link ~ "/brand/fonts/" ~ row.role, csrf_field, csrf_token) %}
+    {{ ui.hidden("platform", level) }}
+    {{ ui.hidden("revision", revision) }}
+    {% call ui.fields_row() %}
+      {{ ui.field("family", _("Family"), shown_errors, value=(values.get("family") if is_sent else (shown.family if shown else "")), maxlength=200, id=row.role ~ "-family", hint=_("The name of the font family, such as Inter.")) }}
+      {{ ui.select("weight", _("Weight"), row.weights, shown_errors, value=(values.get("weight") if is_sent else (shown.weight | string if shown else "400")), id=row.role ~ "-weight") }}
+    {% endcall %}
+    {% call ui.panel_actions() %}{{ ui.button(_("Save font")) }}{% endcall %}
+  {% endcall %}
+  {% if not shown and shown_errors.get("file") %}<p class="error">{{ shown_errors.get("file") }}</p>{% endif %}
+  {% if shown %}
+  {% call ui.form(channel_link ~ "/brand/fonts/" ~ row.role ~ "/file", csrf_field, csrf_token, upload=true) %}
+    {{ ui.hidden("platform", level) }}
+    {{ ui.hidden("revision", revision) }}
+    {{ ui.file_field("file", _("Font file"), {"file": shown_errors.get("file")} if shown_errors.get("file") else {}, accept=row.accept, hint=row.formats ~ " · " ~ _("Up to %(size)s MB each.", size=max_megabytes), id=row.role ~ "-file") }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Upload")) }}{% endcall %}
+  {% endcall %}
+  {% call ui.panel_actions() %}
+    {{ ui.confirm(_("Remove"), _("Remove this font?"), channel_link ~ "/brand/fonts/" ~ row.role ~ "/remove", csrf_field, csrf_token, _("Remove font"), fields=[("platform", level), ("revision", revision)]) }}
+  {% endcall %}
+  {% endif %}
+{% endcall %}
+{% endfor %}
+{% endif %}
 {% call ui.panel(_("Colors"), id="colors") %}
   {% if colors %}
   {% call(color) ui.items(colors, _("Colors")) %}
-    {% call ui.item_body() %}{{ ui.chip(color.hex, color.name) }}{% endcall %}
+    {% call ui.item_body() %}{{ ui.chip(color.hex, color.name) }} {{ ui.badge(role_labels[color.role]) }}{% endcall %}
     {% if may_write %}
     {% call ui.item_side() %}
       {{ ui.confirm(_("Remove"), _("Remove %(name)s?", name=color.name), channel_link ~ "/brand/colors/remove", csrf_field, csrf_token, _("Remove color"), fields=[("name", color.name), ("platform", level), ("revision", revision)], target=color.name) }}
@@ -70,6 +120,7 @@
     {% call ui.fields_row() %}
       {{ ui.field("name", _("Color name"), errors, maxlength=200, id="color-name", hint=_("Using a name already in the kit changes that color.")) }}
       {{ ui.field("hex", _("Color"), errors, type="color", value="#000000", id="color-hex") }}
+      {{ ui.select("role", _("Role"), color_roles, errors, value="accent", id="color-role", hint=_("A role other than accent moves to this color.")) }}
     {% endcall %}
     {% call ui.panel_actions() %}{{ ui.button(_("Save color")) }}{% endcall %}
   {% endcall %}
