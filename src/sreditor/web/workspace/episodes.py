@@ -77,6 +77,7 @@ CLASSIFICATION_TAB = N_("Classification")
 CLAIMS_TAB = N_("Claims")
 WAIVERS_TAB = N_("Waivers")
 DELIVERY_TAB = N_("Delivery")
+RENDER_TAB = N_("Render")
 SRSTUDIO_TAB = "srstudio"  # a product name, the same in every language
 EPISODE_TABS = (
     ("", DETAILS_TAB, "details", Permission.READ),
@@ -90,6 +91,7 @@ EPISODE_TABS = (
     ("/delivery", DELIVERY_TAB, "delivery", Permission.READ),
     ("/waivers", WAIVERS_TAB, "waivers", Permission.READ_WAIVERS),
     ("/srstudio", SRSTUDIO_TAB, "srstudio", Permission.WRITE_CHANNEL),
+    ("/render", RENDER_TAB, "render", Permission.READ),
 )
 
 

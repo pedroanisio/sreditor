@@ -25,7 +25,7 @@ from pydantic import (
     model_validator,
 )
 
-from sreditor.database import Database
+from sreditor.database import Database, parse
 from sreditor.episode_texts import PartChanged
 from sreditor.i18n import N_
 from sreditor.library import EpisodeStyle, LibraryEntry, LibraryKind
@@ -297,11 +297,15 @@ class SheetInput(BaseModel):
 
 
 class EntrySheet(SheetInput):
-    """A library entry's sheet; revision 0 and a proposed slug until someone saves it."""
+    """A library entry's sheet; revision 0 and a proposed slug until someone saves it.
+
+    `exported_at` is when an srstudio zip first carried the slug; from then on it is fixed.
+    """
 
     entry_id: UUID
     revision: int
     updated_at: datetime | None = None
+    exported_at: datetime | None = None
 
 
 class EpisodeStyleDetail(EpisodeStyle):
@@ -320,12 +324,16 @@ class EpisodeSlugInput(BaseModel):
 
 
 class EpisodeSlug(EpisodeSlugInput):
-    """An episode's srstudio slug and seed; revision 0 and proposed values until someone saves them."""
+    """An episode's srstudio slug and seed; revision 0 and proposed values until someone saves them.
+
+    `exported_at` is when an srstudio zip first carried the slug; from then on it is fixed.
+    """
 
     channel: str
     number: int
     revision: int
     updated_at: datetime | None = None
+    exported_at: datetime | None = None
 
 
 class RelationshipInput(BaseModel):
@@ -357,6 +365,17 @@ class SlugTaken(ValueError):
 
     def __init__(self, slug: str) -> None:
         super().__init__(f"The slug {slug} is already taken in this channel")
+        self.slug = slug
+
+
+class SlugLocked(ValueError):
+    """The slug has gone out in an srstudio zip, so srstudio already knows the item by it."""
+
+    def __init__(self, slug: str) -> None:
+        super().__init__(
+            f"The slug {slug} is fixed: an srstudio export already used it, and srstudio"
+            " finds the item by it. Send the same slug to change the other fields"
+        )
         self.slug = slug
 
 
@@ -401,6 +420,7 @@ def to_sheet(entry: LibraryEntry, row: sqlite3.Row | None) -> EntrySheet:
         sheet=SHEET.validate_json(row["sheet"]),
         revision=row["revision"],
         updated_at=datetime.fromisoformat(row["updated_at"]),
+        exported_at=parse(row["exported_at"]),
     )
 
 
@@ -427,6 +447,29 @@ def relationship_data(data: RelationshipInput) -> str:
     return data.model_dump_json(include=stored)
 
 
+class ExportedSheet(BaseModel):
+    """A library entry and the sheet an srstudio zip carried for it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    entry: LibraryEntry
+    sheet: EntrySheet
+
+
+def exported_row(item: ExportedSheet, now: str) -> tuple[str, str, str, str, str, str, str]:
+    """The library_sheets row that saves an exported proposal as the entry's first revision."""
+    entry, sheet = item.entry, item.sheet
+    return (
+        str(entry.id),
+        entry.channel,
+        entry.kind,
+        sheet.slug,
+        sheet.sheet.model_dump_json(),
+        now,
+        now,
+    )
+
+
 class SrstudioStore:
     """Sheets, episode slugs and relationships in the application database."""
 
@@ -437,7 +480,8 @@ class SrstudioStore:
         """An entry's sheet, or the proposal for one."""
         with self.database.connect() as connection:
             row = connection.execute(
-                "SELECT slug, sheet, revision, updated_at FROM library_sheets WHERE entry_id = ?",
+                "SELECT slug, sheet, revision, updated_at, exported_at FROM library_sheets"
+                " WHERE entry_id = ?",
                 (str(entry.id),),
             ).fetchone()
         return to_sheet(entry, row)
@@ -449,7 +493,7 @@ class SrstudioStore:
         marks = ", ".join("?" * len(entries))
         with self.database.connect() as connection:
             rows = connection.execute(
-                "SELECT entry_id, slug, sheet, revision, updated_at FROM library_sheets"
+                "SELECT entry_id, slug, sheet, revision, updated_at, exported_at FROM library_sheets"
                 f" WHERE entry_id IN ({marks})",
                 tuple(str(entry.id) for entry in entries),
             ).fetchall()
@@ -462,6 +506,9 @@ class SrstudioStore:
         """Save an entry's sheet; with `expected_revision`, only if it is still at it (0: none yet)."""
         if data.sheet.kind != entry.kind:
             raise SheetMismatch(entry.kind, LibraryKind(data.sheet.kind))
+        current = self.sheet(entry)
+        if current.exported_at and data.slug != current.slug:
+            raise SlugLocked(current.slug)
         try:
             with self.database.connect() as connection:
                 row = self.write_sheet(connection, entry, data, expected_revision)
@@ -486,14 +533,14 @@ class SrstudioStore:
             row: sqlite3.Row | None = connection.execute(
                 "INSERT INTO library_sheets (entry_id, channel_slug, kind, slug, sheet, revision,"
                 " updated_at) VALUES (?, ?, ?, ?, ?, 1, ?) ON CONFLICT (entry_id) DO NOTHING"
-                " RETURNING slug, sheet, revision, updated_at",
+                " RETURNING slug, sheet, revision, updated_at, exported_at",
                 (str(entry.id), entry.channel, entry.kind, *values),
             ).fetchone()
             return row
         found: sqlite3.Row | None = connection.execute(
             "UPDATE library_sheets SET slug = ?, sheet = ?, updated_at = ?, revision = revision + 1"
             " WHERE entry_id = ? AND (? IS NULL OR revision = ?)"
-            " RETURNING slug, sheet, revision, updated_at",
+            " RETURNING slug, sheet, revision, updated_at, exported_at",
             (*values, str(entry.id), expected_revision, expected_revision),
         ).fetchone()
         return found
@@ -502,7 +549,7 @@ class SrstudioStore:
         """An episode's slug and seed, or the proposal made from its title and number."""
         with self.database.connect() as connection:
             row = connection.execute(
-                "SELECT slug, seed, revision, updated_at FROM episode_slugs"
+                "SELECT slug, seed, revision, updated_at, exported_at FROM episode_slugs"
                 " WHERE channel_slug = ? AND number = ?",
                 (channel, number),
             ).fetchone()
@@ -517,12 +564,15 @@ class SrstudioStore:
             seed=row["seed"],
             revision=row["revision"],
             updated_at=datetime.fromisoformat(row["updated_at"]),
+            exported_at=parse(row["exported_at"]),
         )
 
     def save_episode_slug(
         self, current: EpisodeSlug, data: EpisodeSlugInput, expected_revision: int | None
     ) -> EpisodeSlug:
         """Save an episode's slug and seed; with `expected_revision`, only if still at it."""
+        if current.exported_at and data.slug != current.slug:
+            raise SlugLocked(current.slug)
         revision = current.revision if expected_revision is None else expected_revision
         now = self.database.now()
         try:
@@ -541,8 +591,36 @@ class SrstudioStore:
             latest = self.episode_slug(current.channel, current.number, current.slug).revision
             raise PartChanged(f"srstudio slug of {current.channel} #{current.number}", latest)
         return current.model_copy(
-            update={**data.model_dump(), "revision": row["revision"], "updated_at": now}
+            update={**data.model_dump(), "revision": row["revision"], "updated_at": parse(now)}
         )
+
+    def mark_exported(self, episodes: list[EpisodeSlug], sheets: list[ExportedSheet]) -> None:
+        """Fix the slugs an srstudio zip carried, saving any that were still proposals.
+
+        A proposal whose slug another item already took stays a proposal: the export's own
+        checks report the clash, and fixing it here would hide it.
+        """
+        now = self.database.now()
+        with self.database.connect() as connection:
+            connection.executemany(
+                "UPDATE episode_slugs SET exported_at = ?"
+                " WHERE channel_slug = ? AND number = ? AND exported_at IS NULL",
+                [(now, slug.channel, slug.number) for slug in episodes],
+            )
+            connection.executemany(
+                "INSERT OR IGNORE INTO episode_slugs (channel_slug, number, slug, seed, revision,"
+                " updated_at, exported_at) VALUES (?, ?, ?, ?, 1, ?, ?)",
+                [(slug.channel, slug.number, slug.slug, slug.seed, now, now) for slug in episodes],
+            )
+            connection.executemany(
+                "UPDATE library_sheets SET exported_at = ? WHERE entry_id = ? AND exported_at IS NULL",
+                [(now, str(item.entry.id)) for item in sheets],
+            )
+            connection.executemany(
+                "INSERT OR IGNORE INTO library_sheets (entry_id, channel_slug, kind, slug, sheet,"
+                " revision, updated_at, exported_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)",
+                [exported_row(item, now) for item in sheets],
+            )
 
     def relationships(self, channel: str) -> list[Relationship]:
         """The channel's relationships in the order they were recorded."""

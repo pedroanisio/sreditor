@@ -6,6 +6,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from sreditor.deps import Services
 from sreditor.web.workspace import episode_srstudio
 from tests.conftest import RecordingMailer
 from tests.workspace_helpers import flash_after, join, member, new_channel, submit
@@ -82,3 +83,33 @@ def test_srstudio_hidden_from_contributor(
     assert f'href="{PAGE}"' not in contributor.get(EPISODE).text
     assert contributor.get(PAGE).status_code == 403
     assert submit(contributor, PAGE, {"slug": "x", "seed": "1"}).status_code == 403
+
+
+def lock_episode_slug(app: FastAPI) -> None:
+    """Fix the episode's slug as its first srstudio export does."""
+    services: Services = app.state.services
+    services.srstudio.mark_exported(
+        [services.srstudio.episode_slug("funny-memes", 1, "Whose Milk")], []
+    )
+
+
+def test_srstudio_page_after_export_shows_slug_fixed(app: FastAPI, owner: TestClient) -> None:
+    lock_episode_slug(app)
+    page = owner.get(PAGE).text
+    assert 'value="whose-milk" required readonly' in page and "Fixed since the first" in page
+
+
+def test_srstudio_save_after_export_refuses_new_slug(app: FastAPI, owner: TestClient) -> None:
+    lock_episode_slug(app)
+    response = submit(owner, PAGE, {"revision": "1", "slug": "milk-heist", "seed": "1"})
+    assert response.status_code == 409 and "can no longer change" in response.text
+
+
+def test_srstudio_save_after_export_keeps_slug_and_saves_seed(
+    app: FastAPI, owner: TestClient
+) -> None:
+    lock_episode_slug(app)
+    page = flash_after(
+        owner, submit(owner, PAGE, {"revision": "1", "slug": "whose-milk", "seed": "9"})
+    )
+    assert "Changes saved." in page and 'value="9"' in page

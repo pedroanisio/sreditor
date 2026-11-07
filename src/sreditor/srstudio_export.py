@@ -30,6 +30,7 @@ from sreditor.short_script import ShortScript
 from sreditor.short_script_operations import ScriptNotReady, block_plans
 from sreditor.srstudio import CharacterSheet, EntrySheet, PlaceSheet, StyleSheet
 from sreditor.srstudio_bible import BibleSource, cast_document, relationships_document
+from sreditor.srstudio_locks import lock_exported_slugs
 from sreditor.srstudio_operations import all_entries, published_numbers
 from sreditor.srstudio_timeline import (
     TimedBlock,
@@ -413,4 +414,6 @@ def srstudio_zip(app: Services, access: ChannelAccess, number: int, folder: Path
     """The episode's srstudio zip, written in `folder`; SrstudioNotReady lists what is missing."""
     found = bundle(app, access, number, folder)
     slug = found.documents["episode.json"]["slug"]
-    return write_zip(found, folder / f"{slug}.zip")
+    archive = write_zip(found, folder / f"{slug}.zip")
+    lock_exported_slugs(app, access.channel.slug, number)
+    return archive

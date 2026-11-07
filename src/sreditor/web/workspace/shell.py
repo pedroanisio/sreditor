@@ -84,6 +84,9 @@ class Flash(StrEnum):
     CLAIM_ADDED = "claim_added"
     CLAIMS_UNCHECKED = "claims_unchecked"
     PUBLISHED_WITH_GAPS = "published_with_gaps"
+    RENDER_QUEUED = "render_queued"
+    RENDER_REUSED = "render_reused"
+    RENDER_CANCELED = "render_canceled"
 
 
 CHANGED_MEANWHILE = N_(
@@ -128,6 +131,11 @@ FLASH_TEXT: dict[Flash, str] = {
     Flash.PUBLISHED_WITH_GAPS: N_(
         "Episode saved as published, but its delivery package is incomplete and some claims still have no checked primary source. Open Delivery and Claims to see what is missing."
     ),
+    Flash.RENDER_QUEUED: N_("Render queued. This page shows its progress."),
+    Flash.RENDER_REUSED: N_(
+        "Nothing changed since an earlier render, so its video was reused at no cost."
+    ),
+    Flash.RENDER_CANCELED: N_("Render canceled."),
 }
 
 

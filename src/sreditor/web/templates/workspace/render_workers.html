@@ -1,0 +1,47 @@
+{% extends "workspace/layout.html" %}
+{% import "_ui.html" as ui %}
+{#
+  The instance's render workers, for its admins (rule project.render.workers): each GPU machine
+  with its engine, GPUs and when it last asked for work, and the form that registers another,
+  whose secret shows once on the page that answers it.
+#}
+{% block title %}{{ _("Render workers") }}{% endblock %}
+{% block content %}
+{% call ui.page_header(_("Render workers"), _("GPU machines that turn episodes into video. Each one asks this app for work over HTTPS, so it needs no open port.")) %}{% endcall %}
+{% if created %}
+{% call ui.panel(_("Your new worker"), id="new-worker") %}
+  {% call ui.alert("info") %}{{ _("Give this secret to the worker now, as SREDITOR_WORKER_TOKEN: it will not be shown again.") }}{% endcall %}
+  {{ ui.copy_field("secret", created.worker.name, created.secret, _("Copy"), _("Copied")) }}
+{% endcall %}
+{% endif %}
+{% call ui.panel(_("Workers"), id="workers") %}
+  {% if workers %}
+  {% call(worker) ui.items(workers, _("Workers")) %}
+    {% call ui.item_body() %}
+      <strong>{{ worker.name }}</strong>
+      {{ ui.meta(worker.prefix ~ "…") }}
+      {% if worker.engine_version %}{{ ui.meta(_("Engine %(version)s", version=worker.engine_version)) }}{% endif %}
+      {% if worker.engine_version and worker.engine_version != engine_version %}{{ ui.badge(_("Needs engine %(version)s", version=engine_version), "warning") }}{% endif %}
+      {% if worker.gpus %}<p>{{ worker.gpus | map(attribute="name") | join(", ") }}</p>{% endif %}
+      {% if worker.last_seen_at %}{{ ui.meta(_("Last seen %(date)s", date=_.day(worker.last_seen_at))) }}
+      {% else %}{{ ui.meta(_("Never connected")) }}{% endif %}
+    {% endcall %}
+    {% call ui.item_side() %}
+      {% if worker.is_revoked %}
+      {{ ui.badge(_("Revoked")) }}
+      {% else %}
+      {{ ui.confirm(_("Revoke"), _("Revoke %(name)s? It can take no more jobs; one it holds goes back to the queue.", name=worker.name), action ~ "/" ~ (worker.id | string) ~ "/revoke", csrf_field, csrf_token, _("Revoke worker"), target=worker.name) }}
+      {% endif %}
+    {% endcall %}
+  {% endcall %}
+  {% else %}
+  <p class="muted">{{ _("No workers yet.") }}</p>
+  {% endif %}
+{% endcall %}
+{% call ui.panel(_("New worker"), id="register") %}
+  {% call ui.form(action, csrf_field, csrf_token) %}
+    {{ ui.field("name", _("Name"), errors, value=sent.name if sent else "", maxlength=80, autocomplete="off", hint=_("The machine's name, so you recognise it later.")) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Register worker")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% endblock %}

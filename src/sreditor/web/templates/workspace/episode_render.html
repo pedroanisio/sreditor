@@ -1,0 +1,57 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{#
+  An episode's render page (rules project.render and project.render.jobs): the form that queues a
+  render, for owners and editors once srstudio has everything, and the renders newest first. While
+  one runs, the list reloads itself every few seconds; the reloaded list stops once all have ended.
+#}
+{% block page_title %}{{ _("Render") }} · {{ episode.title }}{% endblock %}
+{% block page %}
+{% set lead = _("Turn the episode into video on the render workers and watch the result here.") %}
+{% include "workspace/_episode_header.html" %}
+{{ ui.form_error(errors) }}
+{% if may_render %}
+{% call ui.panel(_("New render"), id="request") %}
+  {% if missing %}
+  <p class="muted">{{ _("Before the episode can render:") }}</p>
+  {{ ui.checklist(missing, _("Done"), _("To do")) }}
+  {% call ui.panel_actions() %}{{ ui.link_button(srstudio_link, _("Open srstudio page"), variant="ghost") }}{% endcall %}
+  {% else %}
+  {% call ui.form(action, csrf_field, csrf_token) %}
+    {{ ui.select("preset", _("Quality"), preset_options, errors, value=preset_value, hint=_("The same episode content and quality reuses the earlier video at no cost.")) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Render video")) }}{% endcall %}
+  {% endcall %}
+  {% endif %}
+{% endcall %}
+{% endif %}
+{% call ui.panel(_("Renders"), id="renders") %}
+<div id="render-list"{% if is_any_running %} hx-get="{{ action }}" hx-trigger="every 5s" hx-select="#render-list" hx-swap="outerHTML"{% endif %}>
+  {% if renders %}
+  {% call(row) ui.items(renders, _("Renders")) %}
+    {% call ui.item_body() %}
+      <strong>{{ row.preset }}</strong>
+      {{ ui.badge(row.status, row.tone) }}
+      {{ ui.meta(_("Requested %(date)s", date=row.requested_on)) }}
+      {% if row.is_running %}
+        {% if row.queue_place is not none %}{{ ui.meta(_("Place in the queue: %(place)s", place=row.queue_place)) }}
+        {% else %}{{ ui.meta(_("%(percent)s%% done", percent=row.percent)) }}{% endif %}
+      {% endif %}
+      {% if row.failure %}<p>{{ row.failure }}</p>{% endif %}
+      {% if row.findings %}
+      <ul>{% for finding in row.findings %}<li>{{ finding.severity }} · {{ finding.code }}{% if finding.message %}: {{ finding.message }}{% endif %}</li>{% endfor %}</ul>
+      {% endif %}
+      {% if row.video %}{{ ui.player(media_link ~ "/" ~ row.video.id ~ "/file", row.video.media_type, row.video.name) }}{% endif %}
+    {% endcall %}
+    {% if may_render and row.is_running %}
+    {% call ui.item_side() %}
+      {{ ui.confirm(_("Cancel"), _("Stop this render?"), action ~ "/" ~ row.id ~ "/cancel", csrf_field, csrf_token, _("Stop render"), target=row.preset) }}
+    {% endcall %}
+    {% endif %}
+  {% endcall %}
+  {% if next_cursor %}{{ ui.pager(action ~ "?cursor=" ~ next_cursor ~ "#renders", _("Older renders")) }}{% endif %}
+  {% else %}
+  <p class="muted">{{ _("No renders yet.") }}</p>
+  {% endif %}
+</div>
+{% endcall %}
+{% endblock %}
