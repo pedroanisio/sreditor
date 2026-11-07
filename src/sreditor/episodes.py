@@ -61,9 +61,10 @@ class Episode(BaseModel):
 
 
 class WrittenEpisode(Episode):
-    """An episode just written; once published, `warnings` lists what its delivery lacks."""
+    """An episode just written; once published, it names what its delivery and claims lack."""
 
     warnings: list[DeliveryWarning] = Field(default_factory=list)
+    claims_warning: str | None = None
 
 
 class RevisedEpisode(BaseModel):

@@ -53,9 +53,11 @@ def with_etag(revised: RevisedEpisode, response: Response) -> Episode:
 
 
 def written_with_etag(revised: RevisedEpisode, response: Response) -> WrittenEpisode:
-    """The written episode with its delivery warnings and its revision as the ETag."""
-    response.headers["ETag"] = etag(revised.revision)
-    return WrittenEpisode(**revised.episode.model_dump(), warnings=revised.warnings)
+    """The written episode with its delivery and claims warnings, its revision as the ETag."""
+    episode = with_etag(revised, response)
+    return WrittenEpisode(
+        **episode.model_dump(), warnings=revised.warnings, claims_warning=revised.claims_warning
+    )
 
 
 @router.get("/channels/{slug}/episodes", summary="List episodes")
@@ -97,8 +99,10 @@ def replace_episode(
 ) -> WrittenEpisode:
     """Replace an episode's title, summary and status. Send If-Match to keep others' changes.
 
-    Moving the episode to published never fails for a gap in its delivery package; `warnings`
-    lists each cut without a video and each post without a link instead.
+    Moving the episode to published never fails for a gap in its delivery package or an
+    unchecked claim: `warnings` lists each cut without a video and each post without a link,
+    and `claims_warning` (also sent as a Warning header) says how many claims lack a checked
+    primary source.
     """
     revised = episode_operations.replace_episode(
         app, access, target.number, data, target.expected_revision
