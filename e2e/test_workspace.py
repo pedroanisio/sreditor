@@ -27,6 +27,11 @@ SILENCE = 128
 
 PITCH_TITLE = "Why Mondays hurt"
 PITCH_SOURCE = "Sleep debt study"
+SECOND_PITCH_TITLE = "Sunday scaries"
+SECOND_PITCH_SOURCE = "Anticipatory anxiety review"
+EPISODE_SOURCE = "Mondays study"
+CLAIM_QUOTE = "Mondays feel longer than other days."
+POST_LINK = "https://www.tiktok.com/@funnymemes/video/1"
 VIEWER_TIMEOUT_MS = 30_000
 
 
@@ -145,15 +150,29 @@ def set_up_brand(page: Page, translate: Translator, evidence: Evidence) -> None:
     expect(page.locator("img.preview")).to_be_visible()
     page.locator("#color-name").fill("Pink")
     page.locator("#color-hex").fill("#ff0066")
+    page.locator("#color-role").select_option("primary")
     page.get_by_role("button", name=translate("Save color")).click()
     flash(page, translate("Changes saved."))
     expect(page.locator(".chip")).to_contain_text("#ff0066")
+    expect(page.locator("#colors")).to_contain_text(translate("Primary"))
+    set_up_fonts(page, translate)
     evidence.capture("brand")
     page.get_by_role("navigation", name=translate("Brand kit levels")).get_by_role(
         "link", name="TikTok"
     ).click()
     expect(page.get_by_text(translate("From the channel")).first).to_be_visible()
     evidence.capture("brand-tiktok")
+
+
+def set_up_fonts(page: Page, translate: Translator) -> None:
+    """Set the heading and body fonts, each with its family and weight."""
+    for role, family, weight in (("heading", "Inter", "700"), ("body", "Lora", "400")):
+        dialog = open_dialog(page, f"font-{role}")
+        dialog.locator(f"#{role}-family").fill(family)
+        dialog.locator(f"#{role}-weight").select_option(weight)
+        dialog.get_by_role("button", name=translate("Save font")).click()
+        flash(page, translate("Changes saved."))
+        expect(page.locator("#fonts")).to_contain_text(f"{family} · {weight}")
 
 
 def write_editorial(page: Page, translate: Translator, evidence: Evidence) -> None:
@@ -219,11 +238,11 @@ def research_episode(page: Page, translate: Translator, evidence: Evidence) -> N
     evidence.capture("research-notes")
     source = open_dialog(page, "new-source")
     source.get_by_label(translate("Link")).fill("https://example.com/mondays")
-    source.get_by_label(translate("Title")).fill("Mondays study")
+    source.get_by_label(translate("Title")).fill(EPISODE_SOURCE)
     source.get_by_label(translate("What it supports")).fill("Mondays feel longer.")
     source.get_by_role("button", name=translate("Add source")).click()
     flash(page, translate("Source added."))
-    expect(page.locator("#sources")).to_contain_text("Mondays study")
+    expect(page.locator("#sources")).to_contain_text(EPISODE_SOURCE)
     evidence.capture("research-source")
     link_pitch(page, translate, evidence)
 
@@ -233,32 +252,50 @@ def link_pitch(page: Page, translate: Translator, evidence: Evidence) -> None:
     research_url = page.url
     section(page, translate, "Pitches")
     evidence.capture("pitches-empty")
-    form = open_dialog(page, "new-pitch")
-    form.get_by_label(translate("Title")).fill(PITCH_TITLE)
-    form.get_by_label(translate("Summary")).fill("The science of the Monday slump.")
-    form.get_by_role("button", name=translate("Add pitch")).click()
-    flash(page, translate("Pitch created."))
-    heading(page, PITCH_TITLE)
-    source = open_dialog(page, "new-source")
-    source.get_by_label(translate("Link")).fill("https://example.com/sleep")
-    source.get_by_label(translate("Title")).fill(PITCH_SOURCE)
-    source.get_by_label(translate("What it supports")).fill("Sleep debt peaks on Mondays.")
-    source.get_by_role("button", name=translate("Add source")).click()
-    flash(page, translate("Source added."))
-    expect(page.locator("#sources")).to_contain_text(PITCH_SOURCE)
+    create_pitch(page, translate, PITCH_TITLE, (PITCH_SOURCE, "https://example.com/sleep"))
     evidence.capture("pitch")
+    section(page, translate, "Pitches")
+    create_pitch(
+        page, translate, SECOND_PITCH_TITLE, (SECOND_PITCH_SOURCE, "https://example.com/scaries")
+    )
     page.goto(research_url)
     chosen = page.locator("#pitch")
-    chosen.get_by_label(translate("Pitch this episode is built on")).select_option(
-        label=PITCH_TITLE
-    )
-    chosen.get_by_role("button", name=translate("Save pitch")).click()
+    # The first pitch is the main one; a second picker appears once the first is saved.
+    chosen.get_by_label(translate("Main pitch")).select_option(label=PITCH_TITLE)
+    chosen.get_by_role("button", name=translate("Save pitches")).click()
     flash(page, translate("Changes saved."))
-    # The pitch's research shows on the episode as it is on the pitch, never copied.
+    chosen = page.locator("#pitch")
+    chosen.get_by_label(translate("Pitch %(position)s", position=2)).select_option(
+        label=SECOND_PITCH_TITLE
+    )
+    chosen.get_by_role("button", name=translate("Save pitches")).click()
+    flash(page, translate("Changes saved."))
+    # Each pitch's research shows on the episode as it is on the pitch, never copied, in order.
+    first, second = page.locator("#pitch-research-1-title"), page.locator("#pitch-research-2-title")
+    expect(first).to_have_text(PITCH_TITLE)
+    expect(second).to_have_text(SECOND_PITCH_TITLE)
     expect(page.locator("#pitch")).to_contain_text(PITCH_SOURCE)
-    evidence.capture("research-pitch")
+    expect(page.locator("#pitch")).to_contain_text(SECOND_PITCH_SOURCE)
+    evidence.capture("research-pitches")
     quick_search(page, translate, evidence)
     write_screenplay(page, translate, evidence)
+
+
+def create_pitch(page: Page, translate: Translator, title: str, source: tuple[str, str]) -> None:
+    """Create a pitch from the pitches page and give it one source."""
+    form = open_dialog(page, "new-pitch")
+    form.get_by_label(translate("Title")).fill(title)
+    form.get_by_label(translate("Summary")).fill(f"About {title.lower()}.")
+    form.get_by_role("button", name=translate("Add pitch")).click()
+    flash(page, translate("Pitch created."))
+    heading(page, title)
+    dialog = open_dialog(page, "new-source")
+    dialog.get_by_label(translate("Link")).fill(source[1])
+    dialog.get_by_label(translate("Title")).fill(source[0])
+    dialog.get_by_label(translate("What it supports")).fill("Backs the pitch.")
+    dialog.get_by_role("button", name=translate("Add source")).click()
+    flash(page, translate("Source added."))
+    expect(page.locator("#sources")).to_contain_text(source[0])
 
 
 def quick_search(page: Page, translate: Translator, evidence: Evidence) -> None:
@@ -295,12 +332,15 @@ def write_screenplay(page: Page, translate: Translator, evidence: Evidence) -> N
     check_library(page, translate, evidence)
     relate_characters(page, translate, evidence)
     pick_style(page, translate, evidence)
+    record_claim(page, translate, evidence)
+    record_delivery(page, translate, evidence)
     use_third_party_media(page, translate, evidence)
     write_short_script(page, translate, evidence)
     add_beat(page, translate, evidence)
     prepare_for_srstudio(page, translate, evidence)
     export_episode(page, translate, evidence)
     classify_episode(page, translate, evidence)
+    publish_with_gaps(page, translate, evidence)
 
 
 def add_cast(page: Page, translate: Translator, evidence: Evidence) -> None:
@@ -389,7 +429,50 @@ def relate_characters(page: Page, translate: Translator, evidence: Evidence) -> 
     evidence.capture("relationship")
 
 
+def open_style_sheet(page: Page, translate: Translator) -> None:
+    """Open the srstudio sheet of the library's visual style."""
+    section(page, translate, "Library")
+    page.locator("#styles").get_by_role("link", name=translate("srstudio sheet")).click()
+    heading(page, "Warm documentary")
+
+
+def describe_style(page: Page, translate: Translator, evidence: Evidence) -> None:
+    """Give the library style its palette, fonts, cut rhythm, smallest text and safe zone."""
+    open_style_sheet(page, translate)
+    evidence.capture("style-sheet-empty")
+    for key, color in (("ink", "#1a1a1a"), ("white", "#f5efe6"), ("shade", "#8a7a6a")):
+        page.locator(f"#palette_{key}").fill(color)
+    page.locator("#palette_background").fill("#e8dcc8")
+    page.locator("#fonts_heading_family").fill("Inter")
+    page.locator("#fonts_heading_weight").select_option("700")
+    page.locator("#fonts_body_family").fill("Lora")
+    page.locator("#fonts_body_weight").select_option("400")
+    page.locator("#cut_rhythm_shortest_shot_s").fill("0.4")
+    page.locator("#cut_rhythm_average_shot_s").fill("1.5")
+    page.locator("#min_text_px").fill("42")
+    for edge, percent in (("top", "10"), ("right", "6"), ("bottom", "20"), ("left", "6")):
+        page.locator(f"#safe_zone_{edge}").fill(percent)
+    # A shortest shot longer than the average is refused next to its field, keeping the rest.
+    page.locator("#cut_rhythm_shortest_shot_s").fill("3")
+    page.get_by_role("button", name=translate("Save sheet")).click()
+    expect(page.locator("#cut_rhythm_average_shot_s-error")).to_be_visible()
+    expect(page.locator("#min_text_px")).to_have_value("42")
+    evidence.capture("style-sheet-errors")
+    page.locator("#cut_rhythm_shortest_shot_s").fill("0.4")
+    page.get_by_role("button", name=translate("Save sheet")).click()
+    flash(page, translate("Changes saved."))
+    # The sheet comes back with every structured value as saved.
+    expect(page.locator("#palette_background")).to_have_value("#e8dcc8")
+    expect(page.locator("#fonts_heading_family")).to_have_value("Inter")
+    expect(page.locator("#fonts_heading_weight")).to_have_value("700")
+    expect(page.locator("#cut_rhythm_shortest_shot_s")).to_have_value("0.4")
+    expect(page.locator("#min_text_px")).to_have_value("42")
+    expect(page.locator("#safe_zone_bottom")).to_have_value(re.compile(r"^20(\.0)?$"))
+    evidence.capture("style-sheet")
+
+
 def pick_style(page: Page, translate: Translator, evidence: Evidence) -> None:
+    describe_style(page, translate, evidence)
     section(page, translate, "Episodes")
     page.get_by_role("link", name=re.compile("Pilot")).first.click()
     tabs = page.get_by_role("navigation", name=translate("Episode pages"))
@@ -400,6 +483,85 @@ def pick_style(page: Page, translate: Translator, evidence: Evidence) -> None:
     flash(page, translate("Changes saved."))
     expect(page.locator("#style")).to_contain_text("Handheld, natural light")
     evidence.capture("media-style")
+
+
+def record_claim(page: Page, translate: Translator, evidence: Evidence) -> None:
+    """List a claim the screenplay states, back it with a source and check that source."""
+    tabs = page.get_by_role("navigation", name=translate("Episode pages"))
+    tabs.get_by_role("link", name=translate("Claims"), exact=True).click()
+    evidence.capture("claims-empty")
+    dialog = open_dialog(page, "new-claim")
+    dialog.locator("#new-claim-quote").fill(CLAIM_QUOTE)
+    dialog.locator("#new-claim-place").fill("INT. KITCHEN - DAY")
+    backing = dialog.get_by_role("group", name=translate("Backing sources"))
+    backing.get_by_label(EPISODE_SOURCE).check()
+    dialog.get_by_role("group", name=translate("Primary sources")).get_by_label(
+        EPISODE_SOURCE
+    ).check()
+    evidence.capture("claims-dialog")
+    dialog.get_by_role("button", name=translate("Add claim")).click()
+    flash(page, translate("Claim added."))
+    claims = page.locator("#claims")
+    expect(claims).to_contain_text(CLAIM_QUOTE)
+    expect(claims).to_contain_text(EPISODE_SOURCE)
+    expect(claims).to_contain_text(translate("Primary"))
+    # Until a primary source is checked the episode warns, without blocking anything.
+    expect(page.locator(".alert")).to_contain_text(
+        translate("1 claim has no checked primary source. This does not block the episode.")
+    )
+    evidence.capture("claims-unchecked")
+    claims.get_by_role("button", name=translate("Mark as checked")).click()
+    flash(page, translate("Changes saved."))
+    claims = page.locator("#claims")
+    expect(claims).to_contain_text(translate("Checked"))
+    expect(claims).to_contain_text(translate("Backed"))
+    expect(page.locator(".alert")).to_have_count(0)
+    evidence.capture("claims")
+
+
+def record_delivery(page: Page, translate: Translator, evidence: Evidence) -> None:
+    """Describe the main cut and record where it was posted."""
+    tabs = page.get_by_role("navigation", name=translate("Episode pages"))
+    tabs.get_by_role("link", name=translate("Delivery"), exact=True).click()
+    evidence.capture("delivery-empty")
+    dialog = open_dialog(page, "new-cut")
+    dialog.locator("#new-cut-name").fill("main")
+    dialog.locator("#new-cut-caption").fill("Mondays again?")
+    dialog.locator("#new-cut-alt").fill("Ana frowns at a kitchen calendar.")
+    dialog.locator("#new-cut-hashtags").fill("#funny monday")
+    dialog.get_by_role("button", name=translate("Add cut")).click()
+    flash(page, translate("Changes saved."))
+    cuts = page.locator("#cuts")
+    expect(cuts).to_contain_text("Mondays again?")
+    expect(cuts).to_contain_text(translate("Alt text") + ": Ana frowns at a kitchen calendar.")
+    expect(cuts).to_contain_text("#funny")
+    expect(cuts).to_contain_text("#monday")
+    post = open_dialog(page, "post-tiktok")
+    post.locator("#tiktok-cut").select_option("main")
+    post.locator("#tiktok-url").fill(POST_LINK)
+    post.get_by_role("button", name=translate("Save post")).click()
+    flash(page, translate("Changes saved."))
+    expect(page.locator("#posts").get_by_role("link", name=POST_LINK)).to_be_visible()
+    # The cut has no video yet, which the page says without blocking anything.
+    expect(page.locator(".alert")).to_contain_text(translate("The package is incomplete"))
+    evidence.capture("delivery")
+
+
+def publish_with_gaps(page: Page, translate: Translator, evidence: Evidence) -> None:
+    """Publishing an episode whose delivery is incomplete works and says what is missing."""
+    section(page, translate, "Episodes")
+    page.get_by_role("link", name=re.compile("Pilot")).first.click()
+    page.get_by_label(translate("Status")).select_option("published")
+    page.get_by_role("button", name=translate("Save changes")).click()
+    flash(
+        page,
+        translate(
+            "Episode saved as published, but its delivery package is incomplete. "
+            "Open Delivery to see what is missing."
+        ),
+    )
+    expect(page.locator(".steps [aria-current='step']")).to_have_text(translate("Published"))
+    evidence.capture("episode-published-with-gaps")
 
 
 def use_third_party_media(page: Page, translate: Translator, evidence: Evidence) -> None:
