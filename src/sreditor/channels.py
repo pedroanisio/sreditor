@@ -17,6 +17,8 @@ from pydantic import (
     model_validator,
 )
 
+from sreditor.voice_tuning import VoiceTuning
+
 
 class Platform(StrEnum):
     """A social platform a channel can have one account on."""
@@ -48,6 +50,7 @@ HEX_PATTERN = r"^#[0-9A-Fa-f]{6}$"
 SHA256_PATTERN = r"^[0-9a-f]{64}$"
 MEDIA_TYPE_PATTERN = r"^[a-z]+/[a-z0-9.+-]+$"
 RELATIVE_PATH_PATTERN = r"^[^/].*$"
+VOICE_ID_PATTERN = r"^[A-Za-z0-9]{1,64}$"
 
 Slug = Annotated[str, StringConstraints(pattern=SLUG_PATTERN, min_length=1, max_length=SLUG_LENGTH)]
 Text = Annotated[
@@ -118,6 +121,18 @@ class Color(BaseModel):
     hex: Annotated[str, StringConstraints(pattern=HEX_PATTERN)]
 
 
+class NarratorVoice(BaseModel):
+    """The ElevenLabs voice that narrates when a short script names none (rule project.voice.estimate)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    voice_id: Annotated[str, StringConstraints(pattern=VOICE_ID_PATTERN, min_length=1)]
+    voice_name: Annotated[str, StringConstraints(strip_whitespace=True, max_length=TEXT_LENGTH)] = (
+        ""
+    )
+    tuning: VoiceTuning | None = None
+
+
 class BrandKit(BaseModel):
     """A brand's avatar, files and colors; a platform's kit overrides the channel's."""
 
@@ -126,6 +141,7 @@ class BrandKit(BaseModel):
     avatar: Asset | None = None
     assets: dict[AssetKind, Asset] = Field(default_factory=dict)
     colors: list[Color] = Field(default_factory=list)
+    narrator_voice: NarratorVoice | None = None
 
     @field_validator("avatar")
     @classmethod

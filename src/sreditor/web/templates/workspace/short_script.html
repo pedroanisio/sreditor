@@ -144,13 +144,17 @@
   {{ ui.player(take_file, "audio/mpeg", _("Latest take")) }}
   {% if take.suggested %}
   {{ ui.facts(take_times) }}
-  {% if may_write %}
+  {% endif %}
+  {% if take_licenses %}
+  <p><strong>{{ _("Voice license") }}</strong></p>
+  {{ ui.facts(take_licenses) }}
+  {% endif %}
+  {% if take.suggested and may_write %}
   {% call ui.form(script_link ~ "/timings", csrf_field, csrf_token) %}
     {{ ui.hidden("revision", script.revision) }}
     {{ ui.hidden("take_key", take.key) }}
     {% call ui.panel_actions() %}{{ ui.button(_("Use these times"), variant="ghost") }}{% endcall %}
   {% endcall %}
-  {% endif %}
   {% endif %}
   {% else %}
   <p class="muted">{{ _("No voice-over generated yet.") }}</p>

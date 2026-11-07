@@ -14,8 +14,9 @@ from typing import Any
 from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, ConfigDict
 
+from sreditor.channels import NarratorVoice
 from sreditor.deps import ChannelAccess, Services, ServicesDep
-from sreditor.elevenlabs import ElevenLabsError, Voice
+from sreditor.elevenlabs import UNKNOWN_PLAN, ElevenLabsError, Voice
 from sreditor.episode_texts import PartChanged
 from sreditor.i18n import N_, Translator
 from sreditor.language_guess import guess_language, primary_subtag
@@ -37,17 +38,18 @@ from sreditor.short_script import (
 from sreditor.short_script_operations import (
     ScriptNotReady,
     TimingsDoNotFit,
+    VoiceOverNotMade,
     VoiceUnavailable,
     apply_take_timings,
     generate_voice_over,
     get_short_script,
-    latest_take,
+    get_voice_over,
     list_voices,
     write_short_script,
 )
 from sreditor.srstudio_operations import NotInLibrary, all_entries
-from sreditor.voice_generation import Take
 from sreditor.voice_markup import TAGS, Tag, TagClass, TagForm, TtsModel, ValueKind
+from sreditor.voice_report import VoiceOverBlock
 from sreditor.web.forms import CSRF_FIELD
 from sreditor.web.routes import rejected_form, translator
 from sreditor.web.workspace.beat_rows import (
@@ -143,6 +145,8 @@ LANGUAGE_MISMATCH = N_(
 )
 LANGUAGE_NAMES = {"en": N_("English"), "pt": N_("Portuguese"), "es": N_("Spanish")}
 BLOCK_NUMBER = N_("Block %(number)s")
+LICENSE_LINE = N_("%(provider)s · %(voice)s · %(model)s · plan %(plan)s · %(date)s")
+UNKNOWN_PLAN_LABEL = N_("unknown")
 
 
 class ScriptView(BaseModel):
@@ -254,10 +258,20 @@ def language_warning(script: ShortScript, translate: Translator) -> str | None:
     return translate(LANGUAGE_MISMATCH, found=names.get(found, found), language=spoken)
 
 
-def voice_summary(script: ShortScript, voices: list[Voice] | None, translate: Translator) -> str:
-    """One line for the voice settings: who speaks, the model, the language and the length."""
+def voice_summary(
+    script: ShortScript,
+    voices: list[Voice] | None,
+    translate: Translator,
+    default: NarratorVoice | None = None,
+) -> str:
+    """One line for the voice settings: who speaks, the model, the language and the length.
+
+    A script with no voice of its own speaks with the brand's narrator voice, when it has one.
+    """
     names = {voice.voice_id: voice.name for voice in voices or []}
-    voice_id = script.voice.voice_id
+    if default is not None and default.voice_name:
+        names.setdefault(default.voice_id, default.voice_name)
+    voice_id = script.voice.voice_id or (default.voice_id if default else "")
     speaker = names.get(voice_id, voice_id) if voice_id else translate(NO_VOICE)
     language = SPEECH_LANGUAGES.get(script.voice.language, script.voice.language)
     return f"{speaker} · {script.voice.model.value} · {language} · {script.duration_s:g} s"
@@ -273,19 +287,45 @@ def voice_choices(app: Services, access: ChannelAccess) -> tuple[list[Voice] | N
         return None, VOICES_FAILED
 
 
+def license_lines(blocks: list[VoiceOverBlock], translate: Translator) -> list[tuple[str, str]]:
+    """Where each spoken block's voice came from: provider, voice, model, plan and date."""
+    lines: list[tuple[str, str]] = []
+    for block in blocks:
+        record = block.license
+        if record is None:
+            continue
+        plan = translate(UNKNOWN_PLAN_LABEL) if record.plan == UNKNOWN_PLAN else record.plan
+        line = translate(
+            LICENSE_LINE,
+            provider=record.provider,
+            voice=record.voice_name or record.voice_id,
+            model=record.model,
+            plan=plan,
+            date=record.created_at.date().isoformat(),
+        )
+        lines.append((translate(BLOCK_NUMBER, number=block.block_number), line))
+    return lines
+
+
 def take_context(
     app: Services, access: ChannelAccess, number: int, translate: Translator
 ) -> dict[str, Any]:
-    """The latest take, where to play it and the times it measured for each block."""
-    take: Take | None = latest_take(app, access, number)
-    if take is None:
-        return {"take": None, "take_file": "", "take_times": []}
+    """The latest take, where to play it, the times it measured and each block's voice license."""
+    try:
+        take = get_voice_over(app, access, number)
+    except VoiceOverNotMade:
+        return {"take": None, "take_file": "", "take_times": [], "take_licenses": []}
     times = [
         (translate(BLOCK_NUMBER, number=index), f"{planned.start_s:g}–{planned.end_s:g} s")
         for index, planned in enumerate(take.suggested or [], start=1)
     ]
     file_link = f"{media_url(access.channel.slug, number)}/{take.media_id}/file"
-    return {"take": take, "take_file": file_link, "take_times": times}
+    return {
+        "take": take,
+        "take_file": file_link,
+        "take_times": times,
+        "take_licenses": license_lines(take.block_takes, translate),
+    }
 
 
 def voice_options(voices: list[Voice] | None, translate: Translator) -> list[tuple[str, str]]:
@@ -356,7 +396,9 @@ def short_script_page(
             *filter(None, [language_warning(script, translate)]),
             *(warning_text(found, translate) for found in script.warnings),
         ],
-        "voice_summary": voice_summary(script, voices, translate),
+        "voice_summary": voice_summary(
+            script, voices, translate, access.channel.brand.narrator_voice
+        ),
         "errors": shown.outcome.errors,
         "voices": voices,
         "voice_options": voice_options(voices, translate),

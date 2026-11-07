@@ -19,8 +19,15 @@ from pydantic import BaseModel, ConfigDict
 
 from sreditor.assets import StoredFile
 from sreditor.database import Database
-from sreditor.elevenlabs import MODEL_IDS, MP3_BITS_PER_SECOND, Alignment, VoiceTuning
+from sreditor.elevenlabs import (
+    MODEL_IDS,
+    MP3_BITS_PER_SECOND,
+    PROVIDER,
+    UNKNOWN_PLAN,
+    Alignment,
+)
 from sreditor.voice_markup import TtsModel
+from sreditor.voice_tuning import VoiceTuning
 
 KEY_LENGTH = 16
 BITS_PER_BYTE = 8
@@ -28,7 +35,7 @@ BITS_PER_BYTE = 8
 MARKUP_OPENERS = frozenset("[<")
 MARKUP_CLOSERS = frozenset("]>")
 PUNCTUATION = string.punctuation + "«»“”‘’¿¡…—–"
-TAKE_COLUMNS = "take_key, text, voice, file, duration_s, words, created_at"
+TAKE_COLUMNS = "take_key, text, voice, file, duration_s, words, created_at, license"
 
 
 class WordTiming(BaseModel):
@@ -53,6 +60,20 @@ class BlockVoice(BaseModel):
     tuning: VoiceTuning | None = None
 
 
+class VoiceLicense(BaseModel):
+    """What a take was made with, kept to show where its voice came from (rule project.voice.estimate)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    provider: str
+    voice_id: str
+    voice_name: str
+    model: str
+    # The account's ElevenLabs plan when the take was made, or "unknown".
+    plan: str
+    created_at: datetime
+
+
 class BlockTake(BaseModel):
     """A block's speech as one audio file, with when each word is said."""
 
@@ -65,6 +86,8 @@ class BlockTake(BaseModel):
     duration_s: float
     words: list[WordTiming]
     created_at: datetime
+    # None only for a take whose model the license backfill did not recognise.
+    license: VoiceLicense | None = None
 
 
 def block_take_key(text: str, voice: BlockVoice) -> str:
@@ -130,6 +153,20 @@ class BlockTakeStore:
 
     def __init__(self, database: Database) -> None:
         self.database = database
+        self.backfill_licenses()
+
+    def backfill_licenses(self) -> None:
+        """Give takes made before license records one, with the plan unknown (project.voice.estimate)."""
+        with self.database.connect() as connection:
+            for model, model_id in MODEL_IDS.items():
+                connection.execute(
+                    "UPDATE voice_block_takes SET license = json_object("
+                    "'provider', ?, 'voice_id', json_extract(voice, '$.voice_id'),"
+                    " 'voice_name', json_extract(voice, '$.voice_name'), 'model', ?, 'plan', ?,"
+                    " 'created_at', created_at)"
+                    " WHERE license IS NULL AND json_extract(voice, '$.model') = ?",
+                    (PROVIDER, model_id, UNKNOWN_PLAN, model.value),
+                )
 
     def find(self, record: BlockTakeRecord) -> BlockTake | None:
         """The episode's block take with this key, if one was made."""
@@ -149,6 +186,7 @@ class BlockTakeStore:
             duration_s=row["duration_s"],
             words=[WordTiming.model_validate(word) for word in json.loads(row["words"])],
             created_at=datetime.fromisoformat(row["created_at"]),
+            license=VoiceLicense.model_validate_json(row["license"]) if row["license"] else None,
         )
 
     def save(self, channel: str, number: int, take: BlockTake) -> None:
@@ -156,7 +194,7 @@ class BlockTakeStore:
         with self.database.connect() as connection:
             connection.execute(
                 f"INSERT OR REPLACE INTO voice_block_takes (channel_slug, number, {TAKE_COLUMNS})"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     channel,
                     number,
@@ -167,5 +205,6 @@ class BlockTakeStore:
                     take.duration_s,
                     json.dumps([word.model_dump() for word in take.words]),
                     take.created_at.isoformat(),
+                    take.license.model_dump_json() if take.license else None,
                 ),
             )

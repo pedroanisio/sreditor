@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from sreditor import short_script_operations as scripts
+from sreditor import voice_estimate
 from sreditor.deps import Access, ServicesDep
 from sreditor.elevenlabs import ElevenLabsError, Voice
 from sreditor.episode_routes import Number, WriteTarget
@@ -14,7 +15,8 @@ from sreditor.etags import etag
 from sreditor.idempotency import IdempotencyDep
 from sreditor.problems import problem_response, problem_type
 from sreditor.short_script import ShortScript, ShortScriptInput
-from sreditor.voice_generation import KEY_LENGTH, Take, TakeNotFound
+from sreditor.voice_generation import KEY_LENGTH, TakeNotFound
+from sreditor.voice_report import VoiceOverTake
 
 router = APIRouter(tags=["short script"])
 
@@ -82,7 +84,7 @@ def list_voices(access: Access, app: ServicesDep) -> list[Voice]:
 @router.post(
     f"{EPISODE}/voice-over-takes",
     status_code=status.HTTP_201_CREATED,
-    response_model=Take,
+    response_model=VoiceOverTake,
     summary="Generate a voice-over",
 )
 def generate_voice_over(
@@ -92,11 +94,41 @@ def generate_voice_over(
 
     Needs an owner or editor and content:write: it spends the account's credits. The same
     speech, voice, model and language returns the earlier take (is_reused true) for free.
-    `suggested` holds each block's measured times, to use with apply_take_timings.
+    `suggested` holds each block's measured times, to use with apply_take_timings;
+    `block_takes` holds each spoken block's take with its words timed from the take and from the
+    start of the joined voice-over. Call estimate_voice_over first to see what it would spend.
     """
     return idempotency.run(
         lambda: scripts.generate_voice_over(app, access, number), status.HTTP_201_CREATED
     )
+
+
+@router.get(
+    f"{EPISODE}/voice-over",
+    summary="Read the voice-over",
+)
+def get_voice_over(number: Number, access: Access, app: ServicesDep) -> VoiceOverTake:
+    """Read the episode's latest voice-over: its media file and, per spoken block, the take's
+    voice and license, its start_s and end_s and each word with start and end in seconds, both
+    from the start of the block's own take (words) and of the joined voice-over (joined_words).
+
+    Answers 404 when nothing was generated yet. Spends no credits.
+    """
+    return scripts.get_voice_over(app, access, number)
+
+
+@router.get(f"{EPISODE}/voice-over/estimate", summary="Estimate a voice-over")
+def estimate_voice_over(
+    number: Number, access: Access, app: ServicesDep
+) -> voice_estimate.VoiceEstimate:
+    """Show what generate_voice_over would spend now, and spend nothing.
+
+    Per spoken block: the speaker, the voice, the characters of its speech without voice tags and
+    whether a stored take is reused for free; then the new characters and the estimated ElevenLabs
+    credits for the model. Needs an owner or editor and content:write. The credits are an
+    estimate: ElevenLabs may also count voice tags.
+    """
+    return voice_estimate.estimate_voice_over(app, access, number)
 
 
 @router.post(f"{SHORT_SCRIPT}/timings", summary="Use a take's timings")
@@ -144,6 +176,10 @@ def install_short_script_error_handlers(app: FastAPI) -> None:
         return problem_response(
             request, status.HTTP_409_CONFLICT, str(refused), problem_type("timings-do-not-fit")
         )
+
+    @app.exception_handler(scripts.VoiceOverNotMade)
+    async def no_voice_over(request: Request, missing: scripts.VoiceOverNotMade) -> JSONResponse:
+        return problem_response(request, status.HTTP_404_NOT_FOUND, str(missing))
 
     @app.exception_handler(TakeNotFound)
     async def take_not_found(request: Request, missing: TakeNotFound) -> JSONResponse:

@@ -19,6 +19,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from sreditor.voice_markup import TtsModel
+from sreditor.voice_tuning import VoiceTuning
 
 DEFAULT_ELEVENLABS_URL = "https://api.elevenlabs.io"
 
@@ -33,6 +34,13 @@ class VoiceSettings(BaseModel):
 
 
 MODEL_IDS: dict[TtsModel, str] = {TtsModel.V3: "eleven_v3", TtsModel.V2: "eleven_multilingual_v2"}
+# ElevenLabs bills text-to-speech by character; v2 and v3 both cost about one credit each. Flash and
+# turbo models cost half, but sreditor uses neither (rule project.voice.estimate).
+CREDITS_PER_CHARACTER: dict[TtsModel, float] = {TtsModel.V3: 1.0, TtsModel.V2: 1.0}
+PROVIDER = "elevenlabs"
+SUBSCRIPTION_PATH = "/v1/user/subscription"
+# Recorded in a take's license when the account's plan cannot be read.
+UNKNOWN_PLAN = "unknown"
 OUTPUT_FORMAT = "mp3_44100_128"
 MP3_BITS_PER_SECOND = 128_000
 BITS_PER_BYTE = 8
@@ -141,18 +149,6 @@ class Speech(BaseModel):
         return len(self.audio) * BITS_PER_BYTE / MP3_BITS_PER_SECOND
 
 
-class VoiceTuning(BaseModel):
-    """How a voice delivers its lines: ElevenLabs' voice_settings (rule project.srstudio.voice)."""
-
-    model_config = ConfigDict(frozen=True)
-
-    stability: float
-    similarity_boost: float
-    style: float
-    speed: float
-    use_speaker_boost: bool
-
-
 class SpeechRequest(BaseModel):
     """What to say, with which voice, tuning and model, in which language."""
 
@@ -174,6 +170,7 @@ class ElevenLabs:
         self.base_url = base_url.rstrip("/")
         self.transport = transport
         self.cached_voices: tuple[float, list[Voice]] | None = None
+        self.cached_plan: str | None = None
 
     def request(
         self, method: str, path: str, payload: dict[str, Any] | None = None
@@ -200,6 +197,24 @@ class ElevenLabs:
         )
         self.cached_voices = (now, found)
         return found
+
+    def plan(self) -> str:
+        """The account's plan (the `tier` of its subscription), asked once per process.
+
+        It goes into each take's license record; a plan that cannot be read is "unknown" and
+        asked again for the next take, so a passing failure never blocks a voice-over.
+        """
+        if self.cached_plan is not None:
+            return self.cached_plan
+        try:
+            status, body = self.request("GET", SUBSCRIPTION_PATH)
+            tier = json.loads(body).get("tier") if status == HTTPStatus.OK else None
+        except (ElevenLabsError, ValueError, AttributeError):
+            return UNKNOWN_PLAN
+        if not isinstance(tier, str) or not tier:
+            return UNKNOWN_PLAN
+        self.cached_plan = tier
+        return tier
 
     def speak(self, wanted: SpeechRequest) -> Speech:
         """MP3 for the text, with timestamps when the model gives them.

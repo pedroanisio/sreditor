@@ -83,6 +83,13 @@ def language_code(language: str) -> str:
     return language.split("-")[0]
 
 
+def speech_span(take: BlockTake) -> tuple[float, float]:
+    """Where a take's speech starts and ends in the take itself; a take without words spans its audio."""
+    if take.words:
+        return take.words[0].start, take.words[-1].end
+    return 0.0, take.duration_s
+
+
 def joined_timings(takes: list[BlockTake | None]) -> list[BlockTiming | None]:
     """Each block's speech in the joined voice-over: its take's words, shifted by the takes before it.
 
@@ -94,9 +101,7 @@ def joined_timings(takes: list[BlockTake | None]) -> list[BlockTiming | None]:
         if take is None:
             found.append(None)
             continue
-        first, last = (
-            (take.words[0].start, take.words[-1].end) if take.words else (0.0, take.duration_s)
-        )
+        first, last = speech_span(take)
         found.append(BlockTiming(start=round(offset + first, 3), end=round(offset + last, 3)))
         offset += take.duration_s
     return found

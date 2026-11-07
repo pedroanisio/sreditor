@@ -143,6 +143,27 @@ def test_short_script_generate_shows_take_and_applies_its_times(
     assert "0.0–0.3 s" in owner.get(SHORT_SCRIPT).text
 
 
+def test_short_script_generate_shows_the_voice_license_of_each_block(
+    owner: TestClient, voice: Callable[..., FakeTransport]
+) -> None:
+    voice(spoken_answer("Oi."), spoken_answer("Tchau."), ok(VOICES))
+    submit(owner, SHORT_SCRIPT, FIELDS)
+    submit(owner, f"{SHORT_SCRIPT}/voice-over", {})
+    page = owner.get(SHORT_SCRIPT).text
+    assert "Voice license" in page and "elevenlabs · Ana · eleven_v3 · plan creator" in page
+
+
+def test_short_script_voice_license_in_portuguese_names_the_plan(
+    owner: TestClient, voice: Callable[..., FakeTransport]
+) -> None:
+    transport = voice(spoken_answer("Oi."), spoken_answer("Tchau."), ok(VOICES))
+    transport.plan_answer = (500, b"down")
+    submit(owner, SHORT_SCRIPT, FIELDS)
+    submit(owner, f"{SHORT_SCRIPT}/voice-over", {})
+    page = owner.get(SHORT_SCRIPT, params={"lang": "pt-BR"}).text
+    assert "Licença da voz" in page and "plano desconhecido" in page
+
+
 @pytest.fixture
 def rex(owner: TestClient) -> str:
     """Rex, a character of the library, by id."""

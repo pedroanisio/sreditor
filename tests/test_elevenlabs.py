@@ -12,6 +12,8 @@ from pydantic import SecretStr
 from sreditor import audio_finish
 from sreditor.elevenlabs import (
     MP3_BITS_PER_SECOND,
+    SUBSCRIPTION_PATH,
+    UNKNOWN_PLAN,
     Alignment,
     ElevenLabs,
     ElevenLabsError,
@@ -51,11 +53,17 @@ class FakeTransport:
 
     def __init__(self, *answers: Answer) -> None:
         self.answers = list(answers)
+        # The account's plan is asked once per process and never takes a queued answer.
+        self.plan_answer: Answer = ok({"tier": "creator"})
+        self.plan_requests = 0
         self.sent: list[tuple[str, str, dict[str, str], dict[str, object] | None]] = []
 
     def __call__(
         self, method: str, url: str, headers: dict[str, str], body: bytes | None
     ) -> Answer:
+        if url.endswith(SUBSCRIPTION_PATH):
+            self.plan_requests += 1
+            return self.plan_answer
         self.sent.append((method, url, headers, json.loads(body) if body else None))
         return self.answers.pop(0)
 
@@ -183,3 +191,42 @@ def test_finish_adds_silence_after_speech() -> None:
     ).stdout
     finished = audio_finish.finish(tone)
     assert finished is not None and len(finished) > len(tone)
+
+
+def test_plan_reads_subscription_tier_once() -> None:
+    voices, transport = client()
+    assert voices.plan() == "creator" and voices.plan() == "creator"
+    assert transport.plan_requests == 1
+
+
+def test_plan_when_the_call_fails_is_unknown_and_asked_again() -> None:
+    voices, transport = client()
+    transport.plan_answer = refused(HTTPStatus.UNAUTHORIZED)
+    assert voices.plan() == UNKNOWN_PLAN
+    transport.plan_answer = ok({"tier": "pro"})
+    assert voices.plan() == "pro"
+
+
+def test_plan_when_the_answer_has_no_tier_is_unknown() -> None:
+    voices, transport = client()
+    transport.plan_answer = ok({"status": "active"})
+    assert voices.plan() == UNKNOWN_PLAN
+
+
+def test_plan_when_the_answer_is_not_json_is_unknown() -> None:
+    voices, transport = client()
+    transport.plan_answer = (HTTPStatus.OK, b"not json")
+    assert voices.plan() == UNKNOWN_PLAN
+
+
+def test_plan_when_the_answer_is_a_list_is_unknown() -> None:
+    voices, transport = client()
+    transport.plan_answer = ok([])
+    assert voices.plan() == UNKNOWN_PLAN
+
+
+def test_plan_when_elevenlabs_cannot_be_reached_is_unknown() -> None:
+    def unreachable(*_: object) -> Answer:
+        raise ElevenLabsError(HTTPStatus.BAD_GATEWAY, "cannot reach ElevenLabs")
+
+    assert ElevenLabs(KEY, BASE, unreachable).plan() == UNKNOWN_PLAN

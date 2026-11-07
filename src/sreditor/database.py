@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS voice_block_takes (
     duration_s REAL NOT NULL,
     words TEXT NOT NULL,
     created_at TEXT NOT NULL,
+    license TEXT,
     PRIMARY KEY (channel_slug, number, take_key),
     FOREIGN KEY (channel_slug, number) REFERENCES episodes (channel_slug, number)
         ON DELETE CASCADE
@@ -541,6 +542,12 @@ def migrate(connection: sqlite3.Connection) -> None:
     if "blocks" not in take_columns:
         # Takes from before each block was its own take have no block takes to export.
         connection.execute("ALTER TABLE voice_takes ADD COLUMN blocks TEXT")
+    block_columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(voice_block_takes)")
+    }
+    if "license" not in block_columns:
+        # Takes from before license records get theirs when BlockTakeStore opens.
+        connection.execute("ALTER TABLE voice_block_takes ADD COLUMN license TEXT")
 
 
 def index_handles(connection: sqlite3.Connection) -> None:

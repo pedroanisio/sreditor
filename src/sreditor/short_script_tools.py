@@ -1,7 +1,8 @@
 """MCP tools for an episode's short script and its generated voice-over (rule agentic.mcp).
 
 Task-sized tools (agentic.mcp.tools.outcomes): read or write the script, list the voices it can
-use, generate its voice-over and adopt the times a take measured.
+use, estimate and generate its voice-over, read each block's words and adopt the times a take
+measured.
 """
 
 from __future__ import annotations
@@ -13,11 +14,14 @@ from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import BaseModel, ConfigDict
 
 from sreditor import short_script_operations as scripts
+from sreditor import voice_estimate
 from sreditor.deps import ChannelAccess, Services, access_for
 from sreditor.elevenlabs import ElevenLabsError, Voice
 from sreditor.mcp_server import Effect, principal, reported, tool_annotations
 from sreditor.short_script import ShortScript, ShortScriptInput
+from sreditor.voice_estimate import VoiceEstimate
 from sreditor.voice_generation import Take, TakeNotFound
+from sreditor.voice_report import VoiceOverTake
 
 
 class ShortScriptView(BaseModel):
@@ -34,7 +38,7 @@ class TakeResult(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    take: Take
+    take: VoiceOverTake
 
 
 class VoiceList(BaseModel):
@@ -51,6 +55,8 @@ def voice_error_message(error: Exception) -> str | None:
         return f"{error} Call write_short_script with voice.voice_id from list_voices and speech."
     if isinstance(error, scripts.TimingsDoNotFit):
         return f"{error} Call generate_voice_over for a take of the current script."
+    if isinstance(error, scripts.VoiceOverNotMade):
+        return f"{error} Call generate_voice_over first; estimate_voice_over shows what it costs."
     if isinstance(error, TakeNotFound):
         return f"Take {error} not found; use the `key` that generate_voice_over returned."
     if isinstance(error, ElevenLabsError):
@@ -70,6 +76,7 @@ def voice_reported[T](action: Callable[[], T]) -> T:
             scripts.ScriptNotReady,
             scripts.TimingsDoNotFit,
             scripts.VoiceUnavailable,
+            scripts.VoiceOverNotMade,
             TakeNotFound,
             ElevenLabsError,
         ) as refusal:
@@ -147,12 +154,45 @@ def add_voice_tools(server: MCPServer, services: Services) -> None:
             )
         )
 
+    @server.tool(annotations=tool_annotations("Estimate a voice-over", Effect.READ))
+    def estimate_voice_over(context: Context, slug: str, number: int) -> VoiceEstimate:
+        """Show what generate_voice_over would spend now, without spending anything: per spoken
+        block the speaker, the voice, the characters of its speech without voice tags and whether
+        a stored take is reused for free, then the new characters and the estimated ElevenLabs
+        credits for the model. Call it before generate_voice_over; credits are an estimate, as
+        ElevenLabs may also count voice tags. Needs an owner or editor and a voice set in the
+        script or as the channel's narrator voice."""
+        return voice_reported(
+            lambda: voice_estimate.estimate_voice_over(
+                services, channel_access(services, context, slug), number
+            )
+        )
+
+    @server.tool(annotations=tool_annotations("Read a voice-over", Effect.READ))
+    def get_voice_over(context: Context, slug: str, number: int) -> TakeResult:
+        """Read the episode's latest voice-over: its media file and, for each spoken block, the
+        take's voice and license (provider, voice, model, account plan), start_s and end_s and
+        every word with its start and end in seconds, both from the start of the block's own take
+        (words) and from the start of the joined voice-over (joined_words). Use it to place
+        sound, cuts and on-screen text on the spoken words. Fails when there is no voice-over
+        yet: call generate_voice_over first. Does not spend credits."""
+        return voice_reported(
+            lambda: TakeResult(
+                take=scripts.get_voice_over(
+                    services, channel_access(services, context, slug), number
+                )
+            )
+        )
+
     @server.tool(annotations=tool_annotations("Generate a voice-over", Effect.CREATE))
     def generate_voice_over(context: Context, slug: str, number: int) -> TakeResult:
         """Speak the saved short script with its ElevenLabs voice and add the audio to the
-        episode's media as a voice_over file. Spends ElevenLabs credits, so call it only after
-        the script is final; the same speech, voice, model and language returns the earlier take
-        (is_reused true) for free. Needs an owner or editor and a voice set in the script."""
+        episode's media as a voice_over file. Spends ElevenLabs credits, so call
+        estimate_voice_over first and call this only after the script is final; the same
+        speech, voice, model and language returns the earlier take (is_reused true) for free, and
+        only the blocks the estimate counted as new spend credits. The result holds each block's
+        take with its words timed from the take and from the joined voice-over. Needs an owner or
+        editor and a voice set in the script or as the channel's narrator voice."""
         return voice_reported(
             lambda: TakeResult(
                 take=scripts.generate_voice_over(

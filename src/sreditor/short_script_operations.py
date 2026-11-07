@@ -8,6 +8,7 @@ earlier take for free.
 
 from __future__ import annotations
 
+from datetime import datetime
 from io import BytesIO
 from uuid import UUID
 
@@ -19,12 +20,14 @@ from sreditor.block_takes import (
     BlockTake,
     BlockTakeRecord,
     BlockVoice,
+    VoiceLicense,
     audio_seconds,
     block_take_key,
     words_of,
 )
+from sreditor.channels import NarratorVoice
 from sreditor.deps import ChannelAccess, Services
-from sreditor.elevenlabs import MODEL_IDS, ElevenLabs, SpeechRequest, Voice, VoiceTuning
+from sreditor.elevenlabs import MODEL_IDS, PROVIDER, ElevenLabs, SpeechRequest, Voice
 from sreditor.episode_operations import episode_access
 from sreditor.i18n import N_
 from sreditor.library import LibraryKind
@@ -43,6 +46,8 @@ from sreditor.voice_generation import (
     suggested_times,
     take_key,
 )
+from sreditor.voice_report import VoiceOverTake, voice_over_of
+from sreditor.voice_tuning import VoiceTuning
 
 
 class BlockPlan(BaseModel):
@@ -70,11 +75,16 @@ class ScriptNotReady(ValueError):
     """The short script lacks what a voice-over needs."""
 
 
+class VoiceOverNotMade(LookupError):
+    """The episode has no voice-over yet."""
+
+
 class TimingsDoNotFit(ValueError):
     """The take was made from a script with a different number of blocks."""
 
 
 NO_VOICE = N_("Choose a voice for the short script first.")
+NO_VOICE_OVER = "This episode has no voice-over yet."
 NO_SPEECH = N_("Write at least one block with speech first.")
 NO_CHARACTER_VOICE = N_(
     "A character who speaks has no ElevenLabs voice yet. Choose one on their srstudio sheet."
@@ -159,13 +169,25 @@ def has_audio(app: Services, take: BlockTake) -> bool:
     return True
 
 
-def narrator_voice(script: ShortScriptInput) -> BlockVoice:
-    """The episode's narrator: the short script's own voice, with the voice's own settings."""
-    if not script.voice.voice_id:
-        raise ScriptNotReady(NO_VOICE)
+def narrator_voice(script: ShortScriptInput, default: NarratorVoice | None) -> BlockVoice:
+    """The episode's narrator: the script's own voice, else the brand's default narrator.
+
+    The script's voice keeps the voice's own settings; the brand's brings its name and tuning
+    (rule project.voice.estimate).
+    """
     chosen = script.voice
+    if chosen.voice_id:
+        return BlockVoice(
+            voice_id=chosen.voice_id, voice_name="", model=chosen.model, language=chosen.language
+        )
+    if default is None:
+        raise ScriptNotReady(NO_VOICE)
     return BlockVoice(
-        voice_id=chosen.voice_id, voice_name="", model=chosen.model, language=chosen.language
+        voice_id=default.voice_id,
+        voice_name=default.voice_name,
+        model=chosen.model,
+        language=chosen.language,
+        tuning=default.tuning,
     )
 
 
@@ -196,13 +218,14 @@ def character_voice(
 
 def block_plans(app: Services, channel: str, script: ShortScriptInput) -> list[BlockPlan | None]:
     """What each block asks ElevenLabs for, None for a block without speech."""
+    default = app.channels.get(channel).brand.narrator_voice
     plans: list[BlockPlan | None] = []
     for block, text in zip(script.blocks, spoken_blocks(script), strict=True):
         if not text.strip():
             plans.append(None)
             continue
         if block.speaker is None:
-            voice = narrator_voice(script)
+            voice = narrator_voice(script, default)
         else:
             voice = character_voice(app, channel, block.speaker, script)
         plans.append(BlockPlan(text=text, voice=voice, key=block_take_key(text, voice)))
@@ -229,6 +252,7 @@ def spoken_take(app: Services, record: TakeRecord, plan: BlockPlan) -> BlockTake
     stored = app.assets.save_stream(
         record.channel, accepted, BytesIO(speech.audio), app.media.max_bytes
     )
+    made_at = app.takes.now()
     take = BlockTake(
         key=plan.key,
         text=plan.text,
@@ -237,10 +261,36 @@ def spoken_take(app: Services, record: TakeRecord, plan: BlockPlan) -> BlockTake
         # The larger of the two: tags or a variable bitrate can make the size alone too short.
         duration_s=max(audio_seconds(len(speech.audio)), speech.duration_s),
         words=words_of(speech.alignment),
-        created_at=app.takes.now(),
+        created_at=made_at,
+        license=voice_license(voice, voice_service(app).plan(), made_at),
     )
     app.block_takes.save(record.channel, record.number, take)
     return take
+
+
+def voice_license(voice: BlockVoice, plan: str, made_at: datetime) -> VoiceLicense:
+    """Where a take's voice came from: provider, voice, model and the account's plan."""
+    return VoiceLicense(
+        provider=PROVIDER,
+        voice_id=voice.voice_id,
+        voice_name=voice.voice_name,
+        model=MODEL_IDS[voice.model],
+        plan=plan,
+        created_at=made_at,
+    )
+
+
+def named(app: Services, record: TakeRecord, take: BlockTake) -> BlockTake:
+    """The take with its voice's name in the license, when it was made without one."""
+    licensed = take.license
+    if licensed is None or licensed.voice_name:
+        return take
+    name = voice_name(voice_service(app), licensed.voice_id)
+    if name == licensed.voice_id:
+        return take
+    renamed = take.model_copy(update={"license": licensed.model_copy(update={"voice_name": name})})
+    app.block_takes.save(record.channel, record.number, renamed)
+    return renamed
 
 
 def voice_names(app: Services, plans: list[BlockPlan]) -> str:
@@ -262,8 +312,9 @@ def make_take(
     app: Services, record: TakeRecord, script: ShortScript, plans: list[BlockPlan | None]
 ) -> Take:
     """Take each block, join the takes into one voice-over file and remember what was measured."""
-    takes = [None if plan is None else spoken_take(app, record, plan) for plan in plans]
+    made = [None if plan is None else spoken_take(app, record, plan) for plan in plans]
     spoken = [plan for plan in plans if plan is not None]
+    takes = [None if take is None else named(app, record, take) for take in made]
     audio = b"".join(app.assets.path_of(take.file).read_bytes() for take in takes if take)
     chosen = script.voice
     names = voice_names(app, spoken)
@@ -283,7 +334,7 @@ def make_take(
         media_id=media.id,
         text=" ".join(plan.text for plan in spoken),
         model=chosen.model.value,
-        voice_id=chosen.voice_id,
+        voice_id=chosen.voice_id or spoken[0].voice.voice_id,
         language=chosen.language,
         duration_s=duration,
         timings=timings,
@@ -295,11 +346,28 @@ def make_take(
     return take
 
 
-def generate_voice_over(app: Services, access: ChannelAccess, number: int) -> Take:
+def stored_block_takes(app: Services, record: TakeRecord, take: Take) -> list[BlockTake | None]:
+    """The block take of each block of a voice-over, None for a block without speech or take."""
+    return [
+        None
+        if key is None
+        else app.block_takes.find(
+            BlockTakeRecord(channel=record.channel, number=record.number, key=key)
+        )
+        for key in take.blocks or []
+    ]
+
+
+def with_block_takes(app: Services, record: TakeRecord, take: Take) -> VoiceOverTake:
+    """The voice-over with each spoken block's take and its words (rule project.voice.estimate)."""
+    return voice_over_of(take, stored_block_takes(app, record, take))
+
+
+def generate_voice_over(app: Services, access: ChannelAccess, number: int) -> VoiceOverTake:
     """A voice-over of the short script as it is now, one take per block in its speaker's voice.
 
     The same script reuses the earlier voice-over, and an unchanged block reuses its take, so
-    only the blocks that changed spend credits.
+    only the blocks that changed spend credits: estimate_voice_over counts exactly those.
     """
     slug = episode_access(app, access, number, Permission.GENERATE_VOICE)
     script = app.short_scripts.short_script(slug, number)
@@ -311,11 +379,21 @@ def generate_voice_over(app: Services, access: ChannelAccess, number: int) -> Ta
     )
     earlier = app.takes.find(record)
     if earlier is not None and is_still_there(app, record, earlier):
-        return earlier.model_copy(update={"is_reused": True})
+        return with_block_takes(app, record, earlier.model_copy(update={"is_reused": True}))
     voice_service(app)
-    return gated(
+    made = gated(
         app, access, ScriptOperation.GENERATE, lambda: make_take(app, record, script, plans)
     )
+    return with_block_takes(app, record, made)
+
+
+def get_voice_over(app: Services, access: ChannelAccess, number: int) -> VoiceOverTake:
+    """The episode's latest voice-over with each block's take and words; VoiceOverNotMade if none."""
+    take = latest_take(app, access, number)
+    if take is None:
+        raise VoiceOverNotMade(NO_VOICE_OVER)
+    record = TakeRecord(channel=access.channel.slug, number=number, key=take.key)
+    return with_block_takes(app, record, take)
 
 
 def latest_take(app: Services, access: ChannelAccess, number: int) -> Take | None:

@@ -1215,5 +1215,8 @@
   "terms of service": "termos de uso",
   "v3 understands every voice tag; v2 keeps only timed pauses.": "O v3 entende todas as tags de voz; o v2 mantém só as pausas com tempo.",
   "viewer": "leitor",
-  "you": "você"
+  "you": "você",
+  "%(provider)s · %(voice)s · %(model)s · plan %(plan)s · %(date)s": "%(provider)s · %(voice)s · %(model)s · plano %(plan)s · %(date)s",
+  "unknown": "desconhecido",
+  "Voice license": "Licença da voz"
 }

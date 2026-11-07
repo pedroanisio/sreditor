@@ -11,7 +11,7 @@ from sreditor.block_takes import (
     block_take_key,
     words_of,
 )
-from sreditor.elevenlabs import Alignment, VoiceTuning
+from sreditor.elevenlabs import Alignment
 from sreditor.short_script import ShortScriptInput
 from sreditor.voice_generation import (
     BlockTiming,
@@ -23,6 +23,7 @@ from sreditor.voice_generation import (
     take_key,
 )
 from sreditor.voice_markup import TtsModel
+from sreditor.voice_tuning import VoiceTuning
 
 NARRATOR = BlockVoice(voice_id="abc", voice_name="", model=TtsModel.V3, language="pt-BR")
 TUNING = VoiceTuning(
