@@ -25,6 +25,7 @@ class TextPart(StrEnum):
     SHORT_SCRIPT = "episode_short_scripts"  # the text is the script as JSON
     STYLE = "episode_styles"  # the text is the chosen library style's id, or empty
     CLASSIFICATION = "episode_classifications"  # the text is the classification as JSON
+    DELIVERY = "episode_deliveries"  # the text is the delivery package as JSON
 
 
 class StoredText(BaseModel):

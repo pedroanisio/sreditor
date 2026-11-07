@@ -24,6 +24,7 @@ from sreditor.block_takes import BlockTakeStore
 from sreditor.channels import Channel
 from sreditor.classification import ClassificationStore
 from sreditor.context import ContextStore
+from sreditor.delivery import DeliveryStore
 from sreditor.editorial import EditorialService
 from sreditor.elevenlabs import ElevenLabs
 from sreditor.episodes import EpisodeStore
@@ -34,6 +35,7 @@ from sreditor.mail import Mailer
 from sreditor.media import MediaStore
 from sreditor.members import MemberStore, Permission, Role, allows
 from sreditor.pitches import PitchStore
+from sreditor.post_metrics import PostMetricsStore
 from sreditor.render_upload import PartStore
 from sreditor.renders import RenderStore
 from sreditor.repository import ChannelNotFound, ChannelRepository
@@ -97,6 +99,8 @@ class Services:
     assets: AssetStore
     renders: RenderStore
     render_parts: PartStore
+    deliveries: DeliveryStore
+    post_metrics: PostMetricsStore
     voice: ElevenLabs | None = None  # None: SREDITOR_ELEVENLABS_API_KEY is not set
 
     def accounts(self, locale: str = BASE_LOCALE) -> Accounts:

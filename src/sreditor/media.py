@@ -1,4 +1,4 @@
-"""An episode's media: voice-over, sound effects, score and visual effects (rule project.media).
+"""An episode's media: voice-over, sound effects, score, visual effects and covers (rule project.media).
 
 Each file is checked by its content and stored by hash in the assets directory; the episode
 keeps a row per file with its kind, a name people chose and a note. Renaming or removing one
@@ -16,7 +16,20 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, StringConstraints
 
-from sreditor.assets import M4A, MP3, MP4, WAV, WEBM, AssetStore, FileFormat, StoredFile, names_of
+from sreditor.assets import (
+    JPEG,
+    M4A,
+    MP3,
+    MP4,
+    PNG,
+    WAV,
+    WEBM,
+    WEBP,
+    AssetStore,
+    FileFormat,
+    StoredFile,
+    names_of,
+)
 from sreditor.database import Database
 from sreditor.episode_texts import PartChanged
 
@@ -24,6 +37,7 @@ NAME_LENGTH = 120
 NOTE_LENGTH = 2000
 AUDIO_FORMATS = (MP3, WAV, M4A)
 VIDEO_FORMATS = (MP4, WEBM)
+IMAGE_FORMATS = (PNG, JPEG, WEBP)
 
 MediaName = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=NAME_LENGTH)
@@ -39,6 +53,7 @@ class MediaKind(StrEnum):
     SCORE = "score"
     VISUAL_EFFECT = "visual_effect"
     RENDER = "render"  # a finished video from a render worker, never uploaded by hand
+    COVER = "cover"  # a still for a delivery cut (rule project.delivery), checked by content
 
 
 KIND_FORMATS: dict[MediaKind, tuple[FileFormat, ...]] = {
@@ -47,10 +62,13 @@ KIND_FORMATS: dict[MediaKind, tuple[FileFormat, ...]] = {
     MediaKind.SCORE: AUDIO_FORMATS,
     MediaKind.VISUAL_EFFECT: VIDEO_FORMATS,
     MediaKind.RENDER: VIDEO_FORMATS,
+    MediaKind.COVER: IMAGE_FORMATS,
 }
 # Kinds a person or agent may upload; a render arrives only from a worker (rule project.render).
 UPLOADABLE_KINDS = tuple(kind for kind in MediaKind if kind is not MediaKind.RENDER)
-EXTENSIONS = {item.media_type: item.extension for item in AUDIO_FORMATS + VIDEO_FORMATS}
+EXTENSIONS = {
+    item.media_type: item.extension for item in AUDIO_FORMATS + VIDEO_FORMATS + IMAGE_FORMATS
+}
 
 
 def accept_of(kind: MediaKind) -> str:
@@ -166,6 +184,16 @@ class MediaStore:
                 " WHERE channel_slug = ? AND number = ? AND (? IS NULL OR kind = ?)"
                 " AND position > ? ORDER BY position LIMIT ?",
                 (channel, number, kind, kind, after or 0, limit),
+            ).fetchall()
+        return [to_media(row) for row in rows]
+
+    def of_family(self, channel: str, number: int, family: str) -> list[MediaFile]:
+        """The episode's files of one media family, such as "video" or "image", oldest first."""
+        with self.database.connect() as connection:
+            rows = connection.execute(
+                f"SELECT {MEDIA_COLUMNS} FROM episode_media"
+                " WHERE channel_slug = ? AND number = ? AND media_type LIKE ? ORDER BY position",
+                (channel, number, f"{family}/%"),
             ).fetchall()
         return [to_media(row) for row in rows]
 

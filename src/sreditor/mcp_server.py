@@ -124,7 +124,11 @@ INSTRUCTIONS = (
     "Owners and editors can list an episode's signed waivers with list_waivers. "
     "Owners and editors render an episode into video with request_render, which answers at once; "
     "follow it with get_render until it is done, then download the video from its download_path "
-    "with the same token."
+    "with the same token. "
+    "An episode's delivery package (cuts with final video, cover, caption, alt text and hashtags, "
+    "and the post per platform account) is read with get_delivery and written with "
+    "write_delivery or record_post; enter a post's numbers with record_post_metrics or "
+    "import_retention_csv and compare the channel's posts with compare_posts."
 )
 
 # Domain errors an agent can act on, reported as tool errors with their message.
@@ -349,6 +353,7 @@ def build(services: Services) -> MCPServer:
     # would be circular.
     from sreditor.classification_tools import add_classification_tools
     from sreditor.context_tools import add_context_tools
+    from sreditor.delivery_tools import add_delivery_tools
     from sreditor.external_media_tools import add_external_media_tools
     from sreditor.pitch_tools import add_pitch_tools
     from sreditor.render_tools import add_render_tools
@@ -369,6 +374,7 @@ def build(services: Services) -> MCPServer:
     add_style_data_tools(server, services)
     add_media_tools(server, services)
     add_render_tools(server, services)
+    add_delivery_tools(server, services)
     add_external_media_tools(server, services)
     add_classification_tools(server, services)
     add_context_tools(server, services)

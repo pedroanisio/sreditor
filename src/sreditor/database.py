@@ -508,6 +508,42 @@ CREATE INDEX IF NOT EXISTS render_jobs_by_episode ON render_jobs (channel_slug, 
 CREATE INDEX IF NOT EXISTS render_jobs_by_status ON render_jobs (status, position);
 CREATE INDEX IF NOT EXISTS render_jobs_by_export
     ON render_jobs (channel_slug, number, export_sha256, preset, engine_version);
+-- An episode's delivery package, kept as JSON like its other text parts (rule project.delivery).
+CREATE TABLE IF NOT EXISTS episode_deliveries (
+    channel_slug TEXT NOT NULL,
+    number INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (channel_slug, number),
+    FOREIGN KEY (channel_slug, number) REFERENCES episodes (channel_slug, number)
+        ON DELETE CASCADE
+);
+-- Dated numbers of one post, entered by hand or from a CSV (rule project.metrics); a post is
+-- the episode's platform, and a second entry for the same day merges into the first.
+CREATE TABLE IF NOT EXISTS post_snapshots (
+    position INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT NOT NULL UNIQUE,
+    channel_slug TEXT NOT NULL,
+    number INTEGER NOT NULL,
+    platform TEXT NOT NULL,
+    captured_on TEXT NOT NULL,
+    views INTEGER,
+    reach INTEGER,
+    likes INTEGER,
+    comments INTEGER,
+    shares INTEGER,
+    saves INTEGER,
+    avg_watch_s REAL,
+    retention TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (channel_slug, number, platform, captured_on),
+    FOREIGN KEY (channel_slug, number) REFERENCES episodes (channel_slug, number)
+        ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS post_snapshots_by_channel
+    ON post_snapshots (channel_slug, number, platform, captured_on);
 """
 
 Clock = Callable[[], datetime]

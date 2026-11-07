@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from fastapi import status
 
+from sreditor.delivery import delivery_gaps
 from sreditor.deps import ChannelAccess, Services
 from sreditor.episodes import Episode, EpisodeInput, EpisodeStatus, PartCounts, RevisedEpisode
 from sreditor.members import Permission
@@ -90,12 +91,17 @@ def replace_episode(
     """Replace an episode's title, summary and status."""
     access.require(Permission.WRITE_CONTENT)
     slug = access.channel.slug
-    return gated(
+    revised = gated(
         app,
         access,
         EpisodeOperation.WRITE,
         lambda: app.episodes.replace(slug, number, data, expected_revision),
     )
+    if data.status is not EpisodeStatus.PUBLISHED:
+        return revised
+    # Warn, never refuse: a delivery gap must not hold back a status (rule project.delivery).
+    gaps = delivery_gaps(app.deliveries, app.media, slug, number)
+    return revised.model_copy(update={"warnings": gaps})
 
 
 def delete_episode(

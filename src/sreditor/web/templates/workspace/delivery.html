@@ -1,0 +1,117 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% block page_title %}{{ _("Delivery") }} · {{ episode.title }}{% endblock %}
+{% block page %}
+{% set may_write = can("write_content") %}
+{% set lead = _("The final cuts, their covers and texts, and the post link on each platform.") %}
+{% include "workspace/_episode_header.html" %}
+{{ ui.form_error(errors) }}
+{% if warnings %}
+{% call ui.alert("info") %}
+  <strong>{{ _("The package is incomplete") }}</strong>
+  <ul>{% for text in warnings %}<li>{{ text }}</li>{% endfor %}</ul>
+  <p>{{ _("This never blocks the episode: it can be published anyway.") }}</p>
+{% endcall %}
+{% endif %}
+{% call ui.panel(_("Cuts"), id="cuts") %}
+  {% if package.cuts %}
+  {% call(cut) ui.items(package.cuts, _("Cuts")) %}
+    {% call ui.item_body() %}
+      <strong>{{ cut.name }}</strong>
+      {% set video = files.get(cut.video_id | string) %}
+      {% set cover = files.get(cut.cover_id | string) %}
+      {{ ui.meta((video.name if video else _("No video yet")) ~ " · " ~ (cover.name if cover else _("No cover"))) }}
+      {% if video %}{{ ui.player(media_link ~ "/" ~ video.id ~ "/file", video.media_type, video.name) }}{% endif %}
+      {% if cover %}{{ ui.player(media_link ~ "/" ~ cover.id ~ "/file", cover.media_type, cover.name) }}{% endif %}
+      {% if cut.caption %}<p>{{ cut.caption }}</p>{% endif %}
+      {% if cut.alt_text %}<p class="muted">{{ _("Alt text") }}: {{ cut.alt_text }}</p>{% endif %}
+      {% for tag in cut.hashtags %}{{ ui.tag("#" ~ tag) }}{% endfor %}
+    {% endcall %}
+    {% if may_write %}
+    {% call ui.item_side() %}{{ ui.dialog_button("cut-" ~ cut.name, _("Edit"), variant="ghost", size="small") }}{% endcall %}
+    {% endif %}
+  {% endcall %}
+  {% else %}
+  <p class="muted">{{ _("No cuts yet. A cut is one version of the episode, such as main, vertical or teaser.") }}</p>
+  {% endif %}
+  {% if may_write %}{% call ui.panel_actions() %}{{ ui.dialog_button("new-cut", _("Add cut"), plus=true) }}{% endcall %}{% endif %}
+{% endcall %}
+{% call ui.panel(_("Posts"), id="posts") %}
+  {% if accounts %}
+  {% call(account) ui.items(accounts, _("Posts")) %}
+    {% call ui.item_body() %}
+      <strong>{{ account.name }}</strong>
+      {% if account.post %}
+      {{ ui.meta(_("Cut %(cut)s", cut=account.post.cut) ~ (" · " ~ account.post.published_at.strftime("%Y-%m-%d %H:%M") ~ " UTC" if account.post.published_at else "")) }}
+      {% if account.post.url %}<p><a href="{{ account.post.url }}" rel="noopener noreferrer" target="_blank">{{ account.post.url }}</a></p>
+      {% else %}<p class="muted">{{ _("No link yet.") }}</p>{% endif %}
+      {% else %}
+      <p class="muted">{{ _("Not posted yet.") }}</p>
+      {% endif %}
+    {% endcall %}
+    {% call ui.item_side() %}
+      {% if account.post %}{{ ui.link_button(delivery_link ~ "/metrics/" ~ account.platform, _("Numbers"), variant="ghost", size="small") }}{% endif %}
+      {% if may_write and cut_options %}{{ ui.dialog_button("post-" ~ account.platform, _("Edit") if account.post else _("Add post"), variant="ghost", size="small") }}{% endif %}
+    {% endcall %}
+  {% endcall %}
+  {% else %}
+  <p class="muted">{{ _("The channel has no accounts yet. Add one to record where the episode was posted.") }}</p>
+  {% endif %}
+  {% if may_write and accounts and not cut_options %}<p class="muted">{{ _("Add a cut first: a post says which cut went to the account.") }}</p>{% endif %}
+{% endcall %}
+{% if may_write %}
+{% for cut in package.cuts %}
+{% set is_sent = editing == cut.name %}
+{% set values = cut_values[cut.name] %}
+{% set shown_errors = errors if is_sent else {} %}
+{% call ui.dialog("cut-" ~ cut.name, cut.name, _("Close"), open=is_sent) %}
+  {% call ui.form(delivery_link ~ "/cuts/" ~ cut.name, csrf_field, csrf_token) %}
+    {{ ui.hidden("revision", package.revision) }}
+    {{ ui.select("video_id", _("Final video"), video_options, shown_errors, value=values.video_id, id=cut.name ~ "-video", hint=_("A video file of the episode, a render included.")) }}
+    {{ ui.select("cover_id", _("Cover"), cover_options, shown_errors, value=values.cover_id, id=cut.name ~ "-cover", hint=_("An image uploaded to the episode's media as a cover.")) }}
+    {{ ui.textarea("caption", _("Caption"), shown_errors, value=values.caption, limit=caption_limit, rows=4, id=cut.name ~ "-caption") }}
+    {{ ui.textarea("alt_text", _("Alt text"), shown_errors, value=values.alt_text, limit=alt_text_limit, rows=3, id=cut.name ~ "-alt") }}
+    {{ ui.field("hashtags", _("Hashtags"), shown_errors, value=values.hashtags, required=false, id=cut.name ~ "-hashtags", hint=_("Separated by spaces, with or without #.")) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Save changes")) }}{% endcall %}
+  {% endcall %}
+  {% call ui.panel_actions() %}
+    {{ ui.confirm(_("Remove"), _("Remove this cut from the package?"), delivery_link ~ "/cuts/" ~ cut.name ~ "/remove", csrf_field, csrf_token, _("Remove"), fields=[("revision", package.revision)]) }}
+  {% endcall %}
+{% endcall %}
+{% endfor %}
+{% set new_errors = errors if is_new_cut else {} %}
+{% call ui.dialog("new-cut", _("Add cut"), _("Close"), open=is_new_cut) %}
+  {% call ui.form(delivery_link ~ "/cuts", csrf_field, csrf_token) %}
+    {{ ui.hidden("revision", package.revision) }}
+    {{ ui.field("name", _("Name"), new_errors, value=sent_cut.name if is_new_cut else "", maxlength=name_limit, id="new-cut-name", hint=_("Lowercase words joined by hyphens, such as main or vertical.")) }}
+    {{ ui.select("video_id", _("Final video"), video_options, new_errors, value=sent_cut.video_id if is_new_cut else "", id="new-cut-video") }}
+    {{ ui.select("cover_id", _("Cover"), cover_options, new_errors, value=sent_cut.cover_id if is_new_cut else "", id="new-cut-cover") }}
+    {{ ui.textarea("caption", _("Caption"), new_errors, value=sent_cut.caption if is_new_cut else "", limit=caption_limit, rows=3, id="new-cut-caption") }}
+    {{ ui.textarea("alt_text", _("Alt text"), new_errors, value=sent_cut.alt_text if is_new_cut else "", limit=alt_text_limit, rows=2, id="new-cut-alt") }}
+    {{ ui.field("hashtags", _("Hashtags"), new_errors, value=sent_cut.hashtags if is_new_cut else "", required=false, id="new-cut-hashtags", hint=_("Separated by spaces, with or without #.")) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Add cut")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% if cut_options %}
+{% for account in accounts %}
+{% set is_sent = posting == account.platform %}
+{% set values = sent_post if is_sent else account.values %}
+{% set shown_errors = errors if is_sent else {} %}
+{% call ui.dialog("post-" ~ account.platform, account.name, _("Close"), open=is_sent) %}
+  {% call ui.form(delivery_link ~ "/posts/" ~ account.platform, csrf_field, csrf_token) %}
+    {{ ui.hidden("revision", package.revision) }}
+    {{ ui.select("cut", _("Cut"), cut_options, shown_errors, value=values.cut, id=account.platform ~ "-cut") }}
+    {{ ui.field("url", _("Post link"), shown_errors, type="url", value=values.url, required=false, id=account.platform ~ "-url", hint=_("Starting with https://. Leave it empty until the post is live.")) }}
+    {{ ui.field("published_at", _("Published at (UTC)"), shown_errors, type="datetime-local", value=values.published_at, required=false, id=account.platform ~ "-published") }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Save post")) }}{% endcall %}
+  {% endcall %}
+  {% if account.post %}
+  {% call ui.panel_actions() %}
+    {{ ui.confirm(_("Remove"), _("Remove this post from the package?"), delivery_link ~ "/posts/" ~ account.platform ~ "/remove", csrf_field, csrf_token, _("Remove"), fields=[("revision", package.revision)]) }}
+  {% endcall %}
+  {% endif %}
+{% endcall %}
+{% endfor %}
+{% endif %}
+{% endif %}
+{% endblock %}

@@ -602,7 +602,9 @@
 
 {# Plays an audio or video file in the page; `label` names it for screen readers. #}
 {% macro player(src, media_type, label) -%}
-{% if media_type.startswith("video/") -%}
+{% if media_type.startswith("image/") -%}
+<img class="player" loading="lazy" src="{{ src }}" alt="{{ label }}">
+{%- elif media_type.startswith("video/") -%}
 <video class="player" controls preload="metadata" playsinline src="{{ src }}" aria-label="{{ label }}"></video>
 {%- else -%}
 <audio class="player" controls preload="metadata" src="{{ src }}" aria-label="{{ label }}"></audio>

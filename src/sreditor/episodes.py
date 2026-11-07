@@ -11,9 +11,10 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, PositiveInt, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, PositiveInt, StringConstraints
 
 from sreditor.database import Database
+from sreditor.delivery import DeliveryWarning
 
 TITLE_LENGTH = 200
 SUMMARY_LENGTH = 2000
@@ -59,13 +60,24 @@ class Episode(BaseModel):
     updated_at: datetime
 
 
+class WrittenEpisode(Episode):
+    """An episode just written; once published, `warnings` lists what its delivery lacks."""
+
+    warnings: list[DeliveryWarning] = Field(default_factory=list)
+
+
 class RevisedEpisode(BaseModel):
-    """An episode with the revision its ETag is built from."""
+    """An episode with the revision its ETag is built from.
+
+    Only a write that moves the episode to published fills `warnings`, with the gaps of its
+    delivery package (rule project.delivery); they never block the change.
+    """
 
     model_config = ConfigDict(frozen=True)
 
     episode: Episode
     revision: int
+    warnings: list[DeliveryWarning] = Field(default_factory=list)
 
 
 class EpisodeNotFound(LookupError):

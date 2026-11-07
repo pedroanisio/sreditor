@@ -1,0 +1,25 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% block page_title %}{{ _("Metrics") }} · {{ channel.name }}{% endblock %}
+{% block page %}
+{% call ui.page_header(_("Metrics"), _("The channel's posts by their latest numbers, so pitches and hooks follow what worked. Numbers are entered by hand or from a CSV.")) %}{% endcall %}
+{{ ui.view_switch(sorts, sort, _("Rank posts by")) }}
+{% call ui.panel(_("Posts"), id="posts") %}
+  {% if rows %}
+  {% call(entry) ui.items(rows, _("Posts")) %}
+    {% set row, numbers, platform = entry %}
+    {% call ui.item_body() %}
+      <strong>#{{ row.number }} · {{ row.episode_title }}</strong>
+      {{ ui.meta(platform ~ " · " ~ _("Cut %(cut)s", cut=row.cut) ~ (" · " ~ _.day(row.captured_on) if row.captured_on else "")) }}
+      <p>{{ numbers }}</p>
+    {% endcall %}
+    {% call ui.item_side() %}
+      {{ ui.link_button(episodes_link ~ "/" ~ row.number ~ "/delivery/metrics/" ~ row.platform.value, _("Numbers"), variant="ghost", size="small") }}
+    {% endcall %}
+  {% endcall %}
+  {% if next_cursor %}{{ ui.pager(compare_link ~ "?sort=" ~ sort ~ "&cursor=" ~ next_cursor, _("More posts")) }}{% endif %}
+  {% else %}
+  <p class="muted">{{ _("No posts yet. Record where an episode was posted in its Delivery page.") }}</p>
+  {% endif %}
+{% endcall %}
+{% endblock %}

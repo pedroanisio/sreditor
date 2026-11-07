@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict
 
 from sreditor import episode_operations
 from sreditor.deps import Access, ServicesDep
-from sreditor.episodes import Episode, EpisodeInput, RevisedEpisode
+from sreditor.episodes import Episode, EpisodeInput, RevisedEpisode, WrittenEpisode
 from sreditor.etags import IfMatch, etag, expected_revision
 from sreditor.idempotency import IdempotencyDep
 from sreditor.pagination import DEFAULT_LIMIT, Cursor, Limit, Page
@@ -42,6 +42,12 @@ def with_etag(revised: RevisedEpisode, response: Response) -> Episode:
     """The episode, with its revision as the response's ETag."""
     response.headers["ETag"] = etag(revised.revision)
     return revised.episode
+
+
+def written_with_etag(revised: RevisedEpisode, response: Response) -> WrittenEpisode:
+    """The written episode with its delivery warnings and its revision as the ETag."""
+    response.headers["ETag"] = etag(revised.revision)
+    return WrittenEpisode(**revised.episode.model_dump(), warnings=revised.warnings)
 
 
 @router.get("/channels/{slug}/episodes", summary="List episodes")
@@ -80,12 +86,16 @@ def get_episode(number: Number, access: Access, app: ServicesDep, response: Resp
 @router.put("/channels/{slug}/episodes/{number}", summary="Replace an episode")
 def replace_episode(
     target: WriteTarget, data: EpisodeInput, access: Access, app: ServicesDep, response: Response
-) -> Episode:
-    """Replace an episode's title, summary and status. Send If-Match to keep others' changes."""
+) -> WrittenEpisode:
+    """Replace an episode's title, summary and status. Send If-Match to keep others' changes.
+
+    Moving the episode to published never fails for a gap in its delivery package; `warnings`
+    lists each cut without a video and each post without a link instead.
+    """
     revised = episode_operations.replace_episode(
         app, access, target.number, data, target.expected_revision
     )
-    return with_etag(revised, response)
+    return written_with_etag(revised, response)
 
 
 @router.delete(
