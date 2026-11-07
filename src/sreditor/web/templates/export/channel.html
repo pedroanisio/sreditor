@@ -1,0 +1,34 @@
+{% from "_macros.html" import classification_table %}
+<!doctype html>
+<html lang="{{ lang }}">
+<head><meta charset="utf-8"><title>{{ export.channel.name }}</title></head>
+<body class="doc">
+  <p class="doc-eyebrow">{{ _("Channel") }}</p>
+  <h1>{{ export.channel.name }}</h1>
+  <dl class="doc-facts">
+    {% if export.editorial.purpose %}<dt>{{ _("Purpose") }}</dt><dd>{{ export.editorial.purpose.text }}</dd>{% endif %}
+    {% if export.editorial.voice %}<dt>{{ _("Voice") }}</dt><dd>{{ export.editorial.voice.text }}</dd>{% endif %}
+    {% if export.editorial.audience %}<dt>{{ _("Audience") }}</dt><dd>{{ export.editorial.audience.text }}</dd>{% endif %}
+    <dt>{{ _("Exported on") }}</dt><dd>{{ exported_on }}</dd>
+  </dl>
+
+  <h2>{{ _("Profile") }}</h2>
+  {% if export.declared_profile.revision %}{{ classification_table(profile) }}
+  {% else %}<p class="doc-muted">{{ _("Not classified yet") }}</p>{% endif %}
+  {% if export.observed_profile.sample_size %}
+  <p class="doc-muted">{{ _("Counted over %(count)s classified episodes.", count=export.observed_profile.sample_size) }}</p>
+  {% endif %}
+
+  <h2>{{ _("Episodes") }}</h2>
+  {% if export.episodes %}
+  <table>
+    <thead><tr><th>#</th><th>{{ _("Title") }}</th><th>{{ _("Status") }}</th></tr></thead>
+    <tbody>
+    {% for row in export.episodes %}
+    <tr><td>{{ row.episode.number }}</td><td>{{ row.episode.title }}</td><td>{{ status_labels[row.episode.status] }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="doc-muted">{{ _("No episodes yet.") }}</p>{% endif %}
+</body>
+</html>

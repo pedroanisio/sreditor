@@ -1,0 +1,20 @@
+{# The fields of a third-party item, shared by the add dialog and the edit dialog. `values` is the
+   form as sent or the item as stored; `prefix` keeps ids unique on a page. #}
+{% import "_ui.html" as ui %}
+{% macro item_fields(values, errors, kind_options, rights_options, title_limit, credit_limit, note_limit, prefix) -%}
+{{ ui.select("kind", _("Kind"), kind_options, errors, value=values.kind if values else "video", id=prefix ~ "-kind") }}
+{{ ui.field("title", _("Title"), errors, value=values.title if values else "", maxlength=title_limit, id=prefix ~ "-title") }}
+{{ ui.field("url", _("Link"), errors, type="url", value=values.url if values else "", hint=_("The page where it lives, such as the video's page; sreditor never downloads from it."), id=prefix ~ "-url") }}
+{{ ui.field("creator", _("Made by"), errors, value=values.creator if values else "", required=false, hint=_("A person, an agency or a channel, such as NASA."), id=prefix ~ "-creator") }}
+{% call ui.fields_row() %}
+{{ ui.field("published_on", _("Published on"), errors, type="date", value=values.published_on if values else "", required=false, id=prefix ~ "-published-on") }}
+{{ ui.field("accessed_on", _("Seen on"), errors, type="date", value=values.accessed_on if values else "", required=false, hint=_("Today when left empty."), id=prefix ~ "-accessed-on") }}
+{% endcall %}
+{{ ui.select("rights", _("Rights"), rights_options, errors, value=values.rights if values else "unknown", hint=_("Why the channel may show it."), id=prefix ~ "-rights") }}
+{% call ui.fields_row() %}
+{{ ui.field("license_name", _("License"), errors, value=values.license_name if values else "", required=false, hint=_("Such as CC BY 4.0."), id=prefix ~ "-license-name") }}
+{{ ui.field("license_url", _("License link"), errors, type="url", value=values.license_url if values else "", required=false, id=prefix ~ "-license-url") }}
+{% endcall %}
+{{ ui.textarea("attribution", _("Credit line"), errors, value=values.attribution if values else "", limit=credit_limit, rows=2, hint=_("As the episode should show it, such as NASA/JPL-Caltech."), id=prefix ~ "-attribution") }}
+{{ ui.textarea("rights_note", _("Why the use is allowed"), errors, value=values.rights_note if values else "", limit=note_limit, rows=2, hint=_("For a citation: the criticism, review or news it serves. Any limits of the license."), id=prefix ~ "-rights-note") }}
+{%- endmacro %}

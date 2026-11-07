@@ -9,7 +9,7 @@
 {% set path = request.url.path %}
 {% set place = "tokens" if path.startswith("/app/account/tokens") else ("account" if path.startswith("/app/account") else "channels") %}
 <div class="app">
-  {% call ui.app_sidebar(url_for('static', path='icon.svg')) %}
+  {% call ui.app_sidebar(static_url('icon.svg')) %}
     <div class="app-switcher">
       {% call ui.menu(channel.name if channel else _("All channels"), start=true, wide=true) %}
         <a href="/app"{% if not channel and place == "channels" %} aria-current="page"{% endif %}>{{ _("All channels") }}</a>
@@ -20,12 +20,13 @@
         <a href="/app/channels/new">{{ _("New channel") }}</a>
       {% endcall %}
     </div>
+    {{ ui.search_trigger("/app/search" ~ ("?channel=" ~ channel.slug if channel else ""), _("Search…"), "Ctrl K") }}
     {% block sidebar_nav %}
-    {{ ui.sidenav([
+    {{ ui.sidenav([("", [
       ("/app", _("Channels"), "channels"),
       ("/app/account", _("Account"), "account"),
       ("/app/account/tokens", _("API tokens"), "tokens"),
-    ], place, _("Workspace")) }}
+    ])], place, _("Workspace")) }}
     {% endblock %}
     <div class="app-user">
       {% call ui.menu(user.display_name, up=true, avatar=true, wide=true) %}
@@ -41,8 +42,15 @@
     </div>
   {% endcall %}
   <main id="main" class="app-main">
-    <div class="app-content">{% block content %}{% endblock %}</div>
+    <div class="app-content{% block content_width %}{% endblock %}">{% block content %}{% endblock %}</div>
   </main>
 </div>
+{# The search page holds its own field and results, so it leaves the dialog out. #}
+{% block search_dialog %}
+{% call ui.dialog("search", _("Search"), _("Close")) %}
+  {{ ui.search_box("/app/search", _("Search channels, episodes and pitches"), channel=channel.slug if channel else "") }}
+  {{ ui.search_results([], "") }}
+{% endcall %}
+{% endblock %}
 {% if flash %}{{ ui.toast(_(flash)) }}{% endif %}
 {% endblock %}

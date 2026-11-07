@@ -22,7 +22,9 @@ class TextPart(StrEnum):
 
     RESEARCH = "episode_research"
     SCREENPLAY = "episode_screenplays"
+    SHORT_SCRIPT = "episode_short_scripts"  # the text is the script as JSON
     STYLE = "episode_styles"  # the text is the chosen library style's id, or empty
+    CLASSIFICATION = "episode_classifications"  # the text is the classification as JSON
 
 
 class StoredText(BaseModel):

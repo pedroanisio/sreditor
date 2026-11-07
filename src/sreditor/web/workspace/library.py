@@ -1,4 +1,4 @@
-"""The channel's library page: the characters and locations its episodes share."""
+"""The channel's library page: the characters, locations, styles and props its episodes share."""
 
 from __future__ import annotations
 
@@ -53,12 +53,14 @@ KIND_PATHS = {
     "characters": LibraryKind.CHARACTER,
     "locations": LibraryKind.LOCATION,
     "styles": LibraryKind.STYLE,
+    "props": LibraryKind.PROP,
 }
 PATH_OF = {kind: path for path, kind in KIND_PATHS.items()}
 NAME_TAKEN = {
     LibraryKind.CHARACTER: N_("There is already a character with this name."),
     LibraryKind.LOCATION: N_("There is already a location with this name."),
     LibraryKind.STYLE: N_("There is already a style with this name."),
+    LibraryKind.PROP: N_("There is already a prop with this name."),
 }
 AS_WRITTEN = N_("As the screenplay writes it; capitals do not matter.")
 ENTRY_GONE = N_("This entry was changed or removed after you opened the page. Reload the page.")
@@ -91,6 +93,15 @@ KIND_TEXT: dict[LibraryKind, dict[str, str]] = {
         "more": N_("More styles"),
         "name_hint": N_("A short name people recognise, such as Warm documentary."),
         "description_hint": N_("The look: palette, framing, type and motion."),
+    },
+    LibraryKind.PROP: {
+        "title": N_("Props"),
+        "add": N_("Add prop"),
+        "empty": N_("No props yet. Add the objects characters hold or use, such as a laptop."),
+        "remove": N_("Remove this prop from the library?"),
+        "more": N_("More props"),
+        "name_hint": N_("What people call it, such as Laptop."),
+        "description_hint": "",
     },
 }
 

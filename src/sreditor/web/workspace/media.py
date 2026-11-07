@@ -52,7 +52,7 @@ from sreditor.web.routes import (
     translator,
 )
 from sreditor.web.workspace.brand_kit import CHOOSE_FILE
-from sreditor.web.workspace.episodes import episode_tabs, episodes_url, found_episode, labels
+from sreditor.web.workspace.episodes import episode_frame, episodes_url, found_episode, labels
 from sreditor.web.workspace.forms import MediaFields, RevisionFields, StyleFields, revision_of
 from sreditor.web.workspace.shell import (
     Flash,
@@ -231,7 +231,7 @@ def media_page(
         "sent": shown.sent,
         "editing": shown.editing,
         "media_link": media_url(access.channel.slug, shown.number),
-        "episode_tabs": episode_tabs(access, shown.number, translator(request)),
+        **episode_frame(app, access, shown.number, translator(request)),
         "episode_tab": "media",
         "name_limit": NAME_LENGTH,
         "note_limit": NOTE_LENGTH,

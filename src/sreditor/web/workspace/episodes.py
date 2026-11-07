@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Form, Request, Response
@@ -9,29 +10,33 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from sreditor.deps import ChannelAccess, Services, ServicesDep
 from sreditor.episode_operations import (
+    count_episode_parts,
     create_episode,
     delete_episode,
     get_episode,
     list_episodes,
+    move_episode,
     replace_episode,
 )
 from sreditor.episodes import (
     SUMMARY_LENGTH,
     TITLE_LENGTH,
+    Episode,
     EpisodeChanged,
     EpisodeInput,
     EpisodeNotFound,
     EpisodeStatus,
     RevisedEpisode,
 )
+from sreditor.export_operations import EPISODE_EXPORT
 from sreditor.i18n import N_, Translator
 from sreditor.members import Permission
-from sreditor.pagination import DEFAULT_LIMIT
+from sreditor.pagination import DEFAULT_LIMIT, MAX_LIMIT
 from sreditor.problems import ProblemError
 from sreditor.web.forms import field_errors
 from sreditor.web.labels import EPISODE_STATUS_LABELS, EPISODE_STATUS_TONES, episode_options
 from sreditor.web.routes import rejected_form, translator
-from sreditor.web.workspace.forms import EpisodeFields, RevisionFields, revision_of
+from sreditor.web.workspace.forms import EpisodeFields, MoveFields, RevisionFields, revision_of
 from sreditor.web.workspace.shell import (
     Flash,
     Outcome,
@@ -48,6 +53,7 @@ from sreditor.web.workspace.shell import (
 router = APIRouter()
 
 EPISODES_SUFFIX = "/episodes"
+UNKNOWN_STAGE = N_("Choose one of the stages on the board.")
 EPISODE_CHANGED = N_(
     "Someone changed this episode after you opened the page. Reload it to see their changes, "
     "then try again."
@@ -63,13 +69,19 @@ def episodes_url(slug: str, number: int | None = None) -> str:
 DETAILS_TAB = N_("Details")
 RESEARCH_TAB = N_("Research")
 SCREENPLAY_TAB = N_("Screenplay")
+SHORT_SCRIPT_TAB = N_("Short script")
 MEDIA_TAB = N_("Media")
+THIRD_PARTY_TAB = N_("Third-party")
+CLASSIFICATION_TAB = N_("Classification")
 WAIVERS_TAB = N_("Waivers")
 EPISODE_TABS = (
     ("", DETAILS_TAB, "details", Permission.READ),
     ("/research", RESEARCH_TAB, "research", Permission.READ),
     ("/screenplay", SCREENPLAY_TAB, "screenplay", Permission.READ),
+    ("/short-script", SHORT_SCRIPT_TAB, "short-script", Permission.READ),
     ("/media", MEDIA_TAB, "media", Permission.READ),
+    ("/external-media", THIRD_PARTY_TAB, "external-media", Permission.READ),
+    ("/classification", CLASSIFICATION_TAB, "classification", Permission.READ),
     ("/waivers", WAIVERS_TAB, "waivers", Permission.READ_WAIVERS),
 )
 
@@ -86,6 +98,24 @@ def episode_tabs(
     ]
 
 
+def episode_frame(
+    app: Services, access: ChannelAccess, number: int, translate: Translator
+) -> dict[str, Any]:
+    """What the header shared by an episode's pages needs: its tabs, their counts and the stages."""
+    counts = count_episode_parts(app, access, number)
+    return {
+        "episode_tabs": episode_tabs(access, number, translate),
+        "tab_counts": {
+            "research": counts.sources,
+            "media": counts.media,
+            "external-media": counts.uses,
+            "waivers": counts.waivers,
+        },
+        "episode_steps": episode_options(translate),
+        "export_link": EPISODE_EXPORT.format(slug=access.channel.slug, number=number),
+    }
+
+
 def labels() -> dict[str, Any]:
     """What every episode template needs to name statuses and size its fields."""
     return {
@@ -96,22 +126,46 @@ def labels() -> dict[str, Any]:
     }
 
 
+class ListMode(StrEnum):
+    """How the episode list shows: a board with a column per stage, or a list by number."""
+
+    BOARD = "board"
+    LIST = "list"
+
+
+BoardColumn = tuple[str, str, list[Episode]]
+
+
 class ListView(BaseModel):
     """The episode list, with the new-episode form as it was sent."""
 
     model_config = ConfigDict(frozen=True)
 
     cursor: str = ""
+    mode: ListMode = ListMode.BOARD
     outcome: Outcome = Outcome()
     sent: EpisodeFields | None = None
 
 
+def board_columns(episodes: list[Episode], translate: Translator) -> list[BoardColumn]:
+    """(stage, label, episodes) for each stage in order, empty stages included."""
+    return [
+        (stage, label, [row for row in episodes if row.status == stage])
+        for stage, label in episode_options(translate)
+    ]
+
+
 def list_page(request: Request, app: Services, access: ChannelAccess, shown: ListView) -> Response:
-    """The channel's episodes and, for those who may write, the form to add one."""
-    found = list_episodes(app, access, shown.cursor or None, DEFAULT_LIMIT)
+    """The channel's episodes on a board or in a list and, for writers, the form to add one."""
+    is_board = shown.mode is ListMode.BOARD
+    limit = MAX_LIMIT if is_board else DEFAULT_LIMIT
+    found = list_episodes(app, access, None if is_board else shown.cursor or None, limit)
     context = {
         "episodes": found.items,
         "next_cursor": found.next_cursor,
+        "list_mode": shown.mode.value,
+        "board": board_columns(found.items, translator(request)) if is_board else [],
+        "stage_options": episode_options(translator(request)),
         "errors": shown.outcome.errors,
         "sent": shown.sent,
         **labels(),
@@ -126,9 +180,15 @@ def list_page(request: Request, app: Services, access: ChannelAccess, shown: Lis
 
 
 @router.get("/app/channels/{slug}/episodes")
-def episodes(request: Request, app: ServicesDep, access: PageAccess, cursor: str = "") -> Response:
-    """The channel's episodes, by number."""
-    return list_page(request, app, access, ListView(cursor=cursor))
+def episodes(
+    request: Request,
+    app: ServicesDep,
+    access: PageAccess,
+    cursor: str = "",
+    view: ListMode = ListMode.BOARD,
+) -> Response:
+    """The channel's episodes, on a board by stage or in a list by number."""
+    return list_page(request, app, access, ListView(cursor=cursor, mode=view))
 
 
 def as_input(fields: EpisodeFields) -> EpisodeInput:
@@ -190,7 +250,7 @@ def episode_page(
         "errors": shown.outcome.errors,
         "status_options": episode_options(translator(request)),
         "list_link": episodes_url(access.channel.slug),
-        "episode_tabs": episode_tabs(access, shown.number, translator(request)),
+        **episode_frame(app, access, shown.number, translator(request)),
         "episode_tab": "details",
         **labels(),
     }
@@ -264,3 +324,30 @@ def remove_episode(
         outcome = Outcome.conflict({"form": translator(request)(EPISODE_CHANGED)})
         return episode_page(request, app, access, EpisodeView(number=number, outcome=outcome))
     return done(request, app, episodes_url(access.channel.slug), Flash.EPISODE_DELETED)
+
+
+@router.post("/app/channels/{slug}/episodes/{number}/move")
+def move_to_stage(
+    request: Request,
+    app: ServicesDep,
+    access: PageAccess,
+    number: int,
+    fields: Annotated[MoveFields, Form()],
+) -> Response:
+    """Move an episode to another stage from the board, and come back to the board."""
+    if rejected := rejected_form(request, app, fields.csrf_token):
+        return rejected
+    require(access, Permission.WRITE_CONTENT)
+    found_episode(app, access, number)
+    translate = translator(request)
+    try:
+        move_episode(app, access, number, EpisodeStatus(fields.status))
+    except ValueError:
+        outcome = Outcome.invalid({"form": translate(UNKNOWN_STAGE)})
+        return list_page(request, app, access, ListView(outcome=outcome))
+    except EpisodeChanged:
+        outcome = Outcome.conflict({"form": translate(EPISODE_CHANGED)})
+        return list_page(request, app, access, ListView(outcome=outcome))
+    except ProblemError as problem:
+        return list_page(request, app, access, ListView(outcome=refused(problem, translate)))
+    return done(request, app, episodes_url(access.channel.slug), Flash.EPISODE_MOVED)

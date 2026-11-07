@@ -37,7 +37,7 @@ from sreditor.research_operations import (
 )
 from sreditor.web.forms import field_errors
 from sreditor.web.routes import rejected_form, translator
-from sreditor.web.workspace.episodes import episode_tabs, episodes_url, found_episode, labels
+from sreditor.web.workspace.episodes import episode_frame, episodes_url, found_episode, labels
 from sreditor.web.workspace.forms import (
     RemoveSourceFields,
     SourceFields,
@@ -49,9 +49,12 @@ from sreditor.web.workspace.shell import (
     Outcome,
     PageAccess,
     View,
+    autosave_refused,
+    autosaved,
     channel_page,
     channel_url,
     done,
+    is_autosave,
     require,
 )
 
@@ -123,7 +126,7 @@ def research_page(
         "research_link": research_url(access.channel.slug, shown.number),
         "sources_link": sources_url(access.channel.slug, shown.number),
         "remove_source_link": sources_url(access.channel.slug, shown.number) + REMOVE_SUFFIX,
-        "episode_tabs": episode_tabs(access, shown.number, translator(request)),
+        **episode_frame(app, access, shown.number, translator(request)),
         "episode_tab": "research",
         **pitch_panel(app, access, shown.number),
         "notes_limit": NOTES_LENGTH,
@@ -164,13 +167,17 @@ def save_notes(
     translate = translator(request)
     try:
         data = NotesInput(text=fields.text)
-        write_notes(app, access, number, data, revision_of(fields.revision))
+        saved = write_notes(app, access, number, data, revision_of(fields.revision))
     except ValidationError as invalid:
         outcome = Outcome.invalid(field_errors(invalid, translate))
     except PartChanged:
         outcome = Outcome.conflict({"text": translate(NOTES_CHANGED)})
     else:
+        if is_autosave(request):
+            return autosaved(saved.revision)
         return done(request, app, research_url(access.channel.slug, number), Flash.SAVED)
+    if is_autosave(request):
+        return autosave_refused(outcome)
     shown = ResearchView(number=number, outcome=outcome, notes=fields)
     return research_page(request, app, access, shown)
 

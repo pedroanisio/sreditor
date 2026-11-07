@@ -1,0 +1,34 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% from "workspace/_external_item_form.html" import item_fields with context %}
+{% block page_title %}{{ _("Third-party media") }}{% endblock %}
+{% block page %}
+{% set may_write = can("write_content") %}
+{% call ui.page_header(_("Third-party media"), _("Videos, images, audio, documents and web pages made by others that the episodes show, with their link, rights and credit line.")) %}
+  {% if may_write and items %}{{ ui.dialog_button("new-item", _("Add item"), plus=true) }}{% endif %}
+{% endcall %}
+{{ ui.tabs(kind_tabs, kind, _("Kinds of media")) }}
+{{ ui.form_error(errors) }}
+{% if items %}
+{% call(row) ui.items(items, _("Third-party media")) %}
+  {{ ui.item_main(row.title, _(kind_labels[row.kind]) ~ (" · " ~ row.creator if row.creator else ""), library_link ~ "/" ~ row.id) }}
+  {% call ui.item_side() %}
+    {% if row.copy_file %}{{ ui.meta(_("Copy kept")) }}{% endif %}
+    {{ ui.badge(_(rights_labels[row.rights]), rights_tones[row.rights]) }}
+  {% endcall %}
+{% endcall %}
+{% if next_cursor %}{{ ui.pager(library_link ~ "?cursor=" ~ next_cursor ~ ("&kind=" ~ kind if kind else ""), _("More items")) }}{% endif %}
+{% else %}
+{% call ui.empty(_("No third-party media yet"), _("Add what the episodes show that others made: a NASA clip, a video you react to, a credited photo, a paper.") if may_write else _("Nobody has added third-party media yet.")) %}
+  {% if may_write %}{{ ui.dialog_button("new-item", _("Add item"), plus=true) }}{% endif %}
+{% endcall %}
+{% endif %}
+{% if may_write %}
+{% call ui.dialog("new-item", _("Add item"), _("Close"), open=sent is not none) %}
+  {% call ui.form(library_link, csrf_field, csrf_token) %}
+    {{ item_fields(sent, errors, kind_options, rights_options, title_limit, credit_limit, note_limit, "new") }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Add item")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% endif %}
+{% endblock %}

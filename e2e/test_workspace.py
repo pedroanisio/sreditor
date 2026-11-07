@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import re
 import wave
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -14,6 +15,7 @@ from playwright.sync_api import Locator, Page, Playwright, expect
 from e2e.conftest import Evidence, Server
 from e2e.test_flows import PASSWORD, heading, open_page, sign_in
 from sreditor.i18n import LOCALES, Translator
+from tests.media_samples import cube_glb
 
 EMAIL = "ana@example.com"
 DESCRIPTION_LIMIT = 80  # TikTok's, in sreditor.channels.DESCRIPTION_LIMITS
@@ -155,6 +157,7 @@ def set_up_brand(page: Page, translate: Translator, evidence: Evidence) -> None:
 
 def write_editorial(page: Page, translate: Translator, evidence: Evidence) -> None:
     section(page, translate, "Editorial")
+    open_dialog(page, "edit-purpose")
     purpose = form_with(page, "#purpose-text")
     purpose.locator("#purpose-text").fill("Make people laugh every day.")
     # The form expires (its cookie is gone): the page stays, says so and keeps the text.
@@ -174,7 +177,7 @@ def write_editorial(page: Page, translate: Translator, evidence: Evidence) -> No
 def produce_episode(page: Page, translate: Translator, evidence: Evidence) -> None:
     section(page, translate, "Episodes")
     evidence.capture("episodes-empty")
-    form = page.locator("#new-episode")
+    form = open_dialog(page, "new-episode")
     form.get_by_label(translate("Title")).fill("Pilot")
     form.get_by_label(translate("Summary")).fill("Why Mondays hurt.")
     form.get_by_role("button", name=translate("Add episode")).click()
@@ -184,9 +187,23 @@ def produce_episode(page: Page, translate: Translator, evidence: Evidence) -> No
     page.get_by_label(translate("Status")).select_option("script")
     page.get_by_role("button", name=translate("Save changes")).click()
     flash(page, translate("Changes saved."))
-    expect(page.locator(".page-header .badge")).to_have_text(translate("Script"))
+    expect(page.locator(".steps [aria-current='step']")).to_have_text(translate("Script"))
     evidence.capture("episode-saved")
+    move_on_board(page, translate, evidence)
     research_episode(page, translate, evidence)
+
+
+def move_on_board(page: Page, translate: Translator, evidence: Evidence) -> None:
+    page.locator(".back-link a").click()
+    script = page.locator(".board-column[data-stage='script']")
+    expect(script).to_contain_text("#1 · Pilot")
+    evidence.capture("episodes-board")
+    stage = page.get_by_label(translate("Stage of episode %(number)s", number=1))
+    stage.select_option("production")
+    flash(page, translate("Episode moved."))
+    expect(page.locator(".board-column[data-stage='production']")).to_contain_text("#1 · Pilot")
+    page.get_by_role("link", name="#1 · Pilot").click()
+    heading(page, "#1 · Pilot")
 
 
 def research_episode(page: Page, translate: Translator, evidence: Evidence) -> None:
@@ -199,7 +216,7 @@ def research_episode(page: Page, translate: Translator, evidence: Evidence) -> N
     notes.get_by_role("button", name=translate("Save notes")).click()
     flash(page, translate("Changes saved."))
     evidence.capture("research-notes")
-    source = page.locator("#new-source")
+    source = open_dialog(page, "new-source")
     source.get_by_label(translate("Link")).fill("https://example.com/mondays")
     source.get_by_label(translate("Title")).fill("Mondays study")
     source.get_by_label(translate("What it supports")).fill("Mondays feel longer.")
@@ -215,13 +232,13 @@ def link_pitch(page: Page, translate: Translator, evidence: Evidence) -> None:
     research_url = page.url
     section(page, translate, "Pitches")
     evidence.capture("pitches-empty")
-    form = page.locator("#new-pitch")
+    form = open_dialog(page, "new-pitch")
     form.get_by_label(translate("Title")).fill(PITCH_TITLE)
     form.get_by_label(translate("Summary")).fill("The science of the Monday slump.")
     form.get_by_role("button", name=translate("Add pitch")).click()
     flash(page, translate("Pitch created."))
     heading(page, PITCH_TITLE)
-    source = page.locator("#new-source")
+    source = open_dialog(page, "new-source")
     source.get_by_label(translate("Link")).fill("https://example.com/sleep")
     source.get_by_label(translate("Title")).fill(PITCH_SOURCE)
     source.get_by_label(translate("What it supports")).fill("Sleep debt peaks on Mondays.")
@@ -239,12 +256,28 @@ def link_pitch(page: Page, translate: Translator, evidence: Evidence) -> None:
     # The pitch's research shows on the episode as it is on the pitch, never copied.
     expect(page.locator("#pitch")).to_contain_text(PITCH_SOURCE)
     evidence.capture("research-pitch")
+    quick_search(page, translate, evidence)
     write_screenplay(page, translate, evidence)
+
+
+def quick_search(page: Page, translate: Translator, evidence: Evidence) -> None:
+    """Find the episode with Ctrl+K and open it from the results."""
+    page.keyboard.press("Control+k")
+    dialog = page.locator("dialog#search")
+    expect(dialog).to_be_visible()
+    dialog.get_by_role("searchbox").fill("pilot")
+    result = dialog.locator(".search-result", has_text="#1 · Pilot")
+    expect(result).to_be_visible()
+    evidence.capture("search")
+    page.keyboard.press("ArrowDown")
+    expect(dialog.locator(".search-result").first).to_be_focused()
+    result.click()
+    heading(page, "#1 · Pilot")
 
 
 def write_screenplay(page: Page, translate: Translator, evidence: Evidence) -> None:
     tabs = page.get_by_role("navigation", name=translate("Episode pages"))
-    tabs.get_by_role("link", name=translate("Screenplay")).click()
+    tabs.get_by_role("link", name=translate("Screenplay"), exact=True).click()
     evidence.capture("screenplay-empty")
     script = page.locator("#screenplay")
     script.get_by_label(translate("Fountain text")).fill(
@@ -260,6 +293,10 @@ def write_screenplay(page: Page, translate: Translator, evidence: Evidence) -> N
     upload_waiver(page, translate, evidence)
     check_library(page, translate, evidence)
     pick_style(page, translate, evidence)
+    use_third_party_media(page, translate, evidence)
+    write_short_script(page, translate, evidence)
+    export_episode(page, translate, evidence)
+    classify_episode(page, translate, evidence)
 
 
 def add_cast(page: Page, translate: Translator, evidence: Evidence) -> None:
@@ -337,6 +374,127 @@ def pick_style(page: Page, translate: Translator, evidence: Evidence) -> None:
     flash(page, translate("Changes saved."))
     expect(page.locator("#style")).to_contain_text("Handheld, natural light")
     evidence.capture("media-style")
+
+
+def use_third_party_media(page: Page, translate: Translator, evidence: Evidence) -> None:
+    section(page, translate, "Third-party media")
+    evidence.capture("third-party-empty")
+    dialog = open_dialog(page, "new-item")
+    dialog.locator("#new-title").fill("Mars landing animation")
+    dialog.locator("#new-url").fill("https://svs.gsfc.nasa.gov/mars")
+    dialog.locator("#new-creator").fill("NASA")
+    dialog.locator("#new-rights").select_option("public_domain")
+    dialog.locator("#new-attribution").fill("NASA/JPL-Caltech")
+    dialog.get_by_role("button", name=translate("Add item")).click()
+    flash(page, translate("Added to third-party media."))
+    heading(page, "Mars landing animation")
+    evidence.capture("third-party-item")
+    add_3d_model(page, translate, evidence)
+    section(page, translate, "Episodes")
+    page.get_by_role("link", name=re.compile("Pilot")).first.click()
+    tabs = page.get_by_role("navigation", name=translate("Episode pages"))
+    tabs.get_by_role("link", name=translate("Third-party")).click()
+    use = open_dialog(page, "new-use")
+    use.locator("#media_id").select_option(label="Mars landing animation")
+    use.locator("#use-start").fill("0:05")
+    use.locator("#use-end").fill("0:12")
+    use.get_by_role("button", name=translate("Record use")).click()
+    flash(page, translate("Use recorded."))
+    expect(page.locator("#credits")).to_contain_text("NASA/JPL-Caltech")
+    evidence.capture("episode-third-party")
+
+
+def add_3d_model(page: Page, translate: Translator, evidence: Evidence) -> None:
+    section(page, translate, "Third-party media")
+    dialog = open_dialog(page, "new-item")
+    dialog.locator("#new-kind").select_option("model_3d")
+    dialog.locator("#new-title").fill("Orange cube")
+    dialog.locator("#new-url").fill("https://example.com/models/cube")
+    dialog.locator("#new-rights").select_option("open_license")
+    dialog.locator("#new-attribution").fill("Cube by Bia, CC BY 4.0")
+    dialog.get_by_role("button", name=translate("Add item")).click()
+    flash(page, translate("Added to third-party media."))
+    upload = open_dialog(page, "upload-copy")
+    upload.locator("#copy-file").set_input_files(
+        {"name": "cube.glb", "mimeType": "model/gltf-binary", "buffer": cube_glb()}
+    )
+    upload.get_by_role("button", name=translate("Upload")).click()
+    # The viewer draws the cube with the vendored three.js, which the CSP lets load.
+    viewer = page.locator("figure.model-viewer")
+    expect(viewer).to_have_class(re.compile(r"\bis-ready\b"))
+    expect(viewer.get_by_role("status")).to_have_text(
+        translate("Drag to turn, scroll or pinch to zoom.")
+    )
+    evidence.capture("third-party-3d-model")
+
+
+def write_short_script(page: Page, translate: Translator, evidence: Evidence) -> None:
+    tabs = page.get_by_role("navigation", name=translate("Episode pages"))
+    tabs.get_by_role("link", name=translate("Short script")).click()
+    evidence.capture("short-script-empty")
+    script = page.locator("form", has=page.locator("#block-0-speech"))
+    script.locator("#duration_s").fill("3")
+    script.locator("#voice_id").fill("EXAVITQu4vr4xnSDxMaL")
+    script.locator("#block-0-start_s").fill("0")
+    script.locator("#block-0-end_s").fill("3")
+    script.locator("#block-0-speech").fill("Monday [pause:0.3] [emphasis]again[/emphasis]?")
+    script.locator("#text-0-text").fill("Monday again")
+    script.locator("#text-0-shown").select_option("throughout")
+    script.get_by_role("button", name=translate("Save short script")).click()
+    flash(page, translate("Changes saved."))
+    expect(page.locator("main")).to_contain_text(
+        translate("The last spoken block should be the punch.")
+    )
+    expect(page.locator("#block-0-speech")).to_have_value(
+        "Monday [pause:0.3] [emphasis]again[/emphasis]?"
+    )
+    evidence.capture("short-script")
+
+
+def pick_chip(dialog: Locator, name: str, label: str) -> None:
+    """Click the chip with this label among the inputs that carry this name."""
+    chips = dialog.locator(f"input[name='{name}'] + label")
+    chips.filter(has_text=re.compile(rf"^\W*{re.escape(label)}$")).click()
+
+
+def export_episode(page: Page, translate: Translator, evidence: Evidence) -> None:
+    menu = page.locator("summary").get_by_text(translate("Export"), exact=True)
+    menu.click()
+    evidence.capture("export-menu")
+    # Each format goes to the browser as a download, named after the channel and episode.
+    with page.expect_download() as saved:
+        page.get_by_role("link", name="PDF", exact=True).click()
+    assert saved.value.suggested_filename.startswith("funny-memes-ep1-")
+    assert Path(saved.value.path()).read_bytes().startswith(b"%PDF-")
+    # Choosing a format closes the menu, so it never covers the tabs behind it.
+    expect(page.get_by_role("link", name="Excel", exact=True)).to_be_hidden()
+    menu.click()
+    with page.expect_download() as saved:
+        page.get_by_role("link", name="Excel", exact=True).click()
+    assert saved.value.suggested_filename.endswith(".xlsx")
+    expect(page.get_by_role("link", name="Excel", exact=True)).to_be_hidden()
+
+
+def classify_episode(page: Page, translate: Translator, evidence: Evidence) -> None:
+    tabs = page.get_by_role("navigation", name=translate("Episode pages"))
+    tabs.get_by_role("link", name=translate("Classification"), exact=True).click()
+    evidence.capture("classification-empty")
+    dialog = open_dialog(page, "edit-genre")
+    pick_chip(dialog, "genres", translate("Comedy"))
+    evidence.capture("classification-dialog")
+    dialog.get_by_role("button", name=translate("Save"), exact=True).click()
+    dialog = page.locator("dialog#edit-genre")
+    expect(dialog.locator("#humor_devices-error")).to_have_text(
+        translate("Comedy needs at least one humor device")
+    )
+    pick_chip(dialog, "humor_devices", translate("Deadpan"))
+    dialog.get_by_role("button", name=translate("Save"), exact=True).click()
+    flash(page, translate("Changes saved."))
+    expect(page.locator("#group-genre")).to_contain_text(translate("Deadpan"))
+    evidence.capture("classification")
+    section(page, translate, "Profile")
+    expect(page.locator("#group-genre")).to_contain_text(translate("Comedy") + " 100%")
+    evidence.capture("profile")
 
 
 def invite_member(page: Page, translate: Translator, evidence: Evidence) -> None:

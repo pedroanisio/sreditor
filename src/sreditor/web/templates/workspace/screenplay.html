@@ -1,28 +1,32 @@
 {% extends "workspace/channel.html" %}
 {% import "_ui.html" as ui %}
 {% block page_title %}{{ _("Screenplay") }} · {{ episode.title }}{% endblock %}
+{# The editor and its preview sit side by side, so the page uses the whole width. #}
+{% block content_width %}{% if can("write_content") %} is-wide{% endif %}{% endblock %}
 {% block page %}
 {% set may_write = can("write_content") %}
-{{ ui.back_link(channel_link ~ "/episodes", _("Episodes")) }}
-{% call ui.page_header("#" ~ episode.number ~ " · " ~ episode.title, _("The episode's script, written in Fountain: plain text that formats itself as a screenplay.")) %}
-  {{ ui.badge(_(episode_status_labels[episode.status]), episode_status_tones[episode.status]) }}
-{% endcall %}
-{{ ui.tabs(episode_tabs, episode_tab, _("Episode pages")) }}
+{% set lead = _("The episode's script, written in Fountain: plain text that formats itself as a screenplay.") %}
+{% include "workspace/_episode_header.html" %}
 {{ ui.form_error(errors) }}
+{% if may_write %}
+{% call ui.split() %}
 {% call ui.panel(_("Screenplay"), id="screenplay") %}
-  {% if may_write %}
-  {% call ui.form(screenplay_link, csrf_field, csrf_token) %}
+  {% call ui.form(screenplay_link, csrf_field, csrf_token, autosave=true) %}
     {{ ui.hidden("revision", screenplay.revision) }}
     {{ ui.textarea("text", _("Fountain text"), errors, value=screenplay_text, limit=screenplay_limit, rows=20, mono=true, hint=_("Start a scene with INT. or EXT.; put who speaks in capitals on its own line, with their lines below.")) }}
     <p><a href="{{ fountain_guide }}" rel="noopener noreferrer" target="_blank">{{ _("How to write in Fountain") }}</a></p>
-    {% call ui.panel_actions() %}{{ ui.button(_("Save screenplay")) }}{% endcall %}
+    {% call ui.panel_actions() %}{{ ui.button(_("Save screenplay")) }}{{ ui.autosave_status(_("Saving…"), _("Saved at %(time)s"), _("Could not save. Press the button to try again."), _("Someone else changed this text. Reload the page to see their changes; saving as you type is paused."), _("This text is over the limit, so it was not saved. Shorten it.")) }}{% endcall %}
   {% endcall %}
-  {% elif screenplay.text %}
-  {{ ui.text_block(screenplay.text, mono=true) }}
-  {% else %}
-  <p class="muted">{{ _("No screenplay yet.") }}</p>
-  {% endif %}
 {% endcall %}
+{% call ui.panel(_("Preview"), id="preview") %}
+  {{ ui.screenplay(screenplay_blocks, _("The formatted screenplay shows here as you write."), refresh_url=screenplay_link ~ "/preview") }}
+{% endcall %}
+{% endcall %}
+{% else %}
+{% call ui.panel(_("Screenplay"), id="screenplay") %}
+  {{ ui.screenplay(screenplay_blocks, _("No screenplay yet.")) }}
+{% endcall %}
+{% endif %}
 {% call ui.panel(_("Scenes"), id="scenes") %}
   {% if screenplay.scenes %}
   {{ ui.numbered(screenplay.scenes, _("Scenes")) }}

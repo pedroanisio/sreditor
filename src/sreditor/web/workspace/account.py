@@ -12,9 +12,11 @@ from uuid import UUID
 from fastapi import APIRouter, Form, Request, Response
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from sreditor import operations
 from sreditor.deps import Services, ServicesDep, start_session, within_rate_limit
 from sreditor.i18n import N_, Translator
 from sreditor.pagination import DEFAULT_LIMIT, decode_cursor, page
+from sreditor.problems import ProblemError
 from sreditor.profile import PasswordChange, ProfileError, change_password, rename
 from sreditor.tokens import DEFAULT_TTL_DAYS, NewToken, Scope, TokenInput
 from sreditor.users import DisplayName, User
@@ -43,6 +45,7 @@ ACCOUNT_PATH = f"{APP_PATH}/account"
 TOKENS_PATH = f"{ACCOUNT_PATH}/tokens"
 CHOOSE_SCOPE = N_("Choose at least one permission.")
 CHOOSE_DAYS = N_("Choose how long the token lasts.")
+CHOOSE_YOUR_CHANNELS = N_("Choose only channels you belong to.")
 DAYS = N_("%(count)s days")
 # A page with a secret on it must not stay in any cache.
 NO_STORE = {"Cache-Control": "no-store"}
@@ -135,6 +138,11 @@ class TokensView(BaseModel):
     cursor: str = ""
 
 
+def channel_choices(app: Services, user: User) -> list[tuple[str, str]]:
+    """(slug, name) of each channel the person belongs to, for limiting a token to some."""
+    return [(slug, app.channels.get(slug).name) for slug in sorted(app.members.roles_of(user.id))]
+
+
 def tokens_page(request: Request, app: Services, user: User, shown: TokensView) -> Response:
     """The person's tokens, a page at a time, and the form for a new one."""
     rows = app.tokens.list(
@@ -148,6 +156,7 @@ def tokens_page(request: Request, app: Services, user: User, shown: TokensView) 
         "scope_choices": [
             (scope.value, scope.value, translate(SCOPE_HINTS[scope])) for scope in Scope
         ],
+        "channel_choices": channel_choices(app, user),
         "day_choices": [(str(days), translate(DAYS, count=days)) for days in TOKEN_DAYS],
         "default_days": DEFAULT_TTL_DAYS,
         "errors": shown.outcome.errors,
@@ -182,7 +191,10 @@ def token_input(fields: TokenFields, translate: Translator) -> TokenInput | dict
         return {"expires_in_days": translate(CHOOSE_DAYS)}
     try:
         return TokenInput(
-            name=fields.name, scopes=scopes, expires_in_days=int(fields.expires_in_days)
+            name=fields.name,
+            scopes=scopes,
+            expires_in_days=int(fields.expires_in_days),
+            channels=fields.channels or None,
         )
     except ValidationError as invalid:
         return field_errors(invalid, translate)
@@ -199,7 +211,13 @@ def create_token(
     if isinstance(data, dict):
         shown = TokensView(outcome=Outcome.invalid(data), sent=fields)
         return tokens_page(request, app, user, shown)
-    created = app.tokens.create(user.id, data)
+    try:
+        created = operations.create_token(app, user, data)
+    except ProblemError:
+        errors = {"channels": translator(request)(CHOOSE_YOUR_CHANNELS)}
+        return tokens_page(
+            request, app, user, TokensView(outcome=Outcome.invalid(errors), sent=fields)
+        )
     return tokens_page(request, app, user, TokensView(created=created))
 
 

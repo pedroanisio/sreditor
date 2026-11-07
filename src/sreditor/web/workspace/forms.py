@@ -124,6 +124,12 @@ class EpisodeFields(SubmittedFields):
     revision: str = ""
 
 
+class MoveFields(SubmittedFields):
+    """The stage an episode card moves to on the board."""
+
+    status: str = ""
+
+
 class TextFields(SubmittedFields):
     """One of an episode's text parts, such as its research notes or screenplay."""
 
@@ -188,6 +194,7 @@ class TokenFields(SubmittedFields):
     name: str = ""
     scopes: list[str] = Field(default_factory=list)
     expires_in_days: str = ""
+    channels: list[str] = Field(default_factory=list)  # none picked: every channel
 
 
 class WaiverFields(SubmittedFields):

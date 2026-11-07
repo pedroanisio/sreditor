@@ -1,0 +1,31 @@
+{# One group of a classification in its own dialog, shared by an episode and a channel's profile:
+   per dimension, chips for the main value (or a state) and chips for up to two more. #}
+{% import "_ui.html" as ui with context %}
+{% macro group_dialog(group, form_link, revision, errors, save_label) -%}
+{% call ui.dialog("edit-" ~ group.key, group.title, _("Close"), open=group.is_open) %}
+  {% call ui.form(form_link, csrf_field, csrf_token) %}
+    {{ ui.hidden("revision", revision) }}
+    {{ ui.hidden("group", group.key) }}
+    {% for dimension in group.dimensions %}
+    {% call ui.subsection(dimension.label, "dimension-" ~ dimension.name) %}
+      {{ ui.pills(dimension.name, _("Main"), dimension.main_options, errors, selected=dimension.main, single=true, muted=dimension.muted, hint=dimension.hint) }}
+      {{ ui.pills(dimension.also_name, _("Also, up to two"), dimension.also_options, errors, selected=dimension.also) }}
+    {% endcall %}
+    {% endfor %}
+    {% if group.has_details %}
+    {% set details = group.details %}
+    {% if details.satire %}
+    {{ ui.field("satire_target", _("Satire target"), errors, value=details.satire_target, required=false, maxlength=details.satire_limit, hint=_("Who or what the satire aims at.")) }}
+    {{ ui.textarea("satire_behavior", _("Behaviour it criticises"), errors, value=details.satire_behavior, limit=details.satire_limit, rows=2) }}
+    {% endif %}
+    {% if details.parody %}
+    {{ ui.textarea("parody_references", _("Works it parodies"), errors, value=details.parody_references, limit=details.reference_limit, rows=3, hint=_("One per line.")) }}
+    {% endif %}
+    {% if not details.satire or not details.parody %}
+    <p class="muted">{{ _("Pick a satirical or parodic approach and save to describe its target or the work it parodies.") }}</p>
+    {% endif %}
+    {% endif %}
+    {% call ui.panel_actions() %}{{ ui.button(save_label) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{%- endmacro %}

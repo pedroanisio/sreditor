@@ -155,11 +155,17 @@ class EditorialService:
         return f"{slug}.{platform.value}" if platform else slug
 
     def write(
-        self, channel: Channel, data: GuidelineInput, owner: Owner | None = None
+        self,
+        channel: Channel,
+        data: GuidelineInput,
+        owner: Owner | None = None,
+        expected_revision: int | None = None,
     ) -> Guideline:
         """Set a single-valued kind at the scope, or add a new pillar or avoid guideline.
 
-        `owner` is recorded as the statement's author; it defaults to the service owner.
+        `owner` is recorded as the statement's author; it defaults to the service owner. With
+        `expected_revision`, a single-valued kind is set only if it is still at that revision
+        (0: not set yet), so nobody overwrites a text they have not read.
         """
         scope = self.scope(channel.slug, data.platform)
         self.register(channel)
@@ -178,6 +184,8 @@ class EditorialService:
             existing = self.client.get(statement_id, scope)
             if existing is not None and existing.scope == scope:
                 revision = existing.revision
+            if expected_revision is not None and expected_revision != (revision or 0):
+                raise GuidelineChanged(statement_id, revision or 0)
         else:
             statement_id = f"{prefix}.{data.kind.value}.{secrets.token_hex(4)}"
         new_revision = self.client.write(statement_id, document, scope, revision)

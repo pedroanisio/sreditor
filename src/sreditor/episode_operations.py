@@ -9,7 +9,7 @@ from __future__ import annotations
 from fastapi import status
 
 from sreditor.deps import ChannelAccess, Services
-from sreditor.episodes import Episode, EpisodeInput, RevisedEpisode
+from sreditor.episodes import Episode, EpisodeInput, EpisodeStatus, PartCounts, RevisedEpisode
 from sreditor.members import Permission
 from sreditor.operations import gated
 from sreditor.pagination import Page, decode_cursor, encode_cursor
@@ -64,6 +64,15 @@ def get_episode(app: Services, access: ChannelAccess, number: int) -> RevisedEpi
     return app.episodes.get(access.channel.slug, number)
 
 
+def count_episode_parts(app: Services, access: ChannelAccess, number: int) -> PartCounts:
+    """How many sources, media files and waivers the episode has; waivers only for their readers."""
+    access.require(Permission.READ)
+    counts = app.episodes.part_counts(access.channel.slug, number)
+    if access.can(Permission.READ_WAIVERS):
+        return counts
+    return counts.model_copy(update={"waivers": 0})
+
+
 def create_episode(app: Services, access: ChannelAccess, data: EpisodeInput) -> RevisedEpisode:
     """Add an episode with the channel's next number."""
     access.require(Permission.WRITE_CONTENT)
@@ -101,3 +110,17 @@ def delete_episode(
         EpisodeOperation.DELETE,
         lambda: app.episodes.delete(slug, number, expected_revision),
     )
+
+
+def move_episode(
+    app: Services, access: ChannelAccess, number: int, stage: EpisodeStatus
+) -> RevisedEpisode:
+    """Move an episode to another production stage, keeping its title and summary.
+
+    The board shows no revisions, so the move checks against the revision it just read: a
+    change made in between is never overwritten, it fails as EpisodeChanged instead.
+    """
+    current = get_episode(app, access, number)
+    episode = current.episode
+    data = EpisodeInput(title=episode.title, summary=episode.summary, status=stage)
+    return replace_episode(app, access, number, data, current.revision)

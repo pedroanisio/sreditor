@@ -1,0 +1,54 @@
+{% from "_macros.html" import classification_table, sources_table %}
+<!doctype html>
+<html lang="{{ lang }}">
+<head><meta charset="utf-8"><title>#{{ export.episode.number }} · {{ export.episode.title }}</title></head>
+<body class="doc">
+  <p class="doc-eyebrow">{{ export.channel.name }}</p>
+  <h1>#{{ export.episode.number }} · {{ export.episode.title }}</h1>
+  {% if export.episode.summary %}<p class="doc-lead">{{ export.episode.summary }}</p>{% endif %}
+  <dl class="doc-facts">
+    <dt>{{ _("Status") }}</dt><dd>{{ status }}</dd>
+    {% if export.pitch %}<dt>{{ _("Pitch") }}</dt><dd>{{ export.pitch.pitch.title }}</dd>{% endif %}
+    {% if export.style %}<dt>{{ _("Visual style") }}</dt><dd>{{ export.style.name }}</dd>{% endif %}
+    <dt>{{ _("Exported on") }}</dt><dd>{{ exported_on }}</dd>
+  </dl>
+
+  <h2>{{ _("Classification") }}</h2>
+  {% if not export.classification.revision %}<p class="doc-muted">{{ _("Not classified yet") }}</p>
+  {% else %}
+  {% if not export.classification.is_reviewed %}<p class="doc-muted">{{ _("An agent proposed this classification") }}</p>{% endif %}
+  {{ classification_table(classification) }}
+  {% endif %}
+
+  <h2>{{ _("Research") }}</h2>
+  {% if export.research_notes %}<p class="doc-text">{{ export.research_notes }}</p>{% else %}<p class="doc-muted">{{ _("No research notes yet.") }}</p>{% endif %}
+  {% if export.sources %}<h3>{{ _("Sources") }}</h3>{{ sources_table(export.sources) }}{% endif %}
+  {% if export.pitch %}
+  <h3>{{ _("Pitch") }}: {{ export.pitch.pitch.title }}</h3>
+  {% if export.pitch.pitch.summary %}<p class="doc-text">{{ export.pitch.pitch.summary }}</p>{% endif %}
+  {% if export.pitch.notes %}<p class="doc-text">{{ export.pitch.notes }}</p>{% endif %}
+  {% if export.pitch.sources %}{{ sources_table(export.pitch.sources) }}{% endif %}
+  {% endif %}
+
+  <h2>{{ _("Screenplay") }}</h2>
+  {% if export.screenplay.text %}<pre class="doc-script">{{ export.screenplay.text }}</pre>{% else %}<p class="doc-muted">{{ _("No screenplay yet.") }}</p>{% endif %}
+
+  {% if export.short_script %}
+  <h2>{{ _("Short script") }}</h2>
+  <table>
+    <thead><tr><th>{{ _("Time") }}</th><th>{{ _("Function") }}</th><th>{{ _("Speech") }}</th></tr></thead>
+    <tbody>
+    {% for block in export.short_script.blocks %}
+    <tr><td>{{ block.start_s }}–{{ block.end_s }} s</td><td>{{ functions[block.function] }}</td><td>{{ block.speech }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <h2>{{ _("Credits") }}</h2>
+  {% if export.credits.credits %}
+  <ol>{% for line in export.credits.credits %}<li>{{ line.text }} · <span class="doc-link">{{ line.url }}</span></li>{% endfor %}</ol>
+  {% else %}<p class="doc-muted">{{ _("Nothing to credit yet.") }}</p>{% endif %}
+  {% if export.credits.warnings %}<p class="doc-muted">{{ _("Check the rights before publishing") }}</p>{% endif %}
+</body>
+</html>

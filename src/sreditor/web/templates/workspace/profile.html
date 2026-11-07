@@ -1,0 +1,34 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% from "workspace/_classification_form.html" import group_dialog with context %}
+{% block page_title %}{{ _("Profile") }}{% endblock %}
+{% block page %}
+{% set may_edit = can("write_editorial") %}
+{% call ui.page_header(_("Profile"), _("What kind of videos the channel means to make, next to what its classified episodes show.")) %}{% endcall %}
+{{ ui.form_error(errors) }}
+{% if drift %}
+{% call ui.alert("info") %}
+  <p><strong>{{ _("The episodes drift from the profile") }}</strong></p>
+  <ul>{% for line in drift %}<li>{{ line }}</li>{% endfor %}</ul>
+{% endcall %}
+{% endif %}
+{% if observed.sample_size %}
+<p class="muted">{{ _("Counted over %(count)s classified episodes.", count=observed.sample_size) }}{% if observed.unreviewed %} {{ _("%(count)s of them are agent proposals nobody confirmed yet.", count=observed.unreviewed) }}{% endif %}</p>
+{% else %}
+<p class="muted">{{ _("No episode is classified yet, so there is nothing to compare.") }}</p>
+{% endif %}
+{% for group in groups %}
+{% call ui.panel(group.title, id="group-" ~ group.key) %}
+  {% call(row) ui.items(comparison[group.key], group.title) %}
+    {{ ui.item_main(row.label, _("Declared: %(values)s", values=row.declared or "—")) }}
+    {% call ui.item_side() %}{{ ui.meta(_("Episodes: %(values)s", values=row.observed or "—")) }}{% endcall %}
+  {% endcall %}
+  {% if may_edit %}
+  {% call ui.panel_actions() %}{{ ui.dialog_button("edit-" ~ group.key, _("Edit"), variant="ghost", size="small") }}{% endcall %}
+  {% endif %}
+{% endcall %}
+{% endfor %}
+{% if may_edit %}
+{% for group in groups %}{{ group_dialog(group, form_link, profile.revision, errors, _("Save")) }}{% endfor %}
+{% endif %}
+{% endblock %}

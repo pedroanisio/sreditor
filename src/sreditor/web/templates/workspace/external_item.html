@@ -1,0 +1,86 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% from "workspace/_external_item_form.html" import item_fields with context %}
+{% block page_title %}{{ item.title }} · {{ _("Third-party media") }}{% endblock %}
+{% block page %}
+{% set may_write = can("write_content") %}
+{% set too_large = _("This file is larger than %(size)s MB.", size=max_megabytes) %}
+{% set copy_link = item_link ~ "/copy" %}
+{{ ui.back_link(library_link, _("Third-party media")) }}
+{% call ui.page_header(item.title, _(kind_labels[item.kind]) ~ (" · " ~ item.creator if item.creator else "")) %}
+  {{ ui.badge(_(rights_labels[item.rights]), rights_tones[item.rights]) }}
+  {% if may_write %}{{ ui.dialog_button("edit-item", _("Edit"), variant="ghost") }}{% endif %}
+  {{ ui.link_button(channel_link ~ "/items/external_media/" ~ item.id, _("Context"), variant="ghost") }}
+{% endcall %}
+{{ ui.form_error(errors) }}
+{% call ui.panel(_("Details"), id="details") %}
+  {% set license = item.license_name or (item.license_url | string if item.license_url else "") %}
+  {{ ui.facts([(_("Link"), item.url | string)]
+    + ([(_("Published on"), _.day(item.published_on))] if item.published_on else [])
+    + [(_("Seen on"), _.day(item.accessed_on))]
+    + ([(_("License"), license)] if license else [])
+    + [(_("Credit line"), item.attribution or _("None yet."))]
+    + ([(_("Why the use is allowed"), item.rights_note)] if item.rights_note else [])) }}
+  {% call ui.panel_actions() %}
+    {{ ui.link_button(item.url | string, _("Open the link"), variant="ghost", size="small") }}
+    {% if item.license_url %}{{ ui.link_button(item.license_url | string, _("Open the license"), variant="ghost", size="small") }}{% endif %}
+  {% endcall %}
+{% endcall %}
+{% call ui.panel(_("Copy"), id="copy") %}
+  {% if item.copy_file %}
+  {% set media_type = item.copy_file.media_type %}
+  {% if item.copy_file.is_viewable_model() %}{{ ui.model_viewer(copy_link, model_formats[media_type], item.title, viewer_texts) }}
+  {% elif not item.copy_file.is_inline() %}
+  {% elif media_type.startswith("image/") %}{{ ui.preview(copy_link, item.title) }}
+  {% elif media_type.startswith("video/") or media_type.startswith("audio/") %}{{ ui.player(copy_link, media_type, item.title) }}{% endif %}
+  {% call ui.panel_actions() %}
+    {{ ui.meta(item.copy_file.size_bytes | filesizeformat) }}
+    {{ ui.link_button(copy_link, _("Download"), variant="ghost", size="small", download=not item.copy_file.is_inline()) }}
+    {% if may_write %}
+    {{ ui.dialog_button("upload-copy", _("Replace copy"), variant="ghost", size="small") }}
+    {{ ui.confirm(_("Remove copy"), _("Remove the uploaded copy? The item and its link stay."), copy_link ~ "/remove", csrf_field, csrf_token, _("Remove copy"), fields=[("revision", item.revision)]) }}
+    {% endif %}
+  {% endcall %}
+  {% else %}
+  <p class="muted">{{ _("No copy kept. Upload one you are allowed to keep, so the episode does not depend on the link.") }}</p>
+  {% if may_write %}{% call ui.panel_actions() %}{{ ui.dialog_button("upload-copy", _("Upload copy"), plus=true) }}{% endcall %}{% endif %}
+  {% endif %}
+{% endcall %}
+{% call ui.panel(_("Used in"), id="episodes") %}
+  {% if episodes %}
+  {% call(entry) ui.items(episodes, _("Used in")) %}
+    {% set number, link = entry %}
+    {{ ui.item_main("#" ~ number, "", link) }}
+  {% endcall %}
+  {% else %}
+  <p class="muted">{{ _("No episode uses it yet.") }}</p>
+  {% endif %}
+{% endcall %}
+{% if can("write_channel") %}
+{% call ui.panel(_("Remove from the library"), id="danger") %}
+  <p class="muted">{{ _("Only an item no episode uses can be removed.") }}</p>
+  {% call ui.panel_actions() %}
+    {{ ui.confirm(_("Remove item"), _("Remove this item from the channel's third-party media?"), item_link ~ "/delete", csrf_field, csrf_token, _("Remove item"), fields=[("revision", item.revision)]) }}
+  {% endcall %}
+{% endcall %}
+{% endif %}
+{% if may_write %}
+{% set is_edit = dialog == "edit-item" %}
+{% set stored = {"kind": item.kind.value, "title": item.title, "url": item.url | string, "creator": item.creator, "published_on": item.published_on.isoformat() if item.published_on else "", "accessed_on": item.accessed_on.isoformat(), "rights": item.rights.value, "license_name": item.license_name, "license_url": (item.license_url | string) if item.license_url else "", "attribution": item.attribution, "rights_note": item.rights_note} %}
+{% call ui.dialog("edit-item", item.title, _("Close"), open=is_edit) %}
+  {% call ui.form(item_link, csrf_field, csrf_token) %}
+    {{ ui.hidden("revision", item.revision) }}
+    {{ item_fields(sent if is_edit else stored, errors if is_edit else {}, kind_options, rights_options, title_limit, credit_limit, note_limit, "edit") }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Save changes")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% set is_upload = dialog == "upload-copy" %}
+{% call ui.dialog("upload-copy", _("Upload copy"), _("Close"), open=is_upload) %}
+  {% call ui.form(copy_link, csrf_field, csrf_token, upload=true) %}
+    {{ ui.hidden("revision", item.revision) }}
+    {{ ui.file_field("file", _("File"), errors if is_upload else {}, accept=accept, hint=formats ~ " · " ~ _("Up to %(size)s MB each.", size=max_megabytes), id="copy-file", max_bytes=max_bytes, too_large=too_large) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Upload")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% endif %}
+{% endblock %}

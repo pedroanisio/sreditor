@@ -1,4 +1,4 @@
-"""A channel's library: the characters, locations and visual styles its episodes share.
+"""A channel's library: the characters, locations, visual styles and props its episodes share.
 
 An episode refers to a character or location by name: one who speaks in its screenplay, or a
 place a scene heading names, matches the entry whose name is the same ignoring case and spacing
@@ -35,6 +35,7 @@ class LibraryKind(StrEnum):
     CHARACTER = "character"
     LOCATION = "location"
     STYLE = "style"
+    PROP = "prop"
 
 
 class EntryInput(BaseModel):

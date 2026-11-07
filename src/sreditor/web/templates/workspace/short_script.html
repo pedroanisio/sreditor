@@ -1,0 +1,116 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% block page_title %}{{ _("Short script") }} · {{ episode.title }}{% endblock %}
+{% block page %}
+{% set may_write = can("write_content") %}
+{% set lead = _("A script for vertical video: timed blocks, what each one says and the words on screen.") %}
+{% include "workspace/_episode_header.html" %}
+{{ ui.form_error(errors) }}
+{% if warnings %}
+{% call ui.alert("info") %}
+  <p><strong>{{ _("Worth a look before recording") }}</strong></p>
+  <ul>{% for text in warnings %}<li>{{ text }}</li>{% endfor %}</ul>
+{% endcall %}
+{% endif %}
+{% if may_write %}
+{% call ui.form(script_link, csrf_field, csrf_token) %}
+  {{ ui.hidden("revision", script.revision) }}
+  {{ ui.hidden("block_count", blocks | length) }}
+  {{ ui.hidden("text_count", texts | length) }}
+  {% call ui.panel(_("Length and voice"), id="voice-choice") %}
+    {% call ui.fields_row() %}
+      {{ ui.field("duration_s", _("Length in seconds"), errors, value=duration, hint=_("How long the video runs.")) }}
+      {{ ui.select("language", _("Language"), language_options, errors, value=voice_values.language) }}
+    {% endcall %}
+    {{ ui.select("model", _("Voice model"), model_options, errors, value=voice_values.model, hint=_("v3 understands every voice tag; v2 keeps only timed pauses.")) }}
+    {% if voices is not none %}
+    {{ ui.select("voice_id", _("Voice"), voice_options, errors, value=voice_values.voice_id) }}
+    {% else %}
+    {{ ui.field("voice_id", _("ElevenLabs voice id"), errors, value=voice_values.voice_id, required=false, hint=voices_note or _("The id of the ElevenLabs voice that speaks the script.")) }}
+    {% endif %}
+  {% endcall %}
+  {% call ui.panel(_("Blocks"), id="blocks") %}
+    <p class="muted">{{ _("Each block runs from its start to its end. Clear a block's speech to remove it; the empty block at the end adds a new one.") }}</p>
+    {% for row in blocks %}
+    {% set prefix = "block-" ~ loop.index0 ~ "-" %}
+    {% call ui.subsection(_("Block %(number)s", number=loop.index) if row.speech else _("New block"), "block-" ~ loop.index0) %}
+      {% call ui.fields_row() %}
+        {{ ui.field(prefix ~ "start_s", _("Starts at (s)"), errors, value=row.start_s, required=false) }}
+        {{ ui.field(prefix ~ "end_s", _("Ends at (s)"), errors, value=row.end_s, required=false) }}
+        {{ ui.select(prefix ~ "function", _("Function"), function_options, errors, value=row.function) }}
+        {{ ui.select(prefix ~ "speaker", _("Who speaks"), speaker_options, errors, value=row.speaker or "") }}
+      {% endcall %}
+      {{ ui.hidden(prefix ~ "beats", row.beats or "") }}
+      {{ ui.textarea(prefix ~ "speech", _("Speech"), errors, value=row.speech, limit=speech_limit, rows=3, hint=_("What is said, with voice tags such as [pause:0.5] or [irony]…[/irony].")) }}
+      {% call ui.fields_row() %}
+        {{ ui.select(prefix ~ "reaction", _("Expected reaction"), reaction_options, errors, value=row.reaction) }}
+        {{ ui.select(prefix ~ "intensity", _("Intensity"), intensity_options, errors, value=row.intensity) }}
+      {% endcall %}
+      {{ ui.field(prefix ~ "note", _("What should click for the viewer"), errors, value=row.note, required=false) }}
+    {% endcall %}
+    {% endfor %}
+  {% endcall %}
+  {% call ui.panel(_("On-screen text"), id="screen-texts") %}
+    <p class="muted">{{ _("Words on screen carry the video for people watching without sound.") }}</p>
+    {% for row in texts %}
+    {% set prefix = "text-" ~ loop.index0 ~ "-" %}
+    {% call ui.subsection(_("Text %(number)s", number=loop.index) if row.text else _("New text"), "text-" ~ loop.index0) %}
+      {{ ui.field(prefix ~ "text", _("Text"), errors, value=row.text, maxlength=screen_text_limit, required=false) }}
+      {% call ui.fields_row() %}
+        {{ ui.select(prefix ~ "shown", _("Shown"), shown_options, errors, value=row.shown) }}
+        {{ ui.field(prefix ~ "start_s", _("From (s)"), errors, value=row.start_s, required=false) }}
+        {{ ui.field(prefix ~ "end_s", _("Until (s)"), errors, value=row.end_s, required=false) }}
+      {% endcall %}
+    {% endcall %}
+    {% endfor %}
+    {% call ui.panel_actions() %}{{ ui.button(_("Save short script")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% else %}
+{% call ui.panel(_("Blocks"), id="blocks") %}
+  {% if script.blocks %}
+  {% call(block) ui.items(script.blocks, _("Blocks")) %}
+    {% call ui.item_body() %}
+      <strong>{{ "%g" | format(block.start_s) }}–{{ "%g" | format(block.end_s) }} s</strong>
+      {{ ui.meta(_(function_labels[block.function])) }}
+      {{ ui.text_block(block.speech) }}
+    {% endcall %}
+  {% endcall %}
+  {% else %}
+  <p class="muted">{{ _("No short script yet.") }}</p>
+  {% endif %}
+{% endcall %}
+{% endif %}
+{% call ui.panel(_("Voice-over"), id="voice-over") %}
+  {% if errors.get("voice") %}{% call ui.alert("error") %}{{ errors["voice"] }}{% endcall %}{% endif %}
+  {% if take %}
+  <p><strong>{{ _("Latest take") }}</strong> {{ ui.meta(_("%(seconds)s s", seconds="%.1f" | format(take.duration_s))) }}</p>
+  {{ ui.player(take_file, "audio/mpeg", _("Latest take")) }}
+  {% if take.suggested %}
+  {{ ui.facts(take_times) }}
+  {% if may_write %}
+  {% call ui.form(script_link ~ "/timings", csrf_field, csrf_token) %}
+    {{ ui.hidden("revision", script.revision) }}
+    {{ ui.hidden("take_key", take.key) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Use these times"), variant="ghost") }}{% endcall %}
+  {% endcall %}
+  {% endif %}
+  {% endif %}
+  {% else %}
+  <p class="muted">{{ _("No voice-over generated yet.") }}</p>
+  {% endif %}
+  {% if may_generate %}
+  {% call ui.form(script_link ~ "/voice-over", csrf_field, csrf_token) %}
+    <p class="muted">{{ _("Speaks the saved script with ElevenLabs and adds it to the episode's media. The same script and voice reuse the last take for free.") }}</p>
+    {% call ui.panel_actions() %}{{ ui.button(_("Generate voice-over")) }}{% endcall %}
+  {% endcall %}
+  {% endif %}
+{% endcall %}
+{% call ui.panel(_("Voice tags"), id="voice-tags") %}
+  {% for class_label, entries in tag_guide %}
+  {% call ui.subsection(class_label, "tags-" ~ loop.index) %}
+    {{ ui.facts(entries) }}
+  {% endcall %}
+  {% endfor %}
+{% endcall %}
+{% endblock %}

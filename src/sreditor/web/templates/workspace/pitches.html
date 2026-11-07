@@ -2,7 +2,10 @@
 {% import "_ui.html" as ui %}
 {% block page_title %}{{ _("Pitches") }}{% endblock %}
 {% block page %}
-{% call ui.page_header(_("Pitches"), _("Story ideas for the channel, each with its own research. An episode can use one; several episodes can share it.")) %}{% endcall %}
+{% set may_write = can("write_content") %}
+{% call ui.page_header(_("Pitches"), _("Story ideas for the channel, each with its own research. An episode can use one; several episodes can share it.")) %}
+  {% if may_write and pitches %}{{ ui.dialog_button("new-pitch", _("New pitch"), plus=true) }}{% endif %}
+{% endcall %}
 {{ ui.tabs(status_filters, status_filter, _("Pitch status")) }}
 {{ ui.form_error(errors) }}
 {% if pitches %}
@@ -14,10 +17,12 @@
 {% endcall %}
 {% if next_cursor %}{{ ui.pager(pitches_link ~ "?cursor=" ~ next_cursor ~ ("&status=" ~ status_filter if status_filter else ""), _("More pitches")) }}{% endif %}
 {% else %}
-{% call ui.empty(_("No pitches yet"), _("Add the first pitch below. It starts as an idea.") if can("write_content") else _("Nobody has added a pitch yet.")) %}{% endcall %}
+{% call ui.empty(_("No pitches yet"), _("Add a story idea; it starts as an idea and grows its own research.") if may_write else _("Nobody has added a pitch yet.")) %}
+  {% if may_write %}{{ ui.dialog_button("new-pitch", _("New pitch"), plus=true) }}{% endif %}
+{% endcall %}
 {% endif %}
-{% if can("write_content") %}
-{% call ui.panel(_("New pitch"), id="new-pitch") %}
+{% if may_write %}
+{% call ui.dialog("new-pitch", _("New pitch"), _("Close"), open=sent is not none) %}
   {% call ui.form(pitches_link, csrf_field, csrf_token) %}
     {{ ui.field("title", _("Title"), errors, value=sent.title if sent else "", maxlength=title_limit) }}
     {{ ui.textarea("summary", _("Summary"), errors, value=sent.summary if sent else "", limit=summary_limit, rows=3, hint=_("The story in a few lines: what it is and why it matters.")) }}

@@ -1,23 +1,46 @@
 {% extends "workspace/channel.html" %}
 {% import "_ui.html" as ui %}
 {% block page_title %}{{ _("Episodes") }}{% endblock %}
+{# The board uses the whole width, so more stages fit side by side. #}
+{% block content_width %}{% if list_mode == "board" and episodes %} is-wide{% endif %}{% endblock %}
 {% block page %}
-{% call ui.page_header(_("Episodes"), _("Each episode moves from idea to published. Its research, screenplay, voice-over, sound and visuals will live here as they arrive.")) %}{% endcall %}
+{% set may_write = can("write_content") %}
+{% set list_link = channel_link ~ "/episodes" %}
+{% call ui.page_header(_("Episodes"), _("Each episode moves from idea to published. Drag a card to another stage, or pick the stage on the card.") if may_write else _("Each episode moves from idea to published.")) %}
+  {% if may_write and episodes %}{{ ui.dialog_button("new-episode", _("New episode"), plus=true) }}{% endif %}
+{% endcall %}
 {{ ui.form_error(errors) }}
 {% if episodes %}
+{{ ui.view_switch([(list_link, _("Board"), "board"), (list_link ~ "?view=list", _("List"), "list")], list_mode, _("Show episodes as")) }}
+{% if list_mode == "board" %}
+{% call ui.board(_("Episodes by stage")) %}
+  {% for stage, stage_label, rows in board %}
+  {% call ui.board_column(stage, stage_label, rows | length) %}
+    {% for row in rows %}
+    {% call ui.board_card("#" ~ row.number ~ " · " ~ row.title, row.summary | truncate(90), list_link ~ "/" ~ row.number, movable=may_write) %}
+      {% if may_write %}{{ ui.board_move(list_link ~ "/" ~ row.number ~ "/move", csrf_field, csrf_token, stage_options, row.status, "stage-" ~ row.number, _("Stage of episode %(number)s", number=row.number), _("Move")) }}{% endif %}
+    {% endcall %}
+    {% endfor %}
+  {% endcall %}
+  {% endfor %}
+{% endcall %}
+{% else %}
 {% call(row) ui.items(episodes, _("Episodes")) %}
-  {{ ui.item_main("#" ~ row.number ~ " · " ~ row.title, row.summary | truncate(120), channel_link ~ "/episodes/" ~ row.number) }}
+  {{ ui.item_main("#" ~ row.number ~ " · " ~ row.title, row.summary | truncate(120), list_link ~ "/" ~ row.number) }}
   {% call ui.item_side() %}
     {{ ui.badge(_(episode_status_labels[row.status]), episode_status_tones[row.status]) }}
   {% endcall %}
 {% endcall %}
-{% if next_cursor %}{{ ui.pager(channel_link ~ "/episodes?cursor=" ~ next_cursor, _("More episodes")) }}{% endif %}
-{% else %}
-{% call ui.empty(_("No episodes yet"), _("Add the first episode below. It starts as an idea.") if can("write_content") else _("Nobody has added an episode yet.")) %}{% endcall %}
+{% if next_cursor %}{{ ui.pager(list_link ~ "?view=list&cursor=" ~ next_cursor, _("More episodes")) }}{% endif %}
 {% endif %}
-{% if can("write_content") %}
-{% call ui.panel(_("New episode"), id="new-episode") %}
-  {% call ui.form(channel_link ~ "/episodes", csrf_field, csrf_token) %}
+{% else %}
+{% call ui.empty(_("No episodes yet"), _("Add the first episode. It starts as an idea.") if may_write else _("Nobody has added an episode yet.")) %}
+  {% if may_write %}{{ ui.dialog_button("new-episode", _("New episode"), plus=true) }}{% endif %}
+{% endcall %}
+{% endif %}
+{% if may_write %}
+{% call ui.dialog("new-episode", _("New episode"), _("Close"), open=sent is not none) %}
+  {% call ui.form(list_link, csrf_field, csrf_token) %}
     {{ ui.field("title", _("Title"), errors, value=sent.title if sent else "", maxlength=title_limit) }}
     {{ ui.textarea("summary", _("Summary"), errors, value=sent.summary if sent else "", limit=summary_limit, rows=3, hint=_("What the episode is about, in a few lines.")) }}
     {% call ui.panel_actions() %}{{ ui.button(_("Add episode")) }}{% endcall %}

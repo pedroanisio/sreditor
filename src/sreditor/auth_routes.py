@@ -24,7 +24,7 @@ from sreditor.deps import (
 from sreditor.members import Role
 from sreditor.operations import require_scope
 from sreditor.profile import PasswordChange, WrongCurrentPassword
-from sreditor.tokens import Scope
+from sreditor.tokens import ApiToken, Scope
 from sreditor.users import DisplayName, Password, User
 
 Token = Annotated[str, Field(min_length=1, max_length=256)]
@@ -114,9 +114,12 @@ class Me(BaseModel):
     channels: dict[str, Role]
 
 
-def profile_of(app: ServicesDep, user: User) -> Me:
-    """The user with their channel roles."""
-    return Me(user=user, channels=app.members.roles_of(user.id))
+def profile_of(app: ServicesDep, user: User, token: ApiToken | None = None) -> Me:
+    """The user with their channel roles, only those a limited token reaches."""
+    roles = app.members.roles_of(user.id)
+    if token is not None:
+        roles = {slug: role for slug, role in roles.items() if token.reaches(slug)}
+    return Me(user=user, channels=roles)
 
 
 @router.post(
@@ -200,8 +203,9 @@ def get_me(request: Request, user: CurrentUser, app: ServicesDep) -> Me:
 
     It lists channels, so a token needs channels:read, as list_channels does.
     """
-    require_scope(request_token(request), Scope.CHANNELS_READ)
-    return profile_of(app, user)
+    token = request_token(request)
+    require_scope(token, Scope.CHANNELS_READ)
+    return profile_of(app, user, token)
 
 
 @router.patch("/me", summary="Update your profile")

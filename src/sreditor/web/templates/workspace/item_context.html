@@ -1,0 +1,63 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% block page_title %}{{ item.label }} · {{ _("Context") }}{% endblock %}
+{% block page %}
+{% set may_write = can("write_content") %}
+{{ ui.back_link(own_link, item.label) }}
+{% call ui.page_header(_("Context"), item.label) %}
+  {{ ui.badge(_(kind_labels[item.kind])) }}
+{% endcall %}
+{{ ui.form_error(errors) }}
+{% call ui.panel(_("What, who, where, when, why, how"), id="answers") %}
+  {% if may_write %}
+  {% call ui.form(page_link ~ "/context", csrf_field, csrf_token) %}
+    {{ ui.hidden("revision", answers.revision) }}
+    {% for question in questions %}
+    {{ ui.textarea(question.value, _(question_labels[question]), errors, value=values[question.value], limit=answer_limit, rows=2, hint=_(question_hints[question])) }}
+    {% endfor %}
+    {% call ui.panel_actions() %}{{ ui.button(_("Save answers")) }}{% endcall %}
+  {% endcall %}
+  {% else %}
+  {% set shown = namespace(pairs=[]) %}
+  {% for question in questions %}{% if answers[question.value] %}{% set shown.pairs = shown.pairs + [(_(question_labels[question]), answers[question.value])] %}{% endif %}{% endfor %}
+  {% if shown.pairs %}{{ ui.facts(shown.pairs) }}{% else %}<p class="muted">{{ _("No answers yet.") }}</p>{% endif %}
+  {% endif %}
+{% endcall %}
+{% call ui.panel(_("Links"), id="links") %}
+  <p class="muted">{{ _("Other items of the channel that answer a question about this one, such as who appears in it.") }}</p>
+  {% if links %}
+  {% call(link) ui.items(links, _("Links")) %}
+    {{ ui.item_main(link.target.label, _(question_labels[link.question]) ~ " · " ~ _(kind_labels[link.target.kind]) ~ (" · " ~ link.note if link.note else ""), href=item_links[(link.target.kind, link.target.id)]) }}
+    {% if may_write %}
+    {% call ui.item_side() %}
+      {{ ui.confirm(_("Remove"), _("Remove this link? Neither item changes."), page_link ~ "/links/remove", csrf_field, csrf_token, _("Remove link"), fields=[("link_id", link.id)]) }}
+    {% endcall %}
+    {% endif %}
+  {% endcall %}
+  {% if links_next %}{{ ui.pager(page_link ~ "?links_cursor=" ~ links_next, _("More links")) }}{% endif %}
+  {% else %}
+  <p class="muted">{{ _("No links yet.") }}</p>
+  {% endif %}
+  {% if may_write %}{% call ui.panel_actions() %}{{ ui.dialog_button("new-link", _("Add a link"), plus=true) }}{% endcall %}{% endif %}
+{% endcall %}
+{% call ui.panel(_("Mentioned in"), id="mentions") %}
+  {% if mentions %}
+  {% call(link) ui.items(mentions, _("Mentioned in")) %}
+    {{ ui.item_main(link.source.label, _(question_labels[link.question]) ~ " · " ~ _(kind_labels[link.source.kind]) ~ (" · " ~ link.note if link.note else ""), href=item_links[(link.source.kind, link.source.id)]) }}
+  {% endcall %}
+  {% if mentions_next %}{{ ui.pager(page_link ~ "?mentions_cursor=" ~ mentions_next, _("More mentions")) }}{% endif %}
+  {% else %}
+  <p class="muted">{{ _("No other item links here yet.") }}</p>
+  {% endif %}
+{% endcall %}
+{% if may_write %}
+{% call ui.dialog("new-link", _("Add a link"), _("Close"), open=sent_link is not none) %}
+  {% call ui.form(page_link ~ "/links", csrf_field, csrf_token) %}
+    {{ ui.select("question", _("Answers the question"), question_options, errors, value=sent_link.question if sent_link else "who") }}
+    {{ ui.select("target", _("Item"), target_options, errors, value=sent_link.target if sent_link else "", hint=_("A character, location, pitch, episode, source or media of this channel.")) }}
+    {{ ui.textarea("note", _("Note"), errors, value=sent_link.note if sent_link else "", limit=note_limit, rows=2, hint=_("Optional: how they relate.")) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Add link")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% endif %}
+{% endblock %}

@@ -11,12 +11,35 @@
 {% set kind = section_row.kind.value %}
 {% set is_sent = sent and sent.kind == kind %}
 {% set kind_errors = errors if is_sent else {} %}
+{% set dialog_id = ("edit-" if section_row.is_single else "add-") ~ kind %}
 {% call ui.panel(_(section_row.label), id="kind-" ~ kind) %}
-  <p>{{ _(section_row.hint) }}</p>
+  <p class="muted">{{ _(section_row.hint) }}</p>
+  {% if section_row.is_single %}
+  {# One text per kind: read it here, change it in a dialog, so it shows once and in full. #}
+  {% if section_row.entries %}
+  {% set guideline, source = section_row.entries[0] %}
+  {{ ui.text_block(guideline.text) }}
+  {% call ui.panel_actions() %}
+    {{ ui.badge(_(source), "accent" if source == here else "") }}
+    {% if may_write %}
+    {% if source == here %}
+    {{ ui.dialog_button(dialog_id, _("Edit"), variant="ghost", size="small") }}
+    {% elif platform %}
+    {{ ui.dialog_button(dialog_id, _("Replace on %(platform)s", platform=platform_names[platform]), variant="ghost", size="small") }}
+    {% else %}
+    {{ ui.dialog_button(dialog_id, _("Replace for this channel"), variant="ghost", size="small") }}
+    {% endif %}
+    {% endif %}
+  {% endcall %}
+  {% else %}
+  <p class="muted">{{ _("Not set yet.") }}</p>
+  {% if may_write %}{% call ui.panel_actions() %}{{ ui.dialog_button(dialog_id, _("Add"), plus=true) }}{% endcall %}{% endif %}
+  {% endif %}
+  {% else %}
   {% if section_row.entries %}
   {% call(entry) ui.items(section_row.entries, _(section_row.label)) %}
     {% set guideline, source = entry %}
-    {% call ui.item_body() %}<p>{{ guideline.text }}</p>{% endcall %}
+    {% call ui.item_body() %}{{ ui.text_block(guideline.text) }}{% endcall %}
     {% call ui.item_side() %}
       {{ ui.badge(_(source), "accent" if source == here else "") }}
       {% if may_write and source == here %}
@@ -24,16 +47,31 @@
       {% endif %}
     {% endcall %}
   {% endcall %}
+  {% else %}
+  <p class="muted">{{ _("None yet.") }}</p>
   {% endif %}
-  {% if may_write %}
+  {% if may_write %}{% call ui.panel_actions() %}{{ ui.dialog_button(dialog_id, _("Add"), plus=true) }}{% endcall %}{% endif %}
+  {% endif %}
+{% endcall %}
+{% if may_write %}
+{% set inherited_text = section_row.entries[0][0].text if section_row.is_single and section_row.entries else "" %}
+{% set own = section_row.is_single and section_row.current %}
+{% call ui.dialog(dialog_id, _(section_row.label), _("Close"), open=is_sent) %}
   {% call ui.form(channel_link ~ "/editorial", csrf_field, csrf_token) %}
     {{ ui.hidden("kind", kind) }}
     {{ ui.hidden("platform", level) }}
-    {% set text = sent.text if is_sent else section_row.current %}
-    {{ ui.textarea("text", _("Change it") if section_row.is_single and section_row.current else _("Add one"), kind_errors, value=text, limit=limit, rows=3, id=kind ~ "-text") }}
-    {% call ui.panel_actions() %}{{ ui.button(_("Save") if section_row.is_single else _("Add"), variant="ghost") }}{% endcall %}
+    {% set text = sent.text if is_sent else (inherited_text if section_row.is_single else "") %}
+    {% set hint = "" if own or not section_row.is_single or not section_row.entries else (_("Saving sets it on %(platform)s only; the channel's stays as it is.", platform=platform_names[platform]) if platform else _("Saving sets it for this channel; the house rule stays as it is.")) %}
+    {{ ui.textarea("text", _(section_row.hint), kind_errors, value=text, limit=limit, rows=3, id=kind ~ "-text", hint=hint) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Save") if section_row.is_single else _("Add")) }}{% endcall %}
+  {% endcall %}
+  {% if own %}
+  {% call ui.subsection(_("Retire"), "retire-" ~ kind) %}
+    <p class="muted">{{ _("Retiring removes it from this level; what it inherits shows again.") }}</p>
+    {{ ui.confirm(_("Retire"), _("Retire this guideline? It stays in the history."), channel_link ~ "/editorial/retire", csrf_field, csrf_token, _("Retire guideline"), fields=[("statement_id", section_row.entries[0][0].id), ("platform", level)]) }}
   {% endcall %}
   {% endif %}
 {% endcall %}
+{% endif %}
 {% endfor %}
 {% endblock %}

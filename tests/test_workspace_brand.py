@@ -44,6 +44,18 @@ def test_accounts_lists_account_with_its_form(owner: TestClient) -> None:
     assert "TikTok" in page and 'id="tiktok-description"' in page and ">0/80<" in page
 
 
+def test_accounts_platform_with_logo_shows_it_from_sprite(owner: TestClient) -> None:
+    page = owner.get(f"{CHANNEL}/accounts").text
+    assert 'class="mark platform"' in page and "platforms.svg?v=" in page and "#tiktok" in page
+
+
+def test_accounts_platform_without_logo_shows_its_letter(owner: TestClient) -> None:
+    kwai = {**TIKTOK, "platform": "kwai", "revision": ""}
+    assert submit(owner, f"{CHANNEL}/accounts", kwai).status_code == 303
+    page = owner.get(f"{CHANNEL}/accounts").text
+    assert '<span class="mark" aria-hidden="true">K</span>' in page
+
+
 def test_accounts_description_over_limit_answers_422_with_count(owner: TestClient) -> None:
     data = {**TIKTOK, "description": "x" * 81, "revision": ""}
     response = submit(owner, f"{CHANNEL}/accounts", data)
@@ -318,3 +330,49 @@ def test_editorial_viewer_cannot_write(
     assert 'id="purpose-text"' not in viewer.get(f"{CHANNEL}/editorial").text
     response = submit(viewer, f"{CHANNEL}/editorial", {"kind": "pillar", "text": "Cats"})
     assert response.status_code == 403
+
+
+def test_editorial_purpose_set_here_shows_its_text_once(owner: TestClient) -> None:
+    submit(owner, f"{CHANNEL}/editorial", {"kind": "purpose", "text": "Make people laugh."})
+    page = owner.get(f"{CHANNEL}/editorial").text
+    # Once on the page and once as the dialog's starting text.
+    assert page.count("Make people laugh.") == 2 and 'data-dialog="edit-purpose"' in page
+
+
+def test_editorial_purpose_set_here_offers_retire_inside_its_dialog(owner: TestClient) -> None:
+    submit(owner, f"{CHANNEL}/editorial", {"kind": "purpose", "text": "Make people laugh."})
+    page = owner.get(f"{CHANNEL}/editorial").text
+    dialog = page.split('id="edit-purpose"')[1].split("</dialog>")[0]
+    assert "Retire guideline" in dialog
+
+
+def test_editorial_platform_tab_offers_to_replace_the_channel_guideline(
+    owner: TestClient,
+) -> None:
+    submit(owner, f"{CHANNEL}/editorial", {"kind": "voice", "text": "Dry wit.", "platform": ""})
+    page = owner.get(f"{CHANNEL}/editorial?platform=tiktok").text
+    assert "Replace on TikTok" in page and "the channel&#39;s stays as it is" in page
+
+
+def test_editorial_house_rule_single_kind_offers_to_replace_it_for_the_channel(
+    owner: TestClient, app: FastAPI
+) -> None:
+    services = app.state.services
+    document = {
+        "statement": "Be kind.",
+        "owner": {"type": "service", "id": "test"},
+        "category": "editorial.voice",
+        "priority": 1,
+    }
+    services.stmt.write("house.voice", document, services.stmt.settings.scope, None)
+    assert "Replace for this channel" in owner.get(f"{CHANNEL}/editorial").text
+
+
+def test_editorial_empty_text_reopens_its_dialog(owner: TestClient) -> None:
+    response = submit(owner, f"{CHANNEL}/editorial", {"kind": "pillar", "text": " "})
+    assert 'id="add-pillar" aria-labelledby="add-pillar-title" data-open' in response.text
+
+
+def test_editorial_without_guidelines_says_not_set(owner: TestClient) -> None:
+    page = owner.get(f"{CHANNEL}/editorial").text
+    assert "Not set yet." in page and "None yet." in page

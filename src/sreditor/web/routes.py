@@ -17,7 +17,6 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, FastAPI, Form, Query, Request, Response, status
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -36,6 +35,7 @@ from sreditor.deps import (
     start_session,
     within_rate_limit,
 )
+from sreditor.fountain import blocks
 from sreditor.i18n import BASE_LOCALE, LOCALE_NAMES, LOCALES, N_, Translator, match_locale
 from sreditor.members import Role
 from sreditor.render import PRIVACY_CATEGORY, TERMS_CATEGORY
@@ -58,17 +58,22 @@ from sreditor.web.forms import (
     token_from,
 )
 from sreditor.web.labels import platform_name
+from sreditor.web.static_assets import STATIC_DIR, STATIC_ROUTE, VersionedStaticFiles, static_url
 
 HERE = Path(__file__).parent
 TEMPLATES = Jinja2Templates(directory=HERE / "templates")
+TEMPLATES.env.globals["static_url"] = static_url
 
 # Where a signed-in visitor lands.
 APP_PATH = AFTER_SIGN_IN
 
 SECURITY_HEADERS = {
+    # blob: lets the 3D viewer read the textures packed inside a model file: three.js hands them
+    # to the browser as blob URLs that only this page's own scripts can make.
     "Content-Security-Policy": (
-        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
-        "form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"
+        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; "
+        "connect-src 'self' blob:; form-action 'self'; frame-ancestors 'none'; "
+        "base-uri 'none'; object-src 'none'"
     ),
     "X-Frame-Options": "DENY",
     "X-Content-Type-Options": "nosniff",
@@ -106,7 +111,7 @@ router = APIRouter(include_in_schema=False)
 
 def mount(app: FastAPI) -> None:
     """Serve the public pages and their vendored static assets (web.security.headers)."""
-    app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
+    app.mount(f"/{STATIC_ROUTE}", VersionedStaticFiles(directory=STATIC_DIR), name=STATIC_ROUTE)
     app.include_router(router)
 
 
@@ -682,6 +687,9 @@ DESIGN_STATES = (
 )
 
 
+DESIGN_SCREENPLAY = "INT. KITCHEN - DAY\n\nANA\n(sighing)\nIs it Monday again?\n\nCUT TO:"
+
+
 @router.get("/design")
 def design(request: Request, app: ServicesDep) -> Response:
     """Every component in each state and theme; a 404 unless SREDITOR_DEV_PAGES=true."""
@@ -697,4 +705,5 @@ def design(request: Request, app: ServicesDep) -> Response:
         colors=DESIGN_COLORS,
         spacing=DESIGN_SPACING,
         tones=DESIGN_TONES,
+        design_screenplay=blocks(DESIGN_SCREENPLAY),
     )

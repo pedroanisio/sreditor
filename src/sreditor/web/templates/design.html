@@ -53,6 +53,13 @@
   {{ ui.tags([_("editor")]) }}
   {{ ui.tags(["TikTok", "YouTube"], "outline") }}
 
+  <h4>{{ _("Pills") }}</h4>
+  {{ ui.pills(theme ~ "-tone", _("Tones"), [("state:unknown", _("Not classified yet")), ("serious", _("Serious")), ("ironic", _("Ironic")), ("warm", _("Warm")), ("playful", _("Playful"))], {}, selected=["ironic"], single=true, muted=["state:unknown"], states={"warm": "is-hover", "playful": "is-focus"}, hint=_("Pick the main one.")) }}
+  {{ ui.pills(theme ~ "-also", _("Tones"), [("serious", _("Serious")), ("ironic", _("Ironic")), ("warm", _("Warm"))], {theme ~ "-also": _("At most two secondary values")}, selected=["serious", "ironic", "warm"]) }}
+
+  <h4>{{ _("Tag facts") }}</h4>
+  {{ ui.tag_facts([(_("Tones"), [(_("Ironic"), ""), (_("Playful"), "outline")]), (_("Genres"), [])], _("Not classified yet")) }}
+
   <h4>{{ _("Lists") }}</h4>
   {{ ui.facts([(_("Role"), _("editor")), (_("For"), "ana@example.com")]) }}
   {{ ui.rows([("funny-memes", _("editor")), ("daily-news", _("viewer"))]) }}
@@ -68,7 +75,7 @@
   {{ ui.select(theme ~ "-status", _("Status"), [("draft", _("Draft")), ("active", _("Active"))], {}, value="active", hint=_("Only active channels are ready to publish.")) }}
   {{ ui.select(theme ~ "-status-focus", _("Focus"), [("draft", _("Draft"))], {}, state="is-focus") }}
   {{ ui.select(theme ~ "-role", _("Role"), [("viewer", _("viewer"))], {theme ~ "-role": _("Choose a role.")}) }}
-  {{ ui.textarea(theme ~ "-bio", _("Description"), {}, value="Memes every day.", limit=80) }}
+  {{ ui.textarea(theme ~ "-bio", _("Description"), {}, value="Memes every day.", limit=20) }}
   {{ ui.textarea(theme ~ "-over", _("Description"), {theme ~ "-over": _("%(platform)s allows %(limit)s characters; this has %(count)s.", platform="TikTok", limit=10, count=16)}, value="Memes every day.", limit=10) }}
   {{ ui.textarea(theme ~ "-script", _("Screenplay"), {}, value="INT. KITCHEN - DAY\n\nANA\nIs it Monday again?", limit=200, rows=5, mono=true) }}
   {{ ui.file_field(theme ~ "-logo", _("Upload"), {}, accept="image/png", hint="PNG, JPG, WEBP") }}
@@ -90,9 +97,16 @@
   </div>
   {{ ui.text_block(_("Facts, open questions and leads. Cite each fact's source below.") ~ "\n" ~ _("No sources yet.")) }}
   {{ ui.text_block("INT. KITCHEN - DAY\n\nANA\nIs it Monday again?", mono=true) }}
+  {% call ui.split() %}
+    {% call ui.panel(_("Screenplay")) %}{{ ui.text_block("INT. KITCHEN - DAY\n\nANA\n(sighing)\nIs it Monday again?\n\nCUT TO:", mono=true) }}{% endcall %}
+    {% call ui.panel(_("Preview")) %}{{ ui.screenplay(design_screenplay, _("The formatted screenplay shows here as you write.")) }}{% endcall %}
+  {% endcall %}
   {{ ui.numbered(["INT. KITCHEN - DAY", "EXT. BUS STOP - MORNING"], _("Scenes")) }}
   {{ ui.player("/static/design-sample.wav", "audio/wav", _("Voice-over")) }}
   {{ ui.player("/static/design-sample.wav", "video/webm", _("Visual effects")) }}
+  {% set viewer_texts = {"loading": _("Loading the 3D model…"), "ready": _("Drag to turn, scroll or pinch to zoom."), "error": _("This model cannot be shown here. Download it to open it."), "reset": _("Reset view")} %}
+  {{ ui.model_viewer("/static/design-sample.glb", "glb", _("3D model"), viewer_texts) }}
+  {{ ui.model_viewer("/static/design-sample.glb", "glb", _("3D model"), viewer_texts, state="is-error") }}
   <div class="row">
     {% call ui.menu(_("Channels")) %}<a href="/design">Funny Memes</a>{% endcall %}
     {% call ui.menu(_("Hover"), state="is-hover") %}<a href="/design">Funny Memes</a>{% endcall %}
@@ -102,11 +116,11 @@
   </div>
   <div class="row">
     {% call ui.menu("Ana", up=true, avatar=true, wide=true) %}<a href="/design">{{ _("Account") }}</a>{% endcall %}
-    {{ ui.mark("Funny Memes") }} {{ ui.mark("Ana", round=true) }}
+    {{ ui.mark("Funny Memes") }} {{ ui.mark("Ana", round=true) }} {{ ui.platform_mark("tiktok", "TikTok", static_url("platforms.svg")) }} {{ ui.platform_mark("youtube", "YouTube", static_url("platforms.svg")) }} {{ ui.platform_mark("kwai", "Kwai", static_url("platforms.svg")) }}
     {{ ui.dialog_button(theme ~ "-dialog", _("Add account"), plus=true) }}
     {{ ui.dialog_button(theme ~ "-dialog", _("Edit"), variant="ghost", size="small") }}
   </div>
-  {{ ui.sidenav([("/design", _("Overview"), "overview"), ("/design", _("Accounts"), "accounts"), ("/design", _("Brand"), "brand"), ("/design", _("Editorial"), "editorial"), ("/design", _("Pitches"), "pitches"), ("/design", _("Episodes"), "episodes"), ("/design", _("Library"), "library"), ("/design", _("Members"), "members"), ("/design", _("Settings"), "settings"), ("/design", _("Channels"), "channels"), ("/design", _("Account"), "account"), ("/design", _("API tokens"), "tokens")], "accounts", _("Channel sections"), states={"overview": "is-hover", "brand": "is-active", "editorial": "is-focus"}) }}
+  {{ ui.sidenav([(_("Channel"), [("/design", _("Overview"), "overview"), ("/design", _("Accounts"), "accounts"), ("/design", _("Brand"), "brand"), ("/design", _("Editorial"), "editorial")]), (_("Production"), [("/design", _("Pitches"), "pitches"), ("/design", _("Episodes"), "episodes"), ("/design", _("Library"), "library")]), (_("Team"), [("/design", _("Members"), "members"), ("/design", _("Settings"), "settings")]), ("", [("/design", _("Channels"), "channels"), ("/design", _("Account"), "account"), ("/design", _("API tokens"), "tokens")])], "accounts", _("Channel sections"), states={"overview": "is-hover", "brand": "is-active", "editorial": "is-focus"}) }}
   <div class="row">
     {% call ui.menu(_("Pressed"), state="is-active") %}<a href="/design">Funny Memes</a>{% endcall %}
     {{ ui.icon_button("close", _("Close"), type="button") }}
@@ -123,9 +137,26 @@
     {{ ui.select(theme ~ "-role", _("Role"), [("editor", "Editor")], {}, label_hidden=true) }}
   {% endcall %}
   <div>
+    {{ ui.back_link("/design", _("Episodes")) }}
     {% call ui.page_header(_("Accounts"), _("The channel's profile on each platform.")) %}{{ ui.button(_("Add account"), size="small", type="button") }}{% endcall %}
     {{ ui.tabs([("/design", _("Channel"), ""), ("/design", "TikTok", "tiktok")], "tiktok", _("Brand kit levels")) }}
     {{ ui.tabs([("/design", _("Hover"), "hover"), ("/design", _("Focus"), "focus"), ("/design", _("Pressed"), "pressed")], "", _("States"), states={"hover": "is-hover", "focus": "is-focus", "pressed": "is-active"}) }}
+    {{ ui.tabs([("/design", _("Details"), "details"), ("/design", _("Research"), "research"), ("/design", _("Media"), "media")], "research", _("Episode pages"), counts={"research": 3, "media": 12}) }}
+    {{ ui.steps([("idea", _("Idea")), ("research", _("Research")), ("script", _("Script")), ("production", _("Production")), ("published", _("Published"))], "script", _("Production stage")) }}
+    {{ ui.autosave_status(_("Saving…"), _("Saved at %(time)s"), _("Could not save. Press the button to try again."), _("Someone else changed this text. Reload the page to see their changes; saving as you type is paused."), _("This text is over the limit, so it was not saved. Shorten it."), state="is-saved") }}
+    {{ ui.search_trigger("/design", _("Search…"), "Ctrl K") }}
+    {{ ui.search_trigger("/design", _("Hover"), "Ctrl K", state="is-hover") }}
+    {{ ui.search_box("/design", _("Search channels, episodes and pitches"), "pilot", id=theme ~ "-search") }}
+    {{ ui.search_results([(_("Episodes"), [("/design", "#1 · Pilot", "Funny memes")]), (_("Pitches"), [("/design", "Pilot ideas", "Funny memes")])], "", "pilot", id=theme ~ "-search") }}
+    {{ ui.search_results([], _("Nothing matches “%(query)s”.", query="xyz"), "xyz", id=theme ~ "-search-empty") }}
+    {{ ui.view_switch([("/design", _("Board"), "board"), ("/design", _("List"), "list")], "board", _("Show episodes as")) }}
+    {% call ui.board(_("Episodes by stage")) %}
+      {% call ui.board_column("idea", _("Idea"), 2) %}
+        {% call ui.board_card("#1 · Pilot", "Why Mondays hurt.", "/design", movable=true) %}{{ ui.board_move("/design", csrf_field, csrf_token, [("idea", _("Idea")), ("script", _("Script"))], "idea", "design-stage-1", _("Stage of episode %(number)s", number=1), _("Move")) }}{% endcall %}
+        {% call ui.board_card("#2 · " ~ _("Hover"), "", "/design", state="is-hover") %}{% endcall %}
+      {% endcall %}
+      {% call ui.board_column("script", _("Script"), 0) %}{% endcall %}
+    {% endcall %}
     {% call ui.panel(_("Getting ready"), id=theme ~ "-ready") %}
       {{ ui.checklist([(true, _("Add an account"), "/design"), (false, _("Upload an avatar"), "/design"), (false, _("Set the channel to active"), "")]) }}
       {% call ui.panel_actions() %}{{ ui.button(_("Save changes"), type="button") }}{% endcall %}
@@ -140,7 +171,7 @@
     {% call ui.panel(_("Files"), id=theme ~ "-files") %}
       {% call(entry) ui.tiles([("avatar", _("Avatar")), ("video", _("Intro video")), ("font", _("Font"))], _("Files")) %}
         {% set slot, label = entry %}
-        {{ ui.tile_media(url_for("static", path="icon.svg") if slot == "avatar" else "", label, slot if slot != "avatar" else "image") }}
+        {{ ui.tile_media(static_url("icon.svg") if slot == "avatar" else "", label, slot if slot != "avatar" else "image") }}
         {% call ui.tile_body(label) %}
           {% if slot == "avatar" %}<p>PNG · 400 × 400</p>{{ ui.inherited(_("From the channel")) }}{% else %}<p>{{ _("Not set") }}</p>{% endif %}
         {% endcall %}
@@ -179,7 +210,7 @@
   {% endcall %}
 
   <h2>{{ _("Page shell") }}</h2>
-  {% call ui.site_header(url_for('static', path='icon.svg')) %}
+  {% call ui.site_header(static_url('icon.svg')) %}
     <a href="/design">{{ _("Sign in") }}</a>
     {{ ui.link_button("/design", _("Get started"), size="small") }}
   {% endcall %}

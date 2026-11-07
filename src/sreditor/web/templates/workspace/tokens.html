@@ -14,7 +14,7 @@
 {% call ui.panel(_("Your tokens"), id="tokens") %}
   {% if tokens %}
   {% call(token) ui.items(tokens, _("Your tokens")) %}
-    {{ ui.item_main(token.name, token.prefix ~ "… · " ~ (token.scopes | join(", "))) }}
+    {{ ui.item_main(token.name, token.prefix ~ "… · " ~ (token.scopes | join(", ")) ~ " · " ~ ((token.channels | join(", ")) if token.channels is not none else _("All channels"))) }}
     {% call ui.item_side() %}
       {% if token.revoked_at %}
       {{ ui.badge(_("Revoked")) }}
@@ -33,6 +33,7 @@
   {% call ui.form("/app/account/tokens", csrf_field, csrf_token) %}
     {{ ui.field("name", _("Name"), errors, value=sent.name if sent else "", maxlength=80, autocomplete="off", hint=_("What the agent is, so you recognise it later.")) }}
     {{ ui.choices("scopes", _("Permissions"), scope_choices, errors, selected=sent.scopes if sent else []) }}
+    {% if channel_choices %}{{ ui.pills("channels", _("Channels"), channel_choices, errors, selected=sent.channels if sent else [], hint=_("Pick channels to limit the token to them. With none picked, it reaches all your channels, including ones you join later.")) }}{% endif %}
     {{ ui.select("expires_in_days", _("Expires after"), day_choices, errors, value=sent.expires_in_days if sent else default_days | string) }}
     {% call ui.panel_actions() %}{{ ui.button(_("Create token")) }}{% endcall %}
   {% endcall %}

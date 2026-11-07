@@ -125,6 +125,22 @@ def test_overview_shows_sections_menu_with_current_page(owner: TestClient) -> No
     assert f'<a href="{CHANNEL}" aria-current="page">' in page and "<span>Overview</span>" in page
 
 
+def test_overview_menu_groups_sections_under_headings(owner: TestClient) -> None:
+    page = owner.get(CHANNEL).text
+    channel, production, team = (
+        page.index(f">{name}</p>") for name in ("Channel", "Production", "Team")
+    )
+    assert channel < page.index("<span>Brand</span>") < production
+    assert (
+        production < page.index("<span>Episodes</span>") < team < page.index("<span>Members</span>")
+    )
+
+
+def test_overview_menu_portuguese_translates_headings(owner: TestClient) -> None:
+    page = owner.get(f"{CHANNEL}?lang=pt-BR").text
+    assert ">Canal</p>" in page and ">Produção</p>" in page and ">Equipe</p>" in page
+
+
 def test_channel_page_non_member_answers_404(
     owner: TestClient, app: FastAPI, mailer: RecordingMailer
 ) -> None:

@@ -1,0 +1,39 @@
+/* PDF exports (rule project.export): a printed dossier, light theme, tokens only. */
+@page {
+  size: A4;
+  margin: var(--space-8) var(--space-7);
+  @bottom-right { content: counter(page) " / " counter(pages); font-size: var(--font-size-xs); color: var(--color-text-muted); }
+}
+.doc { font-family: var(--font-sans); font-size: var(--font-size-sm); line-height: var(--line-height-body); color: var(--color-text); }
+.doc h1 { font-size: var(--font-size-2xl); line-height: var(--line-height-tight); margin: var(--space-0) var(--space-0) var(--space-2); }
+.doc h2 {
+  font-size: var(--font-size-lg);
+  margin: var(--space-7) var(--space-0) var(--space-3);
+  padding-bottom: var(--space-1);
+  border-bottom: var(--border-width) solid var(--color-border);
+  break-after: avoid;
+}
+.doc h3 { font-size: var(--font-size-md); margin: var(--space-5) var(--space-0) var(--space-2); break-after: avoid; }
+.doc-eyebrow { color: var(--color-accent); font-weight: var(--font-weight-semibold); text-transform: uppercase; font-size: var(--font-size-xs); margin: var(--space-0); }
+.doc-lead { color: var(--color-text-muted); margin: var(--space-0) var(--space-0) var(--space-4); }
+.doc-muted { color: var(--color-text-muted); }
+.doc-facts { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1) var(--space-4); margin: var(--space-0); }
+.doc-facts dt { color: var(--color-text-muted); }
+.doc-facts dd { margin: var(--space-0); }
+.doc-pill {
+  display: inline-block;
+  border-radius: var(--radius-pill);
+  padding: var(--space-0) var(--space-2);
+  margin: var(--space-0) var(--space-1) var(--space-1) var(--space-0);
+  font-size: var(--font-size-xs);
+  border: var(--border-width) solid var(--color-border);
+  color: var(--color-text-muted);
+}
+.doc-pill.is-main { background: var(--color-accent-soft); color: var(--color-accent); border-color: transparent; font-weight: var(--font-weight-semibold); }
+.doc table { width: 100%; border-collapse: collapse; font-size: var(--font-size-xs); }
+.doc th { text-align: left; color: var(--color-text-muted); font-weight: var(--font-weight-semibold); }
+.doc th, .doc td { padding: var(--space-1) var(--space-2); border-bottom: var(--border-width) solid var(--color-border); vertical-align: top; }
+.doc tr { break-inside: avoid; }
+.doc-text { white-space: pre-wrap; margin: var(--space-0); }
+.doc-script { white-space: pre-wrap; font-family: var(--font-mono); font-size: var(--font-size-xs); margin: var(--space-0); }
+.doc-link { color: var(--color-accent); word-break: break-all; }

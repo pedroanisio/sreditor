@@ -11,6 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from http import HTTPStatus
+from typing import Annotated
 from urllib.parse import urlsplit
 from uuid import UUID
 
@@ -33,6 +34,7 @@ from sreditor import (
     screenplay_operations,
     waiver_operations,
 )
+from sreditor.accounts import AccountError
 from sreditor.assets import AssetRejected
 from sreditor.channels import BrandKit, Channel, Platform, PlatformAccount
 from sreditor.deps import AGENT_LIMIT_DETAIL, ChannelAccess, Services, access_for, agent_retry_after
@@ -51,6 +53,9 @@ from sreditor.episodes import (
     EpisodeNotFound,
     RevisedEpisode,
 )
+from sreditor.i18n import BASE_LOCALE, match_locale
+from sreditor.idempotency import Idempotency, request_hash
+from sreditor.idempotency_store import IdempotencyStore
 from sreditor.library import (
     EntryExists,
     EntryInput,
@@ -64,7 +69,7 @@ from sreditor.library import (
 from sreditor.library_operations import Cast, EntryChange
 from sreditor.media import MediaFile, MediaNotFound
 from sreditor.media_operations import MediaChange, MediaQuery
-from sreditor.members import Member, Permission
+from sreditor.members import Invitation, Member, Permission
 from sreditor.pagination import DEFAULT_LIMIT, Page, ToolLimit, page_after
 from sreditor.problems import ProblemError
 from sreditor.repository import AccountTaken, ChannelExists, ChannelNotFound, RevisionMismatch
@@ -77,6 +82,7 @@ from sreditor.research import (
 )
 from sreditor.research_operations import SourceChange
 from sreditor.screenplay import Screenplay, ScreenplayInput
+from sreditor.srstudio_operations import NotInLibrary
 from sreditor.store import StoreError
 from sreditor.tokens import ApiToken, is_api_token
 from sreditor.users import User
@@ -99,13 +105,25 @@ INSTRUCTIONS = (
     "with set_episode_pitch. Read its screenplay, in Fountain, with "
     "get_screenplay, which also shows which names the channel's library of characters and "
     "locations (list_library) still lacks. The library also holds visual styles; each episode "
-    "picks one with set_episode_style. An episode's voice-over, sound effects, score and "
+    "picks one with set_episode_style. A vertical-video cut lives in the episode's short "
+    "script (get_short_script, write_short_script); owners and editors can speak it with "
+    "generate_voice_over, which spends ElevenLabs credits. An episode's voice-over, sound effects, score and "
     "visual effects are files listed with list_media; upload them with the API's upload_media. "
+    "Media made by others (a NASA clip, a video the channel reacts to, a credited photo, a "
+    "paper) lives in the channel's third-party library (list_external_media); record each use "
+    "with use_external_media and check get_episode_credits for credits and rights warnings. "
+    "Propose an episode's editorial classification with classify_episode (values from "
+    "get_classification_vocabulary; a person confirms it) and compare the channel's declared "
+    "and observed profile with get_channel_profile. "
+    "Episodes, pitches, sources, media and library entries each keep a context (what, who, "
+    "where, when, why, how) and links to one another: read it with get_context, set answers "
+    "and links with write_context, and find ids with list_linkable_items. "
     "Owners and editors can list an episode's signed waivers with list_waivers."
 )
 
 # Domain errors an agent can act on, reported as tool errors with their message.
 EXPECTED_ERRORS = (
+    AccountError,
     ProblemError,
     HTTPException,
     ChannelNotFound,
@@ -124,6 +142,7 @@ EXPECTED_ERRORS = (
     WaiverNotFound,
     StyleNotInLibrary,
     AssetRejected,
+    NotInLibrary,
     StoreError,
 )
 
@@ -223,7 +242,7 @@ def production_error_message(error: Exception) -> str | None:
             f"{error}; call list_library to find its entry_id, then save_library_entry with "
             "that entry_id to change it"
         )
-    if isinstance(error, AssetRejected):
+    if isinstance(error, AssetRejected | NotInLibrary):
         return str(error)
     return not_found_message(error)
 
@@ -322,7 +341,11 @@ def build(services: Services) -> MCPServer:
     """The MCP server with sreditor's tools, bound to the app's services."""
     # Imported here: pitch_tools builds on this module's helpers, so a top-level import
     # would be circular.
+    from sreditor.classification_tools import add_classification_tools
+    from sreditor.context_tools import add_context_tools
+    from sreditor.external_media_tools import add_external_media_tools
     from sreditor.pitch_tools import add_pitch_tools
+    from sreditor.short_script_tools import add_short_script_tools
 
     server: MCPServer = MCPServer(name="sreditor", instructions=INSTRUCTIONS)
     # Registration order is the order clients list the tools in.
@@ -332,9 +355,13 @@ def build(services: Services) -> MCPServer:
     add_research_tools(server, services)
     add_pitch_tools(server, services)
     add_screenplay_tools(server, services)
+    add_short_script_tools(server, services)
     add_library_tools(server, services)
     add_style_tools(server, services)
     add_media_tools(server, services)
+    add_external_media_tools(server, services)
+    add_classification_tools(server, services)
+    add_context_tools(server, services)
     add_waiver_tools(server, services)
     add_member_tools(server, services)
     return server
@@ -370,7 +397,9 @@ def add_channel_tools(server: MCPServer, services: Services) -> None:
 
     @server.tool(annotations=tool_annotations("Create channel", Effect.REPLACE))
     def create_channel(context: Context, channel: Channel) -> Channel:
-        """Create a channel; you become its owner. Needs the channels:write scope."""
+        """Create a channel; you become its owner. Needs the channels:write scope and a token
+        for all your channels. Set `language` to the language the channel publishes in, such as
+        en-US: without it the channel is in pt-BR, and its scripts start in that language."""
         who = principal(context)
         return reported(lambda: operations.create_channel(services, who.user, who.token, channel))
 
@@ -414,13 +443,23 @@ def add_editorial_tools(server: MCPServer, services: Services) -> None:
         return reported(lambda: operations.get_editorial(services, access(context, slug), platform))
 
     @server.tool(annotations=tool_annotations("Write guideline", Effect.CREATE))
-    def write_guideline(context: Context, slug: str, guideline: GuidelineInput) -> Guideline:
+    def write_guideline(
+        context: Context,
+        slug: str,
+        guideline: GuidelineInput,
+        expected_revision: int | None = None,
+    ) -> Guideline:
         """Set the purpose, voice or audience, or add a pillar or avoid guideline.
 
-        Needs the editorial:write scope, and the channel's rules must allow it.
+        Needs the editorial:write scope, and the channel's rules must allow it. When setting
+        purpose, voice or audience, pass its `revision` from get_editorial as
+        `expected_revision` (0 when it is not set yet) so you never overwrite a text you have
+        not read.
         """
         return reported(
-            lambda: operations.write_guideline(services, access(context, slug), guideline)
+            lambda: operations.write_guideline(
+                services, access(context, slug), guideline, expected_revision
+            )
         )
 
     @server.tool(annotations=tool_annotations("Retire guideline", Effect.REMOVE))
@@ -446,7 +485,7 @@ def add_editorial_tools(server: MCPServer, services: Services) -> None:
 
 
 def add_member_tools(server: MCPServer, services: Services) -> None:
-    """Tools to see who belongs to a channel."""
+    """Tools to see who belongs to a channel and to invite someone to it."""
 
     def access(context: Context, slug: str) -> ChannelAccess:
         who = principal(context)
@@ -463,6 +502,20 @@ def add_member_tools(server: MCPServer, services: Services) -> None:
             return page_after(members, cursor, limit, lambda member: str(member.user_id))
 
         return reported(read)
+
+    @server.tool(annotations=tool_annotations("Invite a member", Effect.CREATE))
+    def invite_member(context: Context, slug: str, invite: membership.Invite) -> Invitation:
+        """Email someone an invitation to join the channel with a role; they join when they
+        accept it signed in. Needs members:write and a role that may grant that role (only
+        owners invite owners). The email is written in the channel's language. Check
+        list_members first: each call sends another email."""
+
+        def send() -> Invitation:
+            found = access(context, slug)
+            locale = match_locale(found.channel.language) or BASE_LOCALE
+            return membership.invite(services, services.accounts(locale), found, invite)
+
+        return reported(send)
 
 
 class Removed(BaseModel):
@@ -532,12 +585,28 @@ def add_episode_tools(server: MCPServer, services: Services) -> None:
         )
 
     @server.tool(annotations=tool_annotations("Create an episode", Effect.CREATE))
-    def create_episode(context: Context, slug: str, episode: EpisodeInput) -> RevisedEpisode:
+    def create_episode(
+        context: Context,
+        slug: str,
+        episode: EpisodeInput,
+        idempotency_key: Annotated[str | None, Field(min_length=1, max_length=255)] = None,
+    ) -> RevisedEpisode:
         """Add an episode with the channel's next number; it starts as an idea unless `status`
-        says otherwise. Needs content:write. Each call creates another episode, so do not retry
-        one that succeeded."""
+        says otherwise. Needs content:write. Each call creates another episode unless you pass
+        an `idempotency_key`, any unique string per intended episode: a retry with the same key
+        and episode returns the episode the first call made instead of a duplicate."""
+        who = principal(context)
+        fingerprint = request_hash(
+            "MCP", f"create_episode/{slug}", episode.model_dump_json().encode()
+        )
+        once = Idempotency(
+            IdempotencyStore(services.users.database), who.user.id, idempotency_key, fingerprint
+        )
         return reported(
-            lambda: episode_operations.create_episode(services, access(context, slug), episode)
+            lambda: once.once(
+                lambda: episode_operations.create_episode(services, access(context, slug), episode),
+                RevisedEpisode,
+            )
         )
 
     @server.tool(annotations=tool_annotations("Update an episode", Effect.REPLACE))

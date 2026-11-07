@@ -27,7 +27,7 @@ from sreditor.repository import ChannelNotFound
 from sreditor.users import User
 from sreditor.web.forms import AFTER_SIGN_IN
 from sreditor.web.labels import platform_name
-from sreditor.web.routes import page, redirect, signed_in
+from sreditor.web.routes import SECURITY_HEADERS, page, redirect, signed_in
 
 APP_PATH = AFTER_SIGN_IN
 FLASH_COOKIE = "sreditor_flash"
@@ -67,10 +67,18 @@ class Flash(StrEnum):
     UPLOADED = "uploaded"
     EPISODE_CREATED = "episode_created"
     EPISODE_DELETED = "episode_deleted"
+    EPISODE_MOVED = "episode_moved"
     SOURCE_ADDED = "source_added"
     LIBRARY_ADDED = "library_added"
     PITCH_CREATED = "pitch_created"
     PITCH_DELETED = "pitch_deleted"
+    ITEM_ADDED = "item_added"
+    ITEM_DELETED = "item_deleted"
+    USE_ADDED = "use_added"
+    VOICE_GENERATED = "voice_generated"
+    VOICE_REUSED = "voice_reused"
+    TIMINGS_APPLIED = "timings_applied"
+    LINK_ADDED = "link_added"
 
 
 CHANGED_MEANWHILE = N_(
@@ -91,12 +99,28 @@ FLASH_TEXT: dict[Flash, str] = {
     Flash.PASSWORD: N_("Password changed. Your other sessions were signed out."),
     Flash.UPLOADED: N_("File uploaded."),
     Flash.EPISODE_CREATED: N_("Episode created."),
+    Flash.EPISODE_MOVED: N_("Episode moved."),
     Flash.EPISODE_DELETED: N_("Episode deleted."),
     Flash.SOURCE_ADDED: N_("Source added."),
     Flash.LIBRARY_ADDED: N_("Added to the library."),
     Flash.PITCH_CREATED: N_("Pitch created."),
     Flash.PITCH_DELETED: N_("Pitch deleted."),
+    Flash.ITEM_ADDED: N_("Added to third-party media."),
+    Flash.ITEM_DELETED: N_("Removed from third-party media."),
+    Flash.USE_ADDED: N_("Use recorded."),
+    Flash.VOICE_GENERATED: N_("Voice-over generated and added to the episode's media."),
+    Flash.VOICE_REUSED: N_("Nothing changed since the last take, so it was reused at no cost."),
+    Flash.TIMINGS_APPLIED: N_("The blocks now use the times measured in the voice-over."),
+    Flash.LINK_ADDED: N_("Link added."),
 }
+
+
+class SectionGroup(StrEnum):
+    """A heading of the channel's menu, which keeps related sections together."""
+
+    CHANNEL = N_("Channel")
+    PRODUCTION = N_("Production")
+    TEAM = N_("Team")
 
 
 class Section(BaseModel):
@@ -108,25 +132,87 @@ class Section(BaseModel):
     label: str
     suffix: str
     permission: Permission
+    group: SectionGroup
 
 
 # The channel's menu. A new module adds one entry here and its own routes and templates.
 SECTIONS: tuple[Section, ...] = (
-    Section(key="overview", label=N_("Overview"), suffix="", permission=Permission.READ),
-    Section(key="accounts", label=N_("Accounts"), suffix="/accounts", permission=Permission.READ),
-    Section(key="brand", label=N_("Brand"), suffix="/brand", permission=Permission.READ),
     Section(
-        key="editorial", label=N_("Editorial"), suffix="/editorial", permission=Permission.READ
+        key="overview",
+        label=N_("Overview"),
+        suffix="",
+        permission=Permission.READ,
+        group=SectionGroup.CHANNEL,
     ),
-    Section(key="pitches", label=N_("Pitches"), suffix="/pitches", permission=Permission.READ),
-    Section(key="episodes", label=N_("Episodes"), suffix="/episodes", permission=Permission.READ),
-    Section(key="library", label=N_("Library"), suffix="/library", permission=Permission.READ),
-    Section(key="members", label=N_("Members"), suffix="/members", permission=Permission.READ),
+    Section(
+        key="accounts",
+        label=N_("Accounts"),
+        suffix="/accounts",
+        permission=Permission.READ,
+        group=SectionGroup.CHANNEL,
+    ),
+    Section(
+        key="brand",
+        label=N_("Brand"),
+        suffix="/brand",
+        permission=Permission.READ,
+        group=SectionGroup.CHANNEL,
+    ),
+    Section(
+        key="editorial",
+        label=N_("Editorial"),
+        suffix="/editorial",
+        permission=Permission.READ,
+        group=SectionGroup.CHANNEL,
+    ),
+    Section(
+        key="profile",
+        label=N_("Profile"),
+        suffix="/profile",
+        permission=Permission.READ,
+        group=SectionGroup.CHANNEL,
+    ),
+    Section(
+        key="pitches",
+        label=N_("Pitches"),
+        suffix="/pitches",
+        permission=Permission.READ,
+        group=SectionGroup.PRODUCTION,
+    ),
+    Section(
+        key="episodes",
+        label=N_("Episodes"),
+        suffix="/episodes",
+        permission=Permission.READ,
+        group=SectionGroup.PRODUCTION,
+    ),
+    Section(
+        key="library",
+        label=N_("Library"),
+        suffix="/library",
+        permission=Permission.READ,
+        group=SectionGroup.PRODUCTION,
+    ),
+    Section(
+        key="external-media",
+        label=N_("Third-party media"),
+        suffix="/external-media",
+        permission=Permission.READ,
+        group=SectionGroup.PRODUCTION,
+    ),
+    Section(
+        key="members",
+        label=N_("Members"),
+        suffix="/members",
+        permission=Permission.READ,
+        group=SectionGroup.TEAM,
+    ),
     Section(
         key="settings",
         label=N_("Settings"),
         suffix="/settings",
         permission=Permission.WRITE_CHANNEL,
+        group=SectionGroup.TEAM,
     ),
 )
 
@@ -200,14 +286,19 @@ def require(access: ChannelAccess, permission: Permission) -> None:
         raise PageForbidden(permission)
 
 
-def section_links(access: ChannelAccess, translate: Translator) -> list[tuple[str, str, str]]:
-    """(href, label, key) for each section this person may open."""
+NavLink = tuple[str, str, str]
+NavGroup = tuple[str, list[NavLink]]
+
+
+def section_links(access: ChannelAccess, translate: Translator) -> list[NavGroup]:
+    """The menu as (heading, [(href, label, key)]), with only the sections this person may open."""
     slug = access.channel.slug
-    return [
-        (channel_url(slug, section.suffix), translate(section.label), section.key)
-        for section in SECTIONS
-        if access.can(section.permission)
-    ]
+    groups: dict[SectionGroup, list[NavLink]] = {}
+    for section in SECTIONS:
+        if access.can(section.permission):
+            link = (channel_url(slug, section.suffix), translate(section.label), section.key)
+            groups.setdefault(section.group, []).append(link)
+    return [(translate(group), links) for group, links in groups.items()]
 
 
 def switcher(app: Services, user: User) -> list[tuple[str, str]]:
@@ -262,6 +353,30 @@ def channel_page(
         can=lambda name: access.can(Permission(name)),
         **view.context,
     )
+
+
+# A text part's form saves itself as people type (workspace.js): it marks the request with this
+# header and expects no page back, only the new revision, so the next save sends it.
+AUTOSAVE_HEADER = "sreditor-autosave"
+REVISION_HEADER = "Sreditor-Revision"
+
+
+def is_autosave(request: Request) -> bool:
+    """Whether the request is a text part saving itself rather than a person pressing Save."""
+    return AUTOSAVE_HEADER in request.headers
+
+
+def autosaved(revision: int) -> Response:
+    """The answer to an autosave that went through: no body, the part's new revision."""
+    return Response(
+        status_code=status.HTTP_204_NO_CONTENT,
+        headers={REVISION_HEADER: str(revision), **SECURITY_HEADERS},
+    )
+
+
+def autosave_refused(outcome: Outcome) -> Response:
+    """The answer to an autosave that did not go through; the page names why from the status."""
+    return Response(status_code=outcome.status_code, headers=SECURITY_HEADERS)
 
 
 def done(request: Request, app: Services, url: str, flash: Flash) -> Response:

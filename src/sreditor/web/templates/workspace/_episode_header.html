@@ -1,0 +1,16 @@
+{#
+  The header every episode page shares: the way back to the list, the title with the page's
+  `lead`, the stages the episode moves through and its tabs with how much each holds.
+#}
+{% import "_ui.html" as ui %}
+{{ ui.back_link(channel_link ~ "/episodes", _("Episodes")) }}
+{% call ui.page_header("#" ~ episode.number ~ " · " ~ episode.title, lead) %}
+  {% if export_link %}{% call ui.menu(_("Export")) %}
+    <a href="{{ export_link }}?format=pdf" download hx-boost="false">PDF</a>
+    <a href="{{ export_link }}?format=xlsx" download hx-boost="false">Excel</a>
+    <a href="{{ export_link }}?format=json" download hx-boost="false">JSON</a>
+  {% endcall %}{% endif %}
+  {{ ui.link_button(channel_link ~ "/items/episode/" ~ episode.number, _("Context"), variant="ghost") }}
+{% endcall %}
+<div class="episode-steps">{{ ui.steps(episode_steps, episode.status, _("Production stage")) }}</div>
+{{ ui.tabs(episode_tabs, episode_tab, _("Episode pages"), counts=tab_counts) }}

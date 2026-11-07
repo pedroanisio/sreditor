@@ -4,7 +4,15 @@ from __future__ import annotations
 
 import pytest
 
-from sreditor.fountain import character_name, outline, scene_heading, scene_location
+from sreditor.fountain import (
+    Block,
+    BlockKind,
+    blocks,
+    character_name,
+    outline,
+    scene_heading,
+    scene_location,
+)
 
 PILOT = """Title: Pilot
 Author: Ana
@@ -109,3 +117,39 @@ def test_scene_heading_recognises_prefixes_and_forced_headings(
 )
 def test_character_name_reads_cues_and_refuses_other_lines(line: str, name: str | None) -> None:
     assert character_name(line) == name
+
+
+def test_blocks_format_scene_action_and_dialogue() -> None:
+    text = "INT. KITCHEN - DAY\nAna sits.\n\nANA\n(sighing)\nIs it Monday?\n"
+    assert blocks(text) == [
+        Block(kind=BlockKind.SCENE, text="INT. KITCHEN - DAY"),
+        Block(kind=BlockKind.ACTION, text="Ana sits."),
+        Block(kind=BlockKind.CHARACTER, text="ANA"),
+        Block(kind=BlockKind.PARENTHETICAL, text="(sighing)"),
+        Block(kind=BlockKind.DIALOGUE, text="Is it Monday?"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("line", "kind", "text"),
+    [
+        ("CUT TO:", BlockKind.TRANSITION, "CUT TO:"),
+        ("> FADE OUT.", BlockKind.TRANSITION, "FADE OUT."),
+        ("> THE END <", BlockKind.CENTERED, "THE END"),
+        ("!SILENCE", BlockKind.ACTION, "SILENCE"),
+        ("A lone line.", BlockKind.ACTION, "A lone line."),
+    ],
+)
+def test_blocks_single_line_takes_its_kind(line: str, kind: BlockKind, text: str) -> None:
+    # A first line such as "CUT TO:" would read as a title page key, so action comes first.
+    assert blocks(f"Ana runs.\n\n{line}")[-1] == Block(kind=kind, text=text)
+
+
+def test_blocks_forced_character_drops_the_at_sign() -> None:
+    assert blocks("@McCLANE\nYippee.")[0] == Block(kind=BlockKind.CHARACTER, text="McCLANE")
+
+
+def test_blocks_skip_title_page_and_blank_runs() -> None:
+    assert blocks("Title: Pilot\n\n\n\nEXT. ROOF - NIGHT") == [
+        Block(kind=BlockKind.SCENE, text="EXT. ROOF - NIGHT")
+    ]

@@ -1,0 +1,10 @@
+{% extends "workspace/layout.html" %}
+{% import "_ui.html" as ui %}
+{# The quick search as a page, for when the dialog cannot open (no JavaScript). #}
+{% block title %}{{ _("Search") }}{% endblock %}
+{% block search_dialog %}{% endblock %}
+{% block content %}
+{% call ui.page_header(_("Search"), _("Find channels, episodes and pitches by name.")) %}{% endcall %}
+{{ ui.search_box("/app/search", _("Search channels, episodes and pitches"), query, search_channel) }}
+{% include "workspace/_search_results.html" %}
+{% endblock %}

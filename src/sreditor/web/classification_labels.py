@@ -1,0 +1,136 @@
+"""What people read for each classification dimension, value and state (rule i18n.catalog)."""
+
+from __future__ import annotations
+
+from sreditor.classification import Dimension, State
+from sreditor.i18n import N_
+
+DIMENSION_LABELS: dict[Dimension, str] = {
+    Dimension.AUDIENCE: N_("Audience"),
+    Dimension.DOMAINS: N_("Topics"),
+    Dimension.PURPOSES: N_("Purposes"),
+    Dimension.GENRES: N_("Genres"),
+    Dimension.APPROACHES: N_("Approaches"),
+    Dimension.FORMATS: N_("Formats"),
+    Dimension.VISUAL_TECHNIQUES: N_("Visual techniques"),
+    Dimension.VISUAL_STYLES: N_("Visual looks"),
+    Dimension.TONES: N_("Tones"),
+    Dimension.EMOTIONAL_TARGETS: N_("Emotions it aims for"),
+    Dimension.CREATIVE_DEVICES: N_("Creative devices"),
+    Dimension.HUMOR_DEVICES: N_("Humor devices"),
+}
+# The states a dimension without values may have; "present" is chosen by picking a value.
+STATE_LABELS: dict[State, str] = {
+    State.UNKNOWN: N_("Not classified yet"),
+    State.ABSENT: N_("None"),
+    State.NOT_APPLICABLE: N_("Does not apply"),
+}
+VALUE_LABELS: dict[str, str] = {
+    # audience
+    "preschool": N_("Preschool"),
+    "children": N_("Children"),
+    "teen": N_("Teens"),
+    "adult": N_("Adults"),
+    "general": N_("General public"),
+    "specialist": N_("Specialists"),
+    # domains
+    "science": N_("Science"),
+    "science.physics": N_("Physics"),
+    "science.cosmology": N_("Cosmology"),
+    "mathematics": N_("Mathematics"),
+    "politics": N_("Politics"),
+    "history": N_("History"),
+    "society": N_("Society"),
+    "economy": N_("Economy"),
+    "economy.banking": N_("Banking"),
+    "engineering": N_("Engineering"),
+    "military_technology": N_("Military technology"),
+    "aviation": N_("Aviation"),
+    "daily_life": N_("Daily life"),
+    "relationships": N_("Relationships"),
+    "religion": N_("Religion"),
+    "childhood": N_("Childhood"),
+    "music": N_("Music"),
+    "technology": N_("Technology"),
+    "biology": N_("Biology"),
+    "psychology": N_("Psychology"),
+    # purposes
+    "explain": N_("Explain"),
+    "teach": N_("Teach"),
+    "entertain": N_("Entertain"),
+    "inform": N_("Inform"),
+    "persuade": N_("Persuade"),
+    "sell": N_("Sell"),
+    "provoke_reflection": N_("Provoke reflection"),
+    # genres
+    "comedy": N_("Comedy"),
+    "documentary": N_("Documentary"),
+    "educational": N_("Educational"),
+    "journalistic": N_("Journalistic"),
+    "musical": N_("Musical"),
+    "drama": N_("Drama"),
+    "suspense": N_("Suspense"),
+    # approaches
+    "satirical": N_("Satirical"),
+    "parodic": N_("Parodic"),
+    "analytical": N_("Analytical"),
+    "investigative": N_("Investigative"),
+    "demonstrative": N_("Demonstrative"),
+    "observational": N_("Observational"),
+    "explanatory": N_("Explanatory"),
+    # formats
+    "sketch": N_("Sketch"),
+    "visual_essay": N_("Visual essay"),
+    "presenter_explainer": N_("Presenter explainer"),
+    "interview": N_("Interview"),
+    "tutorial": N_("Tutorial"),
+    "music_video": N_("Music video"),
+    "narrated_documentary": N_("Narrated documentary"),
+    "demonstration": N_("Demonstration"),
+    "list": N_("List"),
+    "performance": N_("Performance"),
+    # visual techniques
+    "live_action": N_("Live action"),
+    "animation_2d": N_("2D animation"),
+    "animation_3d": N_("3D animation"),
+    "stop_motion": N_("Stop motion"),
+    "screen_capture": N_("Screen capture"),
+    # visual styles
+    "photorealistic": N_("Photorealistic"),
+    "cartoon": N_("Cartoon"),
+    "pixel_art": N_("Pixel art"),
+    "collage": N_("Collage"),
+    "diagrammatic": N_("Diagrams"),
+    "commercial_parody": N_("Commercial parody"),
+    # tones
+    "serious": N_("Serious"),
+    "ironic": N_("Ironic"),
+    "playful": N_("Playful"),
+    "absurd": N_("Absurd"),
+    "warm": N_("Warm"),
+    "confrontational": N_("Confrontational"),
+    # emotional targets
+    "curiosity": N_("Curiosity"),
+    "wonder": N_("Wonder"),
+    "amusement": N_("Amusement"),
+    "indignation": N_("Indignation"),
+    "empathy": N_("Empathy"),
+    "tension": N_("Tension"),
+    "calm": N_("Calm"),
+    # creative devices
+    "visual_metaphor": N_("Visual metaphor"),
+    "contrast": N_("Contrast"),
+    "inversion": N_("Inversion"),
+    "personification": N_("Personification"),
+    "repetition": N_("Repetition"),
+    "analogy": N_("Analogy"),
+    # humor devices
+    "incongruity": N_("Incongruity"),
+    "exaggeration": N_("Exaggeration"),
+    "escalation": N_("Escalation"),
+    "deadpan": N_("Deadpan"),
+    "wordplay": N_("Wordplay"),
+    "anticlimax": N_("Anticlimax"),
+    "callback": N_("Callback"),
+    "slapstick": N_("Slapstick"),
+}

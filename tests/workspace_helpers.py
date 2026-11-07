@@ -35,6 +35,12 @@ def submit(
     return client.post(path, data=form, files=files)
 
 
+def autosave(client: TestClient, path: str, data: Mapping[str, str]) -> Response:
+    """Post a text part's form as workspace.js does while people type."""
+    form = {"csrf_token": client.cookies[CSRF_COOKIE], **data}
+    return client.post(path, data=form, headers={"Sreditor-Autosave": "1"})
+
+
 def member(app: FastAPI, mailer: RecordingMailer, email: str, name: str = "Ana") -> TestClient:
     """Register, verify and sign in through the JSON API, then browse with the session cookie."""
     client = browser(app)

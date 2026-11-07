@@ -51,7 +51,7 @@ def test_waivers_page_without_waivers_shows_empty_state(owner: TestClient) -> No
 def test_waiver_upload_shows_note_signer_and_date(owner: TestClient) -> None:
     page = flash_after(owner, send(owner, signed_on="2026-11-01"))
     assert "File uploaded." in page and "<strong>Bruno Lima</strong>" in page
-    assert "Signed on 2026-11-01" in page
+    assert "Signed on Nov 1, 2026" in page
 
 
 def test_waiver_upload_returns_to_page_without_fragment(owner: TestClient) -> None:
@@ -124,6 +124,10 @@ def test_waivers_hidden_from_contributor(
     assert contributor.get(WAIVERS).status_code == 403
     assert contributor.get(f"{WAIVERS}/{signed}/file").status_code == 403
     assert send(contributor).status_code == 403
+
+
+def test_waivers_tab_counts_uploaded_waivers(owner: TestClient, signed: str) -> None:
+    assert 'Waivers <span class="tab-count">1</span>' in owner.get(EPISODE).text
 
 
 def test_waivers_page_in_portuguese_names_the_tab(owner: TestClient) -> None:

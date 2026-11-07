@@ -78,6 +78,23 @@ class Idempotency:
         self.store.complete(self.user_id, self.key, StoredResponse(status_code, body))
         return JSONResponse(body, status_code)
 
+    def once[T: BaseModel](self, produce: Callable[[], T], model: type[T]) -> T:
+        """Run `produce` at most once per key, for callers outside HTTP such as MCP tools."""
+        if self.key is None:
+            return produce()
+        with as_problems():
+            stored = self.store.begin(self.user_id, self.key, self.request_hash)
+        if stored is not None:
+            return model.model_validate(stored.body)
+        try:
+            made = produce()
+        except BaseException:
+            self.store.release(self.user_id, self.key)
+            raise
+        body = made.model_dump(mode="json")
+        self.store.complete(self.user_id, self.key, StoredResponse(status.HTTP_201_CREATED, body))
+        return made
+
 
 KeyHeader = Annotated[
     str | None,

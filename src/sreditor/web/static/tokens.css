@@ -152,6 +152,10 @@
   --width-card: 26rem;
   --width-card-wide: 40rem;
   --width-prose: 44rem;
+  /* A printed screenplay's indents: the speaker's name, a parenthetical and the dialogue. */
+  --indent-character: 40%;
+  --indent-parenthetical: 30%;
+  --indent-dialogue: 20%;
   --width-lead: 40rem;
   --width-feature-min: 15rem;
   --size-icon: 1.25rem;
@@ -166,11 +170,13 @@
   --size-textarea-min: 4lh; /* an empty text box still invites a few lines */
   --size-textarea-max: 70vh; /* a long text scrolls inside its box, keeping its Save button near */
   --height-player: 20rem; /* a video plays this tall at most, so a list of them stays scannable */
+  --ratio-viewer: 16 / 9; /* a 3D model's frame, fixed so the page never shifts as it loads */
   --width-headline: 18ch;
   --ring: 0 0 0 var(--focus-width);
   --width-full: 100%;
   --width-sidebar: 16rem;
   --width-app-content: 64rem;
+  --width-app-wide: 100rem;
   --width-dialog: 34rem;
   --width-toast: 24rem;
   --size-control: 2.5rem;
@@ -183,6 +189,11 @@
   --size-fade: 2.5rem;
   --mask-solid: #000;
   --width-tile: 13rem;
+  --width-board-column: 10rem;
+  --width-split-min: 22rem;
+  --height-search-results: 24rem;
+  --offset-search-top: 12vh;
+  --height-board-min: 12rem;
   --width-item-min: 10rem;
   /* Media queries cannot read custom properties, so style.css writes this value in its
      @media rules; tests/test_design.py checks they match. Below it the sidebar becomes a top bar. */

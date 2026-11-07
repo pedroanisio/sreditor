@@ -1,0 +1,66 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% block page_title %}{{ _("Third-party") }} · {{ episode.title }}{% endblock %}
+{% block page %}
+{% set may_write = can("write_content") %}
+{% set lead = _("What the episode shows that others made, where and why, and the credits it owes.") %}
+{% include "workspace/_episode_header.html" %}
+{{ ui.form_error(errors) }}
+{% if credits.warnings %}
+{% call ui.alert("info") %}
+  <p><strong>{{ _("Check the rights before publishing") }}</strong></p>
+  <ul>
+    {% for warning in credits.warnings %}<li>{{ warning.title }}: {{ _(problem_text[warning.problem]) }}</li>{% endfor %}
+  </ul>
+{% endcall %}
+{% endif %}
+{% call ui.panel(_("Uses"), id="uses") %}
+  {% if uses.items %}
+  {% call(use) ui.items(uses.items, _("Uses")) %}
+    {% set item = items_by_id.get(use.media_id | string) %}
+    {% set where = (clock(use.start_seconds) ~ "–" ~ clock(use.end_seconds) if use.end_seconds is not none else (clock(use.start_seconds) if use.start_seconds is not none else use.pages)) %}
+    {{ ui.item_main(item.title if item else _("Third-party item"), [_(purpose_labels[use.purpose]), where, use.scene] | select | join(" · "), library_link ~ "/" ~ use.media_id) }}
+    {% if may_write %}
+    {% call ui.item_side() %}
+      {{ ui.confirm(_("Remove"), _("Remove this use from the episode? The item stays in the library."), uses_link ~ "/remove", csrf_field, csrf_token, _("Remove"), fields=[("use_id", use.id), ("revision", use.revision)]) }}
+    {% endcall %}
+    {% endif %}
+  {% endcall %}
+  {% if uses.next_cursor %}{{ ui.pager(uses_link ~ "?cursor=" ~ uses.next_cursor, _("More uses")) }}{% endif %}
+  {% else %}
+  <p class="muted">{{ _("The episode uses no third-party media yet.") }}</p>
+  {% endif %}
+  {% if may_write %}
+  {% call ui.panel_actions() %}
+    {% if item_options %}{{ ui.dialog_button("new-use", _("Use an item"), plus=true) }}
+    {% else %}{{ ui.link_button(library_link, _("Add third-party media first"), variant="ghost") }}{% endif %}
+  {% endcall %}
+  {% endif %}
+{% endcall %}
+{% call ui.panel(_("Credits"), id="credits") %}
+  {% if credits.credits %}
+  <ol>
+    {% for line in credits.credits %}<li>{{ line.text }} · <a href="{{ line.url }}" rel="noopener noreferrer" target="_blank">{{ line.url }}</a></li>{% endfor %}
+  </ol>
+  {% else %}
+  <p class="muted">{{ _("Nothing to credit yet.") }}</p>
+  {% endif %}
+{% endcall %}
+{% if may_write and item_options %}
+{% call ui.dialog("new-use", _("Use an item"), _("Close"), open=sent is not none) %}
+  {% call ui.form(uses_link, csrf_field, csrf_token) %}
+    {{ ui.select("media_id", _("Item"), item_options, errors, value=sent.media_id if sent else "") }}
+    {{ ui.select("purpose", _("Used as"), purpose_options, errors, value=sent.purpose if sent else "illustration") }}
+    {% call ui.fields_row() %}
+    {{ ui.field("start", _("From"), errors, value=sent.start if sent else "", required=false, hint=_("Video and audio, as 1:05."), id="use-start") }}
+    {{ ui.field("end", _("To"), errors, value=sent.end if sent else "", required=false, id="use-end") }}
+    {% endcall %}
+    {{ ui.field("pages", _("Pages"), errors, value=sent.pages if sent else "", required=false, maxlength=pages_limit, hint=_("Documents and web pages, such as 3-4."), id="use-pages") }}
+    {{ ui.field("scene", _("Scene"), errors, value=sent.scene if sent else "", required=false, maxlength=scene_limit, id="use-scene") }}
+    {{ ui.textarea("credit", _("Credit for this use"), errors, value=sent.credit if sent else "", limit=credit_limit, rows=2, hint=_("Leave empty to use the item's credit line."), id="use-credit") }}
+    {{ ui.textarea("note", _("Note"), errors, value=sent.note if sent else "", limit=note_limit, rows=2, id="use-note") }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Record use")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% endif %}
+{% endblock %}

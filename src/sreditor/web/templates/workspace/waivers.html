@@ -4,11 +4,8 @@
 {% block page %}
 {% set may_write = can("write_editorial") %}
 {% set too_large = _("This file is larger than %(size)s MB.", size=max_megabytes) %}
-{{ ui.back_link(channel_link ~ "/episodes", _("Episodes")) }}
-{% call ui.page_header("#" ~ episode.number ~ " · " ~ episode.title, _("The signed releases behind the episode: image, voice and location rights. Only owners and editors see them.")) %}
-  {{ ui.badge(_(episode_status_labels[episode.status]), episode_status_tones[episode.status]) }}
-{% endcall %}
-{{ ui.tabs(episode_tabs, episode_tab, _("Episode pages")) }}
+{% set lead = _("The signed releases behind the episode: image, voice and location rights. Only owners and editors see them.") %}
+{% include "workspace/_episode_header.html" %}
 {{ ui.form_error(errors) }}
 {% call ui.panel(_("Waivers"), id="waivers") %}
   {% if waivers %}

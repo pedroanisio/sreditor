@@ -65,7 +65,7 @@ def test_library_location_add_empty_name_shows_error(owner: TestClient) -> None:
 
 
 def test_library_unknown_kind_answers_not_found(owner: TestClient) -> None:
-    assert submit(owner, f"{LIBRARY}/props", {"name": "Hat"}).status_code == 404
+    assert submit(owner, f"{LIBRARY}/vehicles", {"name": "Hat"}).status_code == 404
 
 
 def test_library_character_save_renames_it(owner: TestClient, ana: str) -> None:
@@ -129,3 +129,9 @@ def test_screenplay_add_to_library_returns_to_screenplay_matched(written: TestCl
 def test_library_add_returns_to_page_without_fragment(owner: TestClient) -> None:
     # A redirect that changes only the #fragment would not reload, hiding the note.
     assert submit(owner, CHARACTERS, {"name": "Ana"}).headers["location"] == LIBRARY
+
+
+def test_library_prop_add_lists_it(owner: TestClient) -> None:
+    submit(owner, f"{LIBRARY}/props", {"name": "Laptop"})
+    page = owner.get(LIBRARY).text
+    assert 'id="props"' in page and "<strong>Laptop</strong>" in page

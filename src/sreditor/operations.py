@@ -20,8 +20,9 @@ from sreditor.members import Permission
 from sreditor.pagination import Page, decode_cursor, page
 from sreditor.problems import ProblemError
 from sreditor.repository import ChannelExists, ChannelNotFound
+from sreditor.search import SearchHit
 from sreditor.store import Owner
-from sreditor.tokens import ApiToken, Scope
+from sreditor.tokens import ApiToken, NewToken, Scope, TokenInput
 from sreditor.users import User
 
 ALLOW = "ALLOW"
@@ -101,6 +102,43 @@ def require_account(channel: Channel, platform: Platform | None) -> None:
         )
 
 
+LIMITED_TOKEN_CREATES = (
+    "This token is limited to some channels, so it cannot create channels; "
+    "create one with a token for all your channels"
+)
+NOT_YOUR_CHANNEL = "You are not a member of %(slug)s"
+
+
+def channel_exists(app: Services, slug: str) -> bool:
+    """Whether a channel with this slug exists."""
+    try:
+        app.channels.get(slug)
+    except ChannelNotFound:
+        return False
+    return True
+
+
+def create_token(app: Services, user: User, data: TokenInput) -> NewToken:
+    """Create an API token; every channel it is limited to must be one the user belongs to."""
+    if data.channels is not None:
+        mine = set(app.members.roles_of(user.id))
+        for slug in data.channels:
+            if slug not in mine and not (user.is_admin and channel_exists(app, slug)):
+                raise ProblemError(
+                    status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    NOT_YOUR_CHANNEL % {"slug": slug},
+                    "validation",
+                    errors=[
+                        {
+                            "location": ["body", "channels"],
+                            "message": NOT_YOUR_CHANNEL % {"slug": slug},
+                            "type": "not_a_member",
+                        }
+                    ],
+                )
+    return app.tokens.create(user.id, data)
+
+
 def require_scope(token: ApiToken | None, scope: Scope) -> None:
     """Refuse with 403 a token that lacks the scope; sessions are not narrowed by scopes."""
     if token is not None and not token.allows(scope):
@@ -112,17 +150,25 @@ def list_channels(
 ) -> Page[Channel]:
     """The channels the user belongs to (every channel for an admin), ordered by slug.
 
-    A token needs channels:read, as reading any one of those channels does.
+    A token needs channels:read, as reading any one of those channels does, and sees only the
+    channels it is limited to, if any.
     """
     require_scope(token, Scope.CHANNELS_READ)
     slugs = None if user.is_admin else list(app.members.roles_of(user.id))
+    if token is not None and token.channels is not None:
+        slugs = [slug for slug in slugs or token.channels if token.reaches(slug)]
     rows = app.channels.list(slugs, after=decode_cursor(cursor), limit=limit + 1)
     return page(rows, limit, lambda channel: channel.slug)
 
 
 def create_channel(app: Services, user: User, token: ApiToken | None, channel: Channel) -> Channel:
-    """Create a channel owned by the user; a token needs the channels:write scope."""
+    """Create a channel owned by the user; a token needs the channels:write scope.
+
+    A token limited to some channels cannot create one: it could not reach what it made.
+    """
     require_scope(token, Scope.CHANNELS_WRITE)
+    if token is not None and token.is_limited:
+        raise ProblemError(status.HTTP_403_FORBIDDEN, LIMITED_TOKEN_CREATES)
     try:
         app.channels.get(channel.slug)
     except ChannelNotFound:
@@ -200,8 +246,16 @@ def get_editorial(app: Services, access: ChannelAccess, platform: Platform | Non
     return app.editorials.editorial(access.channel, platform)
 
 
-def write_guideline(app: Services, access: ChannelAccess, data: GuidelineInput) -> Guideline:
-    """Set the purpose, voice or audience, or add a pillar or an avoid guideline."""
+def write_guideline(
+    app: Services,
+    access: ChannelAccess,
+    data: GuidelineInput,
+    expected_revision: int | None = None,
+) -> Guideline:
+    """Set the purpose, voice or audience, or add a pillar or an avoid guideline.
+
+    With `expected_revision`, purpose, voice and audience change only from that revision.
+    """
     access.require(Permission.WRITE_EDITORIAL)
     require_account(access.channel, data.platform)
     owner = owner_of(access.user, access.token)
@@ -209,7 +263,7 @@ def write_guideline(app: Services, access: ChannelAccess, data: GuidelineInput) 
         app,
         access,
         Operation.EDITORIAL_WRITE,
-        lambda: app.editorials.write(access.channel, data, owner),
+        lambda: app.editorials.write(access.channel, data, owner, expected_revision),
     )
 
 
@@ -232,3 +286,8 @@ def retire_guideline(
             access.channel, statement_id, platform, owner, expected_revision
         ),
     )
+
+
+def search_channels(app: Services, channels: list[str], query: str, limit: int) -> list[SearchHit]:
+    """Episodes and pitches in channels the caller already found the person belongs to."""
+    return app.search.find(channels, query, limit)

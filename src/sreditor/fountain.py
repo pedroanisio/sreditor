@@ -1,12 +1,14 @@
 """Reading a screenplay written in Fountain (https://fountain.io) for its scenes, places and cast.
 
-Only what sreditor shows is read: scene headings, the places they name and the characters who
-speak. Any text is valid Fountain, so reading never fails; lines it cannot place are action.
+Only what sreditor shows is read: scene headings, the places they name, the characters who
+speak, and the blocks of the formatted preview. Any text is valid Fountain, so reading never
+fails; lines it cannot place are action.
 """
 
 from __future__ import annotations
 
 import re
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
 
@@ -24,6 +26,11 @@ NOTE = re.compile(r"\[\[.*?\]\]", re.DOTALL)
 NOT_A_CHARACTER = ("!", ">", "~", "=", "#")
 # A heading names its place before the time of day: INT. KITCHEN - DAY.
 TIME_SEPARATOR = " - "
+FORCED_ACTION = "!"
+FORCED_TRANSITION = ">"
+CENTERED_END = "<"
+TRANSITION_END = "TO:"
+PARENTHETICAL = re.compile(r"^\(.*\)$")
 
 
 class Outline(BaseModel):
@@ -91,3 +98,74 @@ def outline(text: str) -> Outline:
     places = (scene_location(scene) for scene in scenes)
     locations = dict.fromkeys(place for place in places if place)
     return Outline(scenes=scenes, locations=list(locations), characters=list(characters))
+
+
+class BlockKind(StrEnum):
+    """What a block of the formatted screenplay is; each kind has its own layout."""
+
+    SCENE = "scene"
+    ACTION = "action"
+    CHARACTER = "character"
+    PARENTHETICAL = "parenthetical"
+    DIALOGUE = "dialogue"
+    TRANSITION = "transition"
+    CENTERED = "centered"
+
+
+class Block(BaseModel):
+    """One block of the formatted screenplay: a heading, a paragraph of action, a cue, a line."""
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: BlockKind
+    text: str
+
+
+def paragraphs(text: str) -> list[list[str]]:
+    """The screenplay's body split at blank lines, each paragraph as its lines."""
+    found: list[list[str]] = [[]]
+    for line in body_lines(text):
+        if line.strip():
+            found[-1].append(line.strip())
+        elif found[-1]:
+            found.append([])
+    return [paragraph for paragraph in found if paragraph]
+
+
+def single_line_block(line: str) -> Block | None:
+    """A transition or centered line standing alone, or None."""
+    if line.startswith(FORCED_TRANSITION) and line.endswith(CENTERED_END):
+        return Block(kind=BlockKind.CENTERED, text=line[1:-1].strip())
+    if line.startswith(FORCED_TRANSITION):
+        return Block(kind=BlockKind.TRANSITION, text=line[1:].strip())
+    if line == line.upper() and line.endswith(TRANSITION_END):
+        return Block(kind=BlockKind.TRANSITION, text=line)
+    return None
+
+
+def dialogue_blocks(lines: list[str]) -> list[Block]:
+    """A cue and what follows it: the character, then parentheticals and lines of dialogue."""
+    blocks = [Block(kind=BlockKind.CHARACTER, text=lines[0].removeprefix(FORCED_CHARACTER))]
+    for line in lines[1:]:
+        kind = BlockKind.PARENTHETICAL if PARENTHETICAL.match(line) else BlockKind.DIALOGUE
+        blocks.append(Block(kind=kind, text=line))
+    return blocks
+
+
+def paragraph_blocks(lines: list[str]) -> list[Block]:
+    """The blocks one paragraph of the screenplay formats as."""
+    first = lines[0]
+    if heading := scene_heading(first):
+        rest = [Block(kind=BlockKind.ACTION, text="\n".join(lines[1:]))] if lines[1:] else []
+        return [Block(kind=BlockKind.SCENE, text=heading), *rest]
+    if len(lines) == 1 and (alone := single_line_block(first)):
+        return [alone]
+    if len(lines) > 1 and character_name(first):
+        return dialogue_blocks(lines)
+    action = "\n".join(line.removeprefix(FORCED_ACTION) for line in lines)
+    return [Block(kind=BlockKind.ACTION, text=action)]
+
+
+def blocks(text: str) -> list[Block]:
+    """The screenplay as blocks in order, for a preview formatted like a printed script."""
+    return [block for paragraph in paragraphs(text) for block in paragraph_blocks(paragraph)]

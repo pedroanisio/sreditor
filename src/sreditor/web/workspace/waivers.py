@@ -39,7 +39,7 @@ from sreditor.waivers import (
 )
 from sreditor.web.forms import field_errors
 from sreditor.web.routes import SECURITY_HEADERS, rejected_form, translator
-from sreditor.web.workspace.episodes import episode_tabs, episodes_url, found_episode, labels
+from sreditor.web.workspace.episodes import episode_frame, episodes_url, found_episode, labels
 from sreditor.web.workspace.forms import RevisionFields, WaiverFields, revision_of
 from sreditor.web.workspace.media import upload_refusal
 from sreditor.web.workspace.shell import (
@@ -120,7 +120,7 @@ def waivers_page(
         "is_new": shown.is_new,
         "editing": shown.editing,
         "waivers_link": waivers_url(access.channel.slug, shown.number),
-        "episode_tabs": episode_tabs(access, shown.number, translator(request)),
+        **episode_frame(app, access, shown.number, translator(request)),
         "episode_tab": "waivers",
         "signer_limit": SIGNER_LENGTH,
         "covers_limit": COVERS_LENGTH,

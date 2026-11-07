@@ -6,8 +6,9 @@ import tomllib
 from collections.abc import Mapping
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
+from sreditor.elevenlabs import DEFAULT_ELEVENLABS_URL, VoiceSettings
 from sreditor.mail import DEFAULT_SMTP2GO_URL, MailSettings
 from sreditor.store import Owner, StoreSettings
 
@@ -67,6 +68,7 @@ class AppSettings(BaseModel):
     max_upload_bytes: int = Field(default=DEFAULT_MAX_UPLOAD_BYTES, ge=1)
     max_media_bytes: int = Field(default=DEFAULT_MAX_MEDIA_BYTES, ge=1)
     mail: MailSettings = MailSettings()
+    voice: VoiceSettings = VoiceSettings()
     # Requests one API token may make per minute, counted across the API and /mcp.
     agent_requests_per_minute: int = Field(default=DEFAULT_AGENT_REQUESTS_PER_MINUTE, ge=1)
     # Proxies trusted to report the client's address, such as the Cloudflare tunnel; without
@@ -101,6 +103,7 @@ class AppSettings(BaseModel):
             == "true",
             has_dev_pages=environ.get("SREDITOR_DEV_PAGES", "false").lower() == "true",
             mail=mail_settings(environ),
+            voice=voice_settings(environ),
             agent_requests_per_minute=int(
                 environ.get("SREDITOR_AGENT_REQUESTS_PER_MINUTE")
                 or DEFAULT_AGENT_REQUESTS_PER_MINUTE
@@ -130,4 +133,13 @@ def mail_settings(environ: Mapping[str, str]) -> MailSettings:
         smtp2go_api_key=environ.get("SREDITOR_SMTP2GO_API_KEY") or None,
         smtp2go_url=environ.get("SREDITOR_SMTP2GO_URL") or DEFAULT_SMTP2GO_URL,
         sender=environ.get("SREDITOR_MAIL_SENDER") or None,
+    )
+
+
+def voice_settings(environ: Mapping[str, str]) -> VoiceSettings:
+    """ElevenLabs from SREDITOR_ELEVENLABS_API_KEY and SREDITOR_ELEVENLABS_URL, if set."""
+    key = environ.get("SREDITOR_ELEVENLABS_API_KEY")
+    return VoiceSettings(
+        api_key=SecretStr(key) if key else None,
+        url=environ.get("SREDITOR_ELEVENLABS_URL") or DEFAULT_ELEVENLABS_URL,
     )

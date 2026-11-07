@@ -80,6 +80,27 @@ def is_allowed_redirect(uri: str) -> bool:
     return parts.scheme == HTTPS or (parts.scheme == "http" and parts.hostname in LOOPBACK_HOSTS)
 
 
+def is_registered_redirect(uri: str, registered: list[str]) -> bool:
+    """Whether a client registered this redirect URI (rule agentic.oauth.protocol).
+
+    URIs match exactly, except that a loopback http one matches on any port: native clients
+    such as Claude Code listen on a free port chosen at each sign-in (RFC 8252 section 7.3).
+    """
+    if uri in registered:
+        return True
+    parts = urlsplit(uri)
+    if parts.scheme != "http" or parts.hostname not in LOOPBACK_HOSTS:
+        return False
+    return any(without_port(uri) == without_port(candidate) for candidate in registered)
+
+
+def without_port(uri: str) -> str:
+    """The URI with its port removed, so loopback redirects compare on everything else."""
+    parts = urlsplit(uri)
+    host = f"[{parts.hostname}]" if parts.hostname and ":" in parts.hostname else parts.hostname
+    return parts._replace(netloc=host or "").geturl()
+
+
 ClientName = Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)]
 
 
@@ -256,7 +277,7 @@ class OAuthStore:
         client = self.client(request.client_id)
         if client is None:
             raise OAuthError(ErrorCode.INVALID_CLIENT, "Unknown client")
-        if request.redirect_uri not in client.redirect_uris:
+        if not is_registered_redirect(request.redirect_uri, client.redirect_uris):
             raise OAuthError(ErrorCode.INVALID_REQUEST, "redirect_uri is not registered")
         check_request_details(request, resources)
         return client

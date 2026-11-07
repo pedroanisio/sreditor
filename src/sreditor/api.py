@@ -13,7 +13,11 @@ from starlette.routing import Route
 
 from sreditor import (
     auth_routes,
+    classification_routes,
+    context_routes,
     episode_routes,
+    export_routes,
+    external_media_routes,
     library_routes,
     mcp_server,
     media_routes,
@@ -25,11 +29,16 @@ from sreditor import (
     problems,
     research_routes,
     screenplay_routes,
+    short_script_routes,
+    srstudio_routes,
     token_routes,
     waiver_routes,
 )
 from sreditor.assets import AssetRejected, AssetStore, FileTooLarge
+from sreditor.block_takes import BlockTakeStore
 from sreditor.channels import BrandKit, Channel, Platform, PlatformAccount
+from sreditor.classification import ClassificationStore
+from sreditor.context import ContextStore
 from sreditor.database import Clock, Database, utc_now
 from sreditor.deps import Access, CurrentUser, Services, ServicesDep, request_token
 from sreditor.editorial import (
@@ -40,9 +49,11 @@ from sreditor.editorial import (
     GuidelineInput,
     GuidelineNotFound,
 )
+from sreditor.elevenlabs import build_voice
 from sreditor.episode_texts import PartChanged
 from sreditor.episodes import EpisodeChanged, EpisodeNotFound, EpisodeStore
 from sreditor.etags import IfMatch, etag, expected_revision
+from sreditor.external_media import ExternalMediaStore
 from sreditor.idempotency import IdempotencyDep
 from sreditor.library import EntryExists, EntryNotFound, LibraryStore, StyleNotInLibrary
 from sreditor.mail import BackgroundMailer, LogMailer, Mailer, Smtp2GoMailer
@@ -60,11 +71,15 @@ from sreditor.repository import (
 )
 from sreditor.research import ResearchStore, SourceNotFound
 from sreditor.screenplay import ScreenplayStore
+from sreditor.search import SearchStore
 from sreditor.security import Passwords, RateLimiter
 from sreditor.settings import AppSettings
+from sreditor.short_script import ShortScriptStore
+from sreditor.srstudio import SrstudioStore
 from sreditor.store import StmtClient, StoreError
 from sreditor.tokens import TokenStore
 from sreditor.users import UserStore
+from sreditor.voice_generation import TakeStore
 from sreditor.waivers import WaiverNotFound, WaiverStore
 from sreditor.web import routes as web_routes
 from sreditor.web import workspace
@@ -119,9 +134,17 @@ def create_app(
         research=ResearchStore(database),
         pitches=PitchStore(database),
         screenplays=ScreenplayStore(database),
+        short_scripts=ShortScriptStore(database),
+        takes=TakeStore(database),
+        block_takes=BlockTakeStore(database),
         library=LibraryStore(database),
         media=MediaStore(database, assets, settings.max_media_bytes),
+        external_media=ExternalMediaStore(database, assets, settings.max_media_bytes),
+        classifications=ClassificationStore(database),
         waivers=WaiverStore(database, assets, settings.max_media_bytes),
+        search=SearchStore(database),
+        contexts=ContextStore(database),
+        srstudio=SrstudioStore(database),
         users=users,
         members=MemberStore(database),
         editorials=EditorialService(client, settings.owner),
@@ -132,6 +155,7 @@ def create_app(
         stmt=client,
         tokens=TokenStore(database, users),
         assets=assets,
+        voice=build_voice(settings.voice),
     )
     mcp = mcp_server.build(services)
     mcp_app = mcp_server.asgi_app(mcp, services)
@@ -162,7 +186,12 @@ def create_app(
     install_error_handlers(app)
     install_production_error_handlers(app)
     install_media_error_handlers(app)
+    srstudio_routes.install_srstudio_error_handlers(app)
     pitch_routes.install_error_handlers(app)
+    context_routes.install_error_handlers(app)
+    external_media_routes.install_error_handlers(app)
+    short_script_routes.install_short_script_error_handlers(app)
+    classification_routes.install_error_handlers(app)
     app.include_router(auth_routes.router)
     app.include_router(token_routes.router)
     app.include_router(oauth_routes.router)
@@ -170,10 +199,16 @@ def create_app(
     app.include_router(episode_routes.router)
     app.include_router(research_routes.router)
     app.include_router(pitch_routes.router)
+    app.include_router(context_routes.router)
     app.include_router(screenplay_routes.router)
+    app.include_router(short_script_routes.router)
     app.include_router(library_routes.router)
     app.include_router(media_routes.router)
     app.include_router(waiver_routes.router)
+    app.include_router(external_media_routes.router)
+    app.include_router(classification_routes.router)
+    app.include_router(srstudio_routes.router)
+    app.include_router(export_routes.router)
     add_channel_routes(app)
     app.router.routes.append(Route(mcp_server.PATH, mcp_app, methods=["GET", "POST", "DELETE"]))
     workspace.mount(app)
@@ -469,14 +504,22 @@ def add_brand_and_editorial_routes(app: FastAPI) -> None:
         summary="Write a guideline",
     )
     def write_guideline(
-        data: GuidelineInput, access: Access, services: ServicesDep, idempotency: IdempotencyDep
+        data: GuidelineInput,
+        access: Access,
+        services: ServicesDep,
+        idempotency: IdempotencyDep,
+        if_match: IfMatch = None,
     ) -> Response:
         """Set the purpose, voice or audience, or add a pillar or an avoid guideline.
 
-        Accepts an Idempotency-Key header, so a retried pillar is not added twice.
+        Accepts an Idempotency-Key header, so a retried pillar is not added twice. For purpose,
+        voice and audience send If-Match with the guideline's revision from get_editorial ("0"
+        when it is not set yet): a text someone changed since is answered with 412.
         """
+        expected = expected_revision(if_match)
         return idempotency.run(
-            lambda: operations.write_guideline(services, access, data), status.HTTP_201_CREATED
+            lambda: operations.write_guideline(services, access, data, expected),
+            status.HTTP_201_CREATED,
         )
 
     @app.delete(

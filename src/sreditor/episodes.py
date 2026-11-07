@@ -102,6 +102,31 @@ def to_revised(row: sqlite3.Row) -> RevisedEpisode:
     return RevisedEpisode(episode=episode, revision=int(row["revision"]))
 
 
+class PartCounts(BaseModel):
+    """How many of the episode's listed parts it has, for the counts on its tabs."""
+
+    model_config = ConfigDict(frozen=True)
+
+    sources: int = 0
+    media: int = 0
+    waivers: int = 0
+    uses: int = 0
+
+
+# One count per listed part, in PartCounts' order; each table keys rows by channel and number.
+PART_COUNT_QUERY = (
+    "SELECT"
+    " (SELECT COUNT(*) FROM episode_sources WHERE channel_slug = :channel AND number = :number)"
+    " AS sources,"
+    " (SELECT COUNT(*) FROM episode_media WHERE channel_slug = :channel AND number = :number)"
+    " AS media,"
+    " (SELECT COUNT(*) FROM episode_waivers WHERE channel_slug = :channel AND number = :number)"
+    " AS waivers,"
+    " (SELECT COUNT(*) FROM episode_media_uses WHERE channel_slug = :channel AND number = :number)"
+    " AS uses"
+)
+
+
 class EpisodeStore:
     """Episodes in the application database; the channel's row owns them."""
 
@@ -125,6 +150,16 @@ class EpisodeStore:
                 "SELECT COUNT(*) AS total FROM episodes WHERE channel_slug = ?", (channel,)
             ).fetchone()
         return int(row["total"])
+
+    def part_counts(self, channel: str, number: int) -> PartCounts:
+        """How many sources, media files, waivers and third-party uses the episode has."""
+        with self.database.connect() as connection:
+            row = connection.execute(
+                PART_COUNT_QUERY, {"channel": channel, "number": number}
+            ).fetchone()
+        return PartCounts(
+            sources=row["sources"], media=row["media"], waivers=row["waivers"], uses=row["uses"]
+        )
 
     def get(self, channel: str, number: int) -> RevisedEpisode:
         """One episode with its revision."""

@@ -1,0 +1,22 @@
+{# Pieces the PDF exports share; plain HTML, styled by static/export.css. #}
+{% macro classification_table(rows) -%}
+<table>
+  <thead><tr><th>{{ _("Dimension") }}</th><th>{{ _("Main") }}</th><th>{{ _("Also") }}</th></tr></thead>
+  <tbody>
+  {% for label, main, others, is_set in rows %}
+  <tr><td>{{ label }}</td><td>{% if is_set %}<span class="doc-pill is-main">{{ main }}</span>{% else %}<span class="doc-muted">{{ main }}</span>{% endif %}</td><td>{{ others }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{%- endmacro %}
+
+{% macro sources_table(sources) -%}
+<table>
+  <thead><tr><th>{{ _("Title") }}</th><th>{{ _("Claim") }}</th><th>{{ _("Accessed on") }}</th></tr></thead>
+  <tbody>
+  {% for source in sources %}
+  <tr><td>{{ source.title }}<br><span class="doc-link">{{ source.url }}</span></td><td>{{ source.claim }}</td><td>{{ source.accessed_on }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{%- endmacro %}

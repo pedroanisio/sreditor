@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from tests.conftest import RecordingMailer
-from tests.workspace_helpers import flash_after, join, member, new_channel, submit
+from tests.workspace_helpers import autosave, flash_after, join, member, new_channel, submit
 
 EPISODE = "/app/channels/funny-memes/episodes/1"
 RESEARCH = f"{EPISODE}/research"
@@ -62,6 +62,21 @@ def test_research_notes_stale_revision_shows_conflict_and_keeps_text(owner: Test
     assert 'id="text-error"' in response.text
 
 
+def test_research_notes_autosave_answers_new_revision(owner: TestClient) -> None:
+    response = autosave(owner, RESEARCH, {"text": "Lead one", "revision": "0"})
+    assert response.status_code == 204 and response.headers["Sreditor-Revision"] == "1"
+    assert "Lead one" in owner.get(RESEARCH).text
+
+
+def test_research_notes_autosave_stale_revision_answers_409(owner: TestClient) -> None:
+    autosave(owner, RESEARCH, {"text": "First", "revision": "0"})
+    assert autosave(owner, RESEARCH, {"text": "Mine", "revision": "0"}).status_code == 409
+
+
+def test_research_notes_page_in_portuguese_names_autosave(owner: TestClient) -> None:
+    assert 'data-saved="Salvo às %(time)s"' in owner.get(f"{RESEARCH}?lang=pt-BR").text
+
+
 def test_research_notes_too_long_shows_error(owner: TestClient) -> None:
     response = submit(owner, RESEARCH, {"text": "x" * 20001})
     assert response.status_code == 422 and 'id="text-error"' in response.text
@@ -69,7 +84,7 @@ def test_research_notes_too_long_shows_error(owner: TestClient) -> None:
 
 def test_research_source_add_lists_it_with_note(owner: TestClient) -> None:
     page = flash_after(owner, submit(owner, SOURCES, STUDY))
-    assert "Source added." in page and "Mondays study" in page and "2026-11-01" in page
+    assert "Source added." in page and "Mondays study" in page and "Nov 1, 2026" in page
 
 
 def test_research_source_bad_link_shows_error_next_to_field(owner: TestClient) -> None:

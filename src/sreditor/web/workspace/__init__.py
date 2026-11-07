@@ -11,8 +11,11 @@ from sreditor.web.workspace import (
     account,
     brand_kit,
     channels,
+    classification,
     editorial,
     episodes,
+    external_media,
+    item_context,
     library,
     media,
     members,
@@ -21,6 +24,9 @@ from sreditor.web.workspace import (
     platforms,
     research,
     screenplay,
+    search,
+    short_script,
+    srstudio,
     waivers,
 )
 from sreditor.web.workspace.shell import (
@@ -40,12 +46,18 @@ ROUTERS = (
     research.router,
     pitches.router,
     screenplay.router,
+    short_script.router,
     media.router,
     waivers.router,
     library.router,
+    srstudio.router,
+    external_media.router,
+    classification.router,
+    item_context.router,
     members.router,
     account.router,
     oauth.router,
+    search.router,
 )
 
 NOT_FOUND = Notice(

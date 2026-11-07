@@ -4,11 +4,8 @@
 {% block page %}
 {% set may_write = can("write_content") %}
 {% set too_large = _("This file is larger than %(size)s MB.", size=max_megabytes) %}
-{{ ui.back_link(channel_link ~ "/episodes", _("Episodes")) }}
-{% call ui.page_header("#" ~ episode.number ~ " · " ~ episode.title, _("The episode's visual style, voice-over, sound and visual effects, played right here.")) %}
-  {{ ui.badge(_(episode_status_labels[episode.status]), episode_status_tones[episode.status]) }}
-{% endcall %}
-{{ ui.tabs(episode_tabs, episode_tab, _("Episode pages")) }}
+{% set lead = _("The episode's visual style, voice-over, sound and visual effects, played right here.") %}
+{% include "workspace/_episode_header.html" %}
 {{ ui.form_error(errors) }}
 {% call ui.panel(_("Visual style"), id="style") %}
   {% if style.style %}<p><strong>{{ style.style.name }}</strong>{% if style.style.description %}: {{ style.style.description }}{% endif %}</p>

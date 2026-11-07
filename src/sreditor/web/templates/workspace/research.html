@@ -3,11 +3,8 @@
 {% block page_title %}{{ _("Research") }} · {{ episode.title }}{% endblock %}
 {% block page %}
 {% set may_write = can("write_content") %}
-{{ ui.back_link(channel_link ~ "/episodes", _("Episodes")) }}
-{% call ui.page_header("#" ~ episode.number ~ " · " ~ episode.title, _("What the episode is built on: notes, and the sources behind each claim.")) %}
-  {{ ui.badge(_(episode_status_labels[episode.status]), episode_status_tones[episode.status]) }}
-{% endcall %}
-{{ ui.tabs(episode_tabs, episode_tab, _("Episode pages")) }}
+{% set lead = _("What the episode is built on: notes, and the sources behind each claim.") %}
+{% include "workspace/_episode_header.html" %}
 {{ ui.form_error(errors) }}
 {% call ui.panel(_("Pitch"), id="pitch") %}
   {% if may_write %}
@@ -24,6 +21,7 @@
   {% if pitch_research %}
   {% call ui.subsection(_("Pitch research"), "pitch-research") %}
   <p><a href="{{ pitches_link }}/{{ pitch_research.pitch.id }}">{{ pitch_research.pitch.title }}</a></p>
+  {{ ui.inherited(_("From the pitch: change these notes and sources on the pitch's page.")) }}
   {% if pitch_research.notes.text %}{{ ui.text_block(pitch_research.notes.text) }}{% else %}<p class="muted">{{ _("The pitch has no notes yet.") }}</p>{% endif %}
   {% if pitch_research.sources %}
   {% call(source) ui.items(pitch_research.sources, _("Pitch sources")) %}
@@ -42,10 +40,10 @@
 {% endcall %}
 {% call ui.panel(_("Notes"), id="notes") %}
   {% if may_write %}
-  {% call ui.form(research_link, csrf_field, csrf_token) %}
+  {% call ui.form(research_link, csrf_field, csrf_token, autosave=true) %}
     {{ ui.hidden("revision", notes.revision) }}
-    {{ ui.textarea("text", _("Research notes"), errors, value=notes_text, limit=notes_limit, rows=10, hint=_("Facts, open questions and leads. Cite each fact's source below.")) }}
-    {% call ui.panel_actions() %}{{ ui.button(_("Save notes")) }}{% endcall %}
+    {{ ui.textarea("text", _("Research notes"), errors, value=notes_text, limit=notes_limit, rows=6, hint=_("Facts, open questions and leads. Cite each fact's source below.")) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Save notes")) }}{{ ui.autosave_status(_("Saving…"), _("Saved at %(time)s"), _("Could not save. Press the button to try again."), _("Someone else changed this text. Reload the page to see their changes; saving as you type is paused."), _("This text is over the limit, so it was not saved. Shorten it.")) }}{% endcall %}
   {% endcall %}
   {% elif notes.text %}
   {{ ui.text_block(notes.text) }}
@@ -71,9 +69,10 @@
   {% else %}
   <p class="muted">{{ _("No sources yet.") }}</p>
   {% endif %}
+  {% if may_write %}{% call ui.panel_actions() %}{{ ui.dialog_button("new-source", _("Add a source"), plus=true) }}{% endcall %}{% endif %}
 {% endcall %}
 {% if may_write %}
-{% call ui.panel(_("Add a source"), id="new-source") %}
+{% call ui.dialog("new-source", _("Add a source"), _("Close"), open=sent_source is not none) %}
   {% call ui.form(sources_link, csrf_field, csrf_token) %}
     {{ ui.field("url", _("Link"), errors, type="url", value=sent_source.url if sent_source else "", hint=_("The full address, starting with https://.")) }}
     {{ ui.field("title", _("Title"), errors, value=sent_source.title if sent_source else "", maxlength=source_title_limit, id="source-title") }}

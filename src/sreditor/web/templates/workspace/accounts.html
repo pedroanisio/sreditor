@@ -14,7 +14,7 @@
   {% call(account) ui.items(channel.accounts, _("Accounts")) %}
     {% set key = account.platform.value %}
     {% set name = platform_names[account.platform] %}
-    {{ ui.mark(name) }}
+    {{ ui.platform_mark(key, name, static_url('platforms.svg')) }}
     {% call ui.item_body() %}
       <strong id="account-{{ key }}">{{ name }}</strong> {{ ui.badge(_(status_labels[account.status]), status_tones[account.status]) }}
       <p>@{{ account.handle }}{% if account.url %} · <a href="{{ account.url }}" rel="noopener noreferrer">{{ account.url }}</a>{% endif %}</p>

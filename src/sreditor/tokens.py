@@ -1,6 +1,7 @@
 """Personal API tokens for agents (rule agentic.tokens.scoped).
 
-A token acts as its user, narrowed to its scopes: it never grants more than the user's role.
+A token acts as its user, narrowed to its scopes and, when it names some, to those channels:
+it never grants more than the user's role.
 The secret is shown once at creation; the database keeps only its hash.
 """
 
@@ -15,6 +16,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
+from sreditor.channels import Slug
 from sreditor.database import Database, parse, stamp
 from sreditor.members import Permission
 from sreditor.security import hash_token
@@ -45,6 +47,7 @@ SCOPE_FOR: dict[Permission, Scope] = {
     Permission.WRITE_CONTENT: Scope.CONTENT_WRITE,
     Permission.WRITE_EDITORIAL: Scope.EDITORIAL_WRITE,
     Permission.READ_WAIVERS: Scope.WAIVERS_READ,
+    Permission.GENERATE_VOICE: Scope.CONTENT_WRITE,
     Permission.WRITE_CHANNEL: Scope.CHANNELS_WRITE,
     Permission.MANAGE_MEMBERS: Scope.MEMBERS_WRITE,
     Permission.MANAGE_OWNERS: Scope.MEMBERS_WRITE,
@@ -68,10 +71,21 @@ class ApiToken(BaseModel):
     expires_at: datetime
     last_used_at: datetime | None = None
     revoked_at: datetime | None = None
+    # None reaches every channel of its user, including ones they join later.
+    channels: list[str] | None = None
 
     def allows(self, scope: Scope) -> bool:
         """Whether the token carries the scope."""
         return scope in self.scopes
+
+    def reaches(self, slug: str) -> bool:
+        """Whether the token may act on this channel at all."""
+        return self.channels is None or slug in self.channels
+
+    @property
+    def is_limited(self) -> bool:
+        """Whether the token names the channels it may act on."""
+        return self.channels is not None
 
 
 class TokenInput(BaseModel):
@@ -82,6 +96,11 @@ class TokenInput(BaseModel):
     name: TokenName
     scopes: Annotated[list[Scope], Field(min_length=1)]
     expires_in_days: int = Field(default=DEFAULT_TTL_DAYS, ge=1, le=MAX_TTL_DAYS)
+    channels: list[Slug] | None = Field(
+        default=None,
+        min_length=1,
+        description="Slugs of the only channels the token may act on; omit for all of yours.",
+    )
 
 
 class NewToken(BaseModel):
@@ -110,6 +129,7 @@ def to_token(row: sqlite3.Row) -> ApiToken:
         expires_at=datetime.fromisoformat(row["expires_at"]),
         last_used_at=parse(row["last_used_at"]),
         revoked_at=parse(row["revoked_at"]),
+        channels=row["channels"].split() if row["channels"] is not None else None,
     )
 
 
@@ -132,11 +152,12 @@ class TokenStore:
             scopes=sorted(set(data.scopes)),
             created_at=now,
             expires_at=now + timedelta(days=data.expires_in_days),
+            channels=sorted(set(data.channels)) if data.channels is not None else None,
         )
         with self.database.connect() as connection:
             connection.execute(
                 "INSERT INTO api_tokens (id, user_id, name, token_hash, prefix, scopes,"
-                " created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                " created_at, expires_at, channels) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     str(token.id),
                     str(user_id),
@@ -146,6 +167,7 @@ class TokenStore:
                     " ".join(token.scopes),
                     stamp(token.created_at),
                     stamp(token.expires_at),
+                    " ".join(token.channels) if token.channels is not None else None,
                 ),
             )
         return NewToken(token=token, secret=secret)

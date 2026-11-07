@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from sreditor.channels import Channel, Status
 from sreditor.deps import ChannelAccess, Services, ServicesDep, request_locale
 from sreditor.editorial import Editorial
+from sreditor.export_operations import CHANNEL_EXPORT
 from sreditor.i18n import N_
 from sreditor.members import Permission
 from sreditor.operations import create_channel, delete_channel, list_channels, replace_channel
@@ -176,6 +177,7 @@ def overview(request: Request, app: ServicesDep, access: PageAccess) -> Response
         "remaining": sum(1 for item in items if not item[0]),
         "member_count": len(app.members.list(channel.slug)),
         "episode_count": app.episodes.count(channel.slug),
+        "export_link": CHANNEL_EXPORT.format(slug=channel.slug),
         "status_labels": STATUS_LABELS,
         "status_tones": STATUS_TONES,
     }

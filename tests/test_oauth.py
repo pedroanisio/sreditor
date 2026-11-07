@@ -21,6 +21,7 @@ from sreditor.oauth import (
     TokenRequest,
     challenge_of,
     is_allowed_redirect,
+    is_registered_redirect,
     redirect_with,
     requested_scopes,
     resources_for,
@@ -199,6 +200,45 @@ def test_check_unregistered_redirect_is_refused(store: OAuthStore) -> None:
     client_id = registered(store)
     request = authorization(client_id, redirect_uri="https://evil.example/cb")
     assert refusal_code(lambda: store.check(request, RESOURCES)) is ErrorCode.INVALID_REQUEST
+
+
+LOOPBACK_CALLBACK = "http://localhost/callback"
+
+
+@pytest.mark.parametrize(
+    "uri",
+    ["http://localhost:63054/callback", "http://localhost/callback", "http://localhost:1/callback"],
+)
+def test_is_registered_redirect_loopback_any_port_matches(uri: str) -> None:
+    assert is_registered_redirect(uri, [LOOPBACK_CALLBACK])
+
+
+def test_is_registered_redirect_ipv6_loopback_any_port_matches() -> None:
+    assert is_registered_redirect("http://[::1]:8123/callback", ["http://[::1]/callback"])
+
+
+@pytest.mark.parametrize(
+    "uri",
+    [
+        "http://localhost:63054/other",
+        "http://127.0.0.1:63054/callback",
+        "http://localhost:63054/callback?next=x",
+        "https://localhost:63054/callback",
+        "http://localhost@evil.example:63054/callback",
+    ],
+)
+def test_is_registered_redirect_loopback_other_path_host_or_scheme_is_refused(uri: str) -> None:
+    assert not is_registered_redirect(uri, [LOOPBACK_CALLBACK])
+
+
+def test_is_registered_redirect_https_other_port_is_refused() -> None:
+    assert not is_registered_redirect("https://claude.ai:8443/api/mcp/auth_callback", [CALLBACK])
+
+
+def test_check_loopback_redirect_on_another_port_is_accepted(store: OAuthStore) -> None:
+    client_id = store.register(ClientRegistration(redirect_uris=[LOOPBACK_CALLBACK])).client_id
+    request = authorization(client_id, redirect_uri="http://localhost:63054/callback")
+    assert store.check(request, RESOURCES).client_id == client_id
 
 
 def test_check_without_pkce_is_refused(store: OAuthStore) -> None:

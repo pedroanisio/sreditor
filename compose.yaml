@@ -19,6 +19,9 @@ services:
       # without one they only go to the log.
       SREDITOR_SMTP2GO_API_KEY: ${SREDITOR_SMTP2GO_API_KEY:-}
       SREDITOR_MAIL_SENDER: ${SREDITOR_MAIL_SENDER:-}
+      # With an ElevenLabs key, owners and editors can generate voice-overs from short scripts;
+      # without one the feature is hidden.
+      SREDITOR_ELEVENLABS_API_KEY: ${SREDITOR_ELEVENLABS_API_KEY:-}
       # Only this machine (through the loopback port) and the tunnel reach the app, so it
       # trusts their X-Forwarded-For; per-client rate limits then see each visitor's address.
       SREDITOR_FORWARDED_ALLOW_IPS: ${SREDITOR_FORWARDED_ALLOW_IPS:-*}

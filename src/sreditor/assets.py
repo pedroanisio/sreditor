@@ -1,6 +1,7 @@
 """Brand files, episode media and waivers: checked, named by their content and kept in the assets directory.
 
-A file's type comes from its first bytes, never from the name or the browser's claim. Images
+A file's type comes from its first bytes, never from the name or the browser's claim; plain
+text, which has no signature, is accepted only where asked for and checked as UTF-8. Images
 are opened with Pillow to prove they decode and to read their size. Files are stored as
 `<channel>/<sha256><extension>`, so the same file is stored once and an Asset's sha256 always
 matches its content. Media files can be large, so they are copied in chunks, never held whole.
@@ -8,10 +9,12 @@ matches its content. Media files can be large, so they are copied in chunks, nev
 
 from __future__ import annotations
 
+import codecs
 import hashlib
 import io
 import os
 import tempfile
+from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
 from typing import BinaryIO
@@ -57,6 +60,10 @@ class FileFamily(StrEnum):
     AUDIO = "audio"
     FONT = "font"
     DOCUMENT = "document"
+    MODEL = "model"
+    TEXTURE = "texture"
+    TEXT = "text"
+    PACKAGE = "package"
 
 
 class FileFormat(BaseModel):
@@ -83,6 +90,18 @@ MP3 = FileFormat(media_type="audio/mpeg", extension=".mp3", family=FileFamily.AU
 WAV = FileFormat(media_type="audio/wav", extension=".wav", family=FileFamily.AUDIO)
 M4A = FileFormat(media_type="audio/mp4", extension=".m4a", family=FileFamily.AUDIO)
 PDF = FileFormat(media_type="application/pdf", extension=".pdf", family=FileFamily.DOCUMENT)
+GLB = FileFormat(media_type="model/gltf-binary", extension=".glb", family=FileFamily.MODEL)
+FBX = FileFormat(
+    media_type="application/vnd.autodesk.fbx", extension=".fbx", family=FileFamily.MODEL
+)
+BLEND = FileFormat(media_type="application/x-blender", extension=".blend", family=FileFamily.MODEL)
+EXR = FileFormat(media_type="image/x-exr", extension=".exr", family=FileFamily.TEXTURE)
+KTX2 = FileFormat(media_type="image/ktx2", extension=".ktx2", family=FileFamily.TEXTURE)
+DDS = FileFormat(media_type="image/vnd-ms.dds", extension=".dds", family=FileFamily.TEXTURE)
+# A package is kept as it came and never opened, so what is inside is never read or served.
+ZIP = FileFormat(media_type="application/zip", extension=".zip", family=FileFamily.PACKAGE)
+# Plain text has no signature; it is accepted only where asked for, and checked as it is copied.
+TEXT = FileFormat(media_type="text/plain", extension=".txt", family=FileFamily.TEXT)
 
 # Leading bytes of each format whose signature sits at the very start of the file.
 PREFIXES: tuple[tuple[bytes, FileFormat], ...] = (
@@ -96,7 +115,17 @@ PREFIXES: tuple[tuple[bytes, FileFormat], ...] = (
     (b"OTTO", OTF),
     (b"ID3", MP3),
     (b"%PDF-", PDF),
+    (b"glTF", GLB),
+    (b"Kaydara FBX Bina", FBX),
+    (b"BLENDER", BLEND),
+    (b"v/1\x01", EXR),
+    (b"\xabKTX 20\xbb\r\n\x1a\n", KTX2),
+    (b"DDS ", DDS),
+    (b"PK\x03\x04", ZIP),
 )
+# Control characters that never appear in source text, such as a shader; tab, newlines and
+# form feed do.
+TEXT_CONTROLS = frozenset(range(0x20)) - {0x09, 0x0A, 0x0C, 0x0D}
 QUICKTIME_BRAND = b"qt  "
 # MP4 brands that mark a file holding only audio (iTunes audio and audiobooks).
 AUDIO_BRANDS = (b"M4A ", b"M4B ")
@@ -283,15 +312,14 @@ class AssetStore:
     ) -> StoredFile:
         """Check and store a media file read from a stream, a chunk at a time."""
         head = source.read(CHUNK_BYTES)
-        found = sniff(head)
-        if found is None or found not in accepted:
-            raise UnsupportedFile(formats=names_of(accepted))
+        found = stream_format(head, accepted)
+        check = TextCheck(accepted) if found is TEXT else None
         folder = self.root / slug
         folder.mkdir(parents=True, exist_ok=True)
         handle, temporary = tempfile.mkstemp(dir=folder, prefix=".upload-")
         try:
             with os.fdopen(handle, "wb") as target:
-                digest, size = copy_limited(head, source, target, max_bytes)
+                digest, size = copy_limited(head, source, target, max_bytes, check)
             relative = f"{slug}/{digest}{found.extension}"
             os.replace(temporary, self.root / relative)
         except (AssetRejected, OSError):
@@ -310,12 +338,55 @@ class AssetStore:
         return target
 
 
+def stream_format(head: bytes, accepted: tuple[FileFormat, ...]) -> FileFormat:
+    """The accepted format the first chunk shows; plain text only where it is accepted."""
+    found = sniff(head)
+    if found is None and TEXT in accepted and is_text_start(head):
+        return TEXT
+    if found is None or found not in accepted:
+        raise UnsupportedFile(formats=names_of(accepted))
+    return found
+
+
+def is_text_start(head: bytes) -> bool:
+    """Whether a file starts as UTF-8 text; the end may cut a character, which the copy checks."""
+    if not head or any(byte in TEXT_CONTROLS for byte in head):
+        return False
+    try:
+        codecs.getincrementaldecoder("utf-8")().decode(head)
+    except UnicodeDecodeError:
+        return False
+    return True
+
+
+class TextCheck:
+    """Checks a text file chunk by chunk as it is copied: UTF-8 throughout, no control bytes."""
+
+    def __init__(self, accepted: tuple[FileFormat, ...]) -> None:
+        self.decoder = codecs.getincrementaldecoder("utf-8")()
+        self.formats = names_of(accepted)
+
+    def __call__(self, chunk: bytes) -> None:
+        """Check the next chunk; an empty chunk ends the file. UnsupportedFile when not text."""
+        try:
+            self.decoder.decode(chunk, final=not chunk)
+        except UnicodeDecodeError as broken:
+            raise UnsupportedFile(formats=self.formats) from broken
+        if any(byte in TEXT_CONTROLS for byte in chunk):
+            raise UnsupportedFile(formats=self.formats)
+
+
 def copy_limited(
-    head: bytes, source: BinaryIO, target: BinaryIO, max_bytes: int
+    head: bytes,
+    source: BinaryIO,
+    target: BinaryIO,
+    max_bytes: int,
+    check: Callable[[bytes], None] | None = None,
 ) -> tuple[str, int]:
     """Copy the first chunk and the rest of the stream; the sha256 and size of what was copied.
 
-    Raises FileTooLarge as soon as the copy passes `max_bytes`, without reading the remainder.
+    Raises FileTooLarge as soon as the copy passes `max_bytes`, without reading the remainder;
+    `check` sees each chunk, then an empty one at the end, and may refuse the file.
     """
     digest = hashlib.sha256()
     size = 0
@@ -324,9 +395,13 @@ def copy_limited(
         size += len(chunk)
         if size > max_bytes:
             raise FileTooLarge(size=max_bytes // BYTES_PER_MEGABYTE)
+        if check:
+            check(chunk)
         digest.update(chunk)
         target.write(chunk)
         chunk = source.read(CHUNK_BYTES)
+    if check:
+        check(b"")
     return digest.hexdigest(), size
 
 

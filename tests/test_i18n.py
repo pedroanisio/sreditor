@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import re
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -92,6 +93,14 @@ def test_translator_in_portuguese_uses_the_catalog() -> None:
 
 def test_translator_with_missing_entry_falls_back_to_english() -> None:
     assert Translator("pt-BR")("Not in the catalog") == "Not in the catalog"
+
+
+def test_translator_day_in_english_reads_month_first() -> None:
+    assert Translator().day(date(2026, 11, 7)) == "Nov 7, 2026"
+
+
+def test_translator_day_in_portuguese_reads_day_first() -> None:
+    assert Translator("pt-BR").day(date(2026, 5, 1)) == "1 de mai. de 2026"
 
 
 def test_translator_with_placeholders_fills_them_after_translating() -> None:

@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from sreditor.screenplay import SCREENPLAY_LENGTH
 from tests.conftest import RecordingMailer
-from tests.workspace_helpers import flash_after, join, member, new_channel, submit
+from tests.workspace_helpers import autosave, flash_after, join, member, new_channel, submit
 
 EPISODE = "/app/channels/funny-memes/episodes/1"
 SCREENPLAY = f"{EPISODE}/screenplay"
@@ -46,18 +46,63 @@ def test_screenplay_stale_revision_shows_conflict_and_keeps_text(owner: TestClie
     assert "Someone changed the screenplay" in response.text
 
 
+def test_screenplay_autosave_answers_new_revision_without_page(owner: TestClient) -> None:
+    response = autosave(owner, SCREENPLAY, {"text": PILOT, "revision": "0"})
+    assert response.status_code == 204 and response.headers["Sreditor-Revision"] == "1"
+    assert response.content == b"" and "flash" not in response.headers.get("set-cookie", "")
+
+
+def test_screenplay_autosave_stale_revision_answers_409_without_page(owner: TestClient) -> None:
+    autosave(owner, SCREENPLAY, {"text": PILOT, "revision": "0"})
+    response = autosave(owner, SCREENPLAY, {"text": "Mine", "revision": "0"})
+    assert response.status_code == 409 and response.content == b""
+
+
+def test_screenplay_autosave_too_long_answers_422(owner: TestClient) -> None:
+    response = autosave(owner, SCREENPLAY, {"text": "x" * (SCREENPLAY_LENGTH + 1)})
+    assert response.status_code == 422 and response.content == b""
+
+
+def test_screenplay_form_saves_as_people_type(owner: TestClient) -> None:
+    page = owner.get(SCREENPLAY).text
+    assert "data-autosave" in page and 'data-saved="Saved at %(time)s"' in page
+
+
+def test_screenplay_page_shows_preview_beside_editor(owner: TestClient) -> None:
+    submit(owner, SCREENPLAY, {"text": PILOT, "revision": "0"})
+    page = owner.get(SCREENPLAY).text
+    assert 'class="split"' in page and '<p class="screenplay-scene">INT. KITCHEN - DAY</p>' in page
+    assert f'hx-get="{SCREENPLAY}/preview"' in page and "app-content is-wide" in page
+
+
+def test_screenplay_preview_answers_saved_blocks_alone(owner: TestClient) -> None:
+    autosave(owner, SCREENPLAY, {"text": PILOT, "revision": "0"})
+    fragment = owner.get(f"{SCREENPLAY}/preview").text
+    assert '<p class="screenplay-dialogue">Is it Monday again?</p>' in fragment
+    assert "<html" not in fragment
+
+
+def test_screenplay_preview_without_screenplay_says_it_will_show(owner: TestClient) -> None:
+    assert "The formatted screenplay shows here" in owner.get(f"{SCREENPLAY}/preview").text
+
+
+def test_screenplay_preview_unknown_episode_answers_404(owner: TestClient) -> None:
+    missing = SCREENPLAY.replace("/episodes/1/", "/episodes/9/")
+    assert owner.get(f"{missing}/preview").status_code == 404
+
+
 def test_screenplay_too_long_shows_error(owner: TestClient) -> None:
     response = submit(owner, SCREENPLAY, {"text": "x" * (SCREENPLAY_LENGTH + 1)})
     assert response.status_code == 422 and 'id="text-error"' in response.text
 
 
-def test_screenplay_page_for_viewer_shows_text_without_form(
+def test_screenplay_page_for_viewer_shows_formatted_text_without_form(
     app: FastAPI, mailer: RecordingMailer, owner: TestClient
 ) -> None:
     submit(owner, SCREENPLAY, {"text": PILOT})
     viewer = join(app, mailer, owner, "vi@example.com", "viewer")
     page = viewer.get(SCREENPLAY).text
-    assert 'class="text-block mono"' in page and 'name="text"' not in page
+    assert '<p class="screenplay-character">ANA</p>' in page and 'name="text"' not in page
 
 
 def test_screenplay_page_for_viewer_without_screenplay_says_so(

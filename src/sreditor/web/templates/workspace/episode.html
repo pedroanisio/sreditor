@@ -2,11 +2,8 @@
 {% import "_ui.html" as ui %}
 {% block page_title %}{{ episode.title }}{% endblock %}
 {% block page %}
-{{ ui.back_link(list_link, _("Episodes")) }}
-{% call ui.page_header("#" ~ episode.number ~ " · " ~ episode.title, episode.summary) %}
-  {{ ui.badge(_(episode_status_labels[episode.status]), episode_status_tones[episode.status]) }}
-{% endcall %}
-{{ ui.tabs(episode_tabs, episode_tab, _("Episode pages")) }}
+{% set lead = episode.summary %}
+{% include "workspace/_episode_header.html" %}
 {{ ui.form_error(errors) }}
 {% if can("write_content") %}
 {% call ui.panel(_("Episode"), id="episode") %}

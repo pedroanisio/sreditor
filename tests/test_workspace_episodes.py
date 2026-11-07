@@ -60,10 +60,90 @@ def test_episodes_list_portuguese_translates_status(owner: TestClient, pilot: No
     assert "Episódios" in page and "Ideia" in page
 
 
+def test_episodes_board_puts_episode_in_its_stage_column(owner: TestClient, pilot: None) -> None:
+    page = owner.get(EPISODES).text
+    idea = page.split('data-stage="idea"')[1].split("</section>")[0]
+    assert "#1 · Pilot" in idea and 'data-stage="published"' in page
+
+
+def test_episodes_board_card_is_movable_for_writer(owner: TestClient, pilot: None) -> None:
+    page = owner.get(EPISODES).text
+    assert "data-board-card" in page and f'action="{EPISODES}/1/move"' in page
+
+
+def test_episodes_board_for_viewer_has_no_move_form(
+    app: FastAPI, mailer: RecordingMailer, owner: TestClient, pilot: None
+) -> None:
+    viewer = join(app, mailer, owner, "vi@example.com", "viewer")
+    page = viewer.get(EPISODES).text
+    assert "#1 · Pilot" in page and "data-board-card" not in page and "/move" not in page
+
+
+def test_episodes_list_view_shows_badges_instead_of_board(owner: TestClient, pilot: None) -> None:
+    page = owner.get(f"{EPISODES}?view=list").text
+    assert 'class="board"' not in page and 'aria-current="page">List<' in page
+
+
+def test_episode_move_changes_stage_and_returns_to_board(owner: TestClient, pilot: None) -> None:
+    response = submit(owner, f"{EPISODES}/1/move", {"status": "script"})
+    assert response.headers["location"] == EPISODES
+    page = flash_after(owner, response)
+    script = page.split('data-stage="script"')[1].split("</section>")[0]
+    assert "Episode moved." in page and "#1 · Pilot" in script
+
+
+def test_episode_move_keeps_title_and_summary(owner: TestClient, pilot: None) -> None:
+    submit(owner, f"{EPISODES}/1/move", {"status": "research"})
+    page = owner.get(f"{EPISODES}/1").text
+    assert 'value="Pilot"' in page and "Why Mondays hurt." in page
+
+
+def test_episode_move_unknown_stage_answers_422(owner: TestClient, pilot: None) -> None:
+    response = submit(owner, f"{EPISODES}/1/move", {"status": "launched"})
+    assert response.status_code == 422 and "Choose one of the stages" in response.text
+
+
+def test_episode_move_by_viewer_is_forbidden(
+    app: FastAPI, mailer: RecordingMailer, owner: TestClient, pilot: None
+) -> None:
+    viewer = join(app, mailer, owner, "vi@example.com", "viewer")
+    assert submit(viewer, f"{EPISODES}/1/move", {"status": "script"}).status_code == 403
+
+
+def test_episode_move_unknown_episode_answers_404(owner: TestClient) -> None:
+    assert submit(owner, f"{EPISODES}/9/move", {"status": "script"}).status_code == 404
+
+
+def test_episodes_board_portuguese_names_the_switch(owner: TestClient, pilot: None) -> None:
+    page = owner.get(f"{EPISODES}?lang=pt-BR").text
+    assert ">Quadro</a>" in page and ">Lista</a>" in page and "Mover" in page
+
+
 def test_episode_save_changes_status_with_note(owner: TestClient, pilot: None) -> None:
     response = submit(owner, f"{EPISODES}/1", {**PILOT, "status": "script", "revision": "1"})
     page = flash_after(owner, response)
     assert "Changes saved." in page and 'value="script" selected' in page
+
+
+def test_episode_page_new_episode_is_at_idea_stage(owner: TestClient, pilot: None) -> None:
+    page = owner.get(f"{EPISODES}/1").text
+    current = page.split('aria-current="step"')[1].split("</li>")[0]
+    assert 'class="steps"' in page and "<span>Idea</span>" in current and "is-done" not in page
+
+
+def test_episode_page_marks_stages_before_status_done(owner: TestClient, pilot: None) -> None:
+    submit(owner, f"{EPISODES}/1", {**PILOT, "status": "script", "revision": "1"})
+    page = owner.get(f"{EPISODES}/1").text
+    assert page.count('class="is-done"') == 2 and page.count('class="is-next"') == 2
+
+
+def test_episode_page_without_parts_shows_no_tab_counts(owner: TestClient, pilot: None) -> None:
+    assert "tab-count" not in owner.get(f"{EPISODES}/1").text
+
+
+def test_episode_page_portuguese_names_the_stages(owner: TestClient, pilot: None) -> None:
+    page = owner.get(f"{EPISODES}/1?lang=pt-BR").text
+    assert 'aria-label="Etapa de produção"' in page and "<span>Ideia</span>" in page
 
 
 def test_episode_save_stale_revision_shows_conflict(owner: TestClient, pilot: None) -> None:

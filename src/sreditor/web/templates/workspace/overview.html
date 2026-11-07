@@ -4,6 +4,11 @@
 {% block page %}
 {% call ui.page_header(channel.name, channel.slug ~ " · " ~ channel.language) %}
   {{ ui.badge(_(status_labels[channel.status]), status_tones[channel.status]) }}
+  {% call ui.menu(_("Export")) %}
+    <a href="{{ export_link }}?format=pdf" download hx-boost="false">PDF</a>
+    <a href="{{ export_link }}?format=xlsx" download hx-boost="false">Excel</a>
+    <a href="{{ export_link }}?format=json" download hx-boost="false">JSON</a>
+  {% endcall %}
 {% endcall %}
 {% call ui.panel(_("Getting ready"), id="ready") %}
   {% if remaining %}

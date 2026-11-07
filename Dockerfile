@@ -6,6 +6,12 @@ FROM node:24-bookworm-slim AS node
 FROM python:3.12-slim-bookworm
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 
+# ffmpeg trims and fades generated voice-overs (rule project.voice-generation); Pango and a
+# fallback font let WeasyPrint render PDF exports (rule project.export).
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y ffmpeg libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY stmt-1.0.0.tar.gz /tmp/
 RUN tar -xzf /tmp/stmt-1.0.0.tar.gz -C /opt \
     && rm /tmp/stmt-1.0.0.tar.gz \

@@ -20,9 +20,14 @@ from sreditor.accounts import (
     WrongCredentials,
 )
 from sreditor.assets import AssetStore
+from sreditor.block_takes import BlockTakeStore
 from sreditor.channels import Channel
+from sreditor.classification import ClassificationStore
+from sreditor.context import ContextStore
 from sreditor.editorial import EditorialService
+from sreditor.elevenlabs import ElevenLabs
 from sreditor.episodes import EpisodeStore
+from sreditor.external_media import ExternalMediaStore
 from sreditor.i18n import BASE_LOCALE, Translator, negotiate
 from sreditor.library import LibraryStore
 from sreditor.mail import Mailer
@@ -32,11 +37,15 @@ from sreditor.pitches import PitchStore
 from sreditor.repository import ChannelNotFound, ChannelRepository
 from sreditor.research import ResearchStore
 from sreditor.screenplay import ScreenplayStore
+from sreditor.search import SearchStore
 from sreditor.security import Passwords, RateLimiter
 from sreditor.settings import AppSettings
+from sreditor.short_script import ShortScriptStore
+from sreditor.srstudio import SrstudioStore
 from sreditor.store import Owner, StmtClient
 from sreditor.tokens import SCOPE_FOR, ApiToken, TokenStore, is_api_token
 from sreditor.users import User, UserStore
+from sreditor.voice_generation import TakeStore
 from sreditor.waivers import WaiverStore
 
 SESSION_COOKIE = "sreditor_session"
@@ -63,9 +72,17 @@ class Services:
     research: ResearchStore
     pitches: PitchStore
     screenplays: ScreenplayStore
+    short_scripts: ShortScriptStore
+    takes: TakeStore
+    block_takes: BlockTakeStore
     library: LibraryStore
     media: MediaStore
+    external_media: ExternalMediaStore
+    classifications: ClassificationStore
     waivers: WaiverStore
+    search: SearchStore
+    contexts: ContextStore
+    srstudio: SrstudioStore
     users: UserStore
     members: MemberStore
     editorials: EditorialService
@@ -76,6 +93,7 @@ class Services:
     stmt: StmtClient
     tokens: TokenStore
     assets: AssetStore
+    voice: ElevenLabs | None = None  # None: SREDITOR_ELEVENLABS_API_KEY is not set
 
     def accounts(self, locale: str = BASE_LOCALE) -> Accounts:
         """Account flows whose emails are written in this locale."""
@@ -267,7 +285,12 @@ class ChannelAccess:
 
 
 def access_for(app: Services, slug: str, user: User, token: ApiToken | None) -> ChannelAccess:
-    """The channel and the user's role on it. Non-members get 404, so channels stay private."""
+    """The channel and the user's role on it. Non-members get 404, so channels stay private.
+
+    A token limited to other channels gets the same 404: it cannot tell the channel exists.
+    """
+    if token is not None and not token.reaches(slug):
+        raise ChannelNotFound(slug)
     role = app.members.role(slug, user.id)
     if role is None and not user.is_admin:
         raise ChannelNotFound(slug)

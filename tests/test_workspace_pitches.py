@@ -194,3 +194,45 @@ def test_pitch_create_by_viewer_is_forbidden(
 
 def test_pitch_list_in_portuguese_says_pautas(owner: TestClient) -> None:
     assert "Nenhuma pauta ainda" in owner.get(PITCHES, params={"lang": "pt-BR"}).text
+
+
+def test_pitch_list_offers_new_pitch_in_a_dialog(owner: TestClient) -> None:
+    page = owner.get(PITCHES).text
+    assert 'data-dialog="new-pitch"' in page and '<dialog class="dialog" id="new-pitch"' in page
+
+
+def test_pitch_create_without_title_reopens_the_dialog(owner: TestClient) -> None:
+    response = submit(owner, PITCHES, {"title": " "})
+    assert 'id="new-pitch" aria-labelledby="new-pitch-title" data-open' in response.text
+
+
+def test_pitch_source_bad_link_reopens_the_dialog(owner: TestClient, pitch: str) -> None:
+    response = submit(owner, f"{pitch}/sources", {**STUDY, "url": "mondays"})
+    assert 'id="new-source" aria-labelledby="new-source-title" data-open' in response.text
+
+
+def test_pitch_page_links_back_to_the_pitches(owner: TestClient, pitch: str) -> None:
+    assert f'<p class="back-link"><a href="{PITCHES}">' in owner.get(pitch).text
+
+
+def test_pitch_source_date_in_portuguese_reads_day_first(owner: TestClient, pitch: str) -> None:
+    submit(owner, f"{pitch}/sources", STUDY)
+    assert "1 de nov. de 2026" in owner.get(pitch, params={"lang": "pt-BR"}).text
+
+
+def test_research_page_marks_pitch_research_as_from_the_pitch(
+    owner: TestClient, pitch: str
+) -> None:
+    submit(owner, EPISODE_PITCH, {"pitch_id": pitch.rsplit("/", 1)[1]})
+    assert "From the pitch: change these notes" in owner.get(RESEARCH).text
+
+
+def test_pitch_notes_short_text_hides_the_counter(owner: TestClient, pitch: str) -> None:
+    submit(owner, f"{pitch}/research", {"text": "Lead"})
+    assert 'class="counter is-quiet"' in owner.get(pitch).text
+
+
+def test_pitch_notes_near_limit_shows_the_counter(owner: TestClient, pitch: str) -> None:
+    submit(owner, f"{pitch}/research", {"text": "x" * 19000})
+    page = owner.get(pitch).text
+    assert "19000/20000</output>" in page and 'class="counter is-quiet" for="text"' not in page

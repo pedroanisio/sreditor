@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -17,6 +18,13 @@ from sreditor.i18n import Translator
 from sreditor.store import StoreSettings
 from sreditor.web.forms import CSRF_COOKIE, field_errors, message_for
 from sreditor.web.routes import APP_PATH, SECURITY_HEADERS, safe_next
+from sreditor.web.static_assets import (
+    CACHE_UNVERSIONED,
+    CACHE_VERSIONED,
+    STATIC_DIR,
+    VERSION_LENGTH,
+    asset_version,
+)
 from tests.conftest import PASSWORD, RecordingMailer
 
 ORIGIN = "https://sreditor.test"  # the public_url in conftest's app_settings
@@ -101,10 +109,27 @@ def test_referrer_policy_for_plain_form_posts_is_same_origin(app: FastAPI) -> No
 def test_assets_on_public_pages_are_served_locally(app: FastAPI) -> None:
     client = browser(app)
     page = client.get("/").text
-    assert 'src="https://sreditor.test/static/htmx.min.js"' in page
+    assert (
+        f'src="https://sreditor.test/static/htmx.min.js?v={asset_version("htmx.min.js")}"' in page
+    )
     assert "cdn" not in page.lower() and "unpkg" not in page
     for asset in ("htmx.min.js", "style.css", "icon.svg"):
         assert client.get(f"/static/{asset}").status_code == 200
+
+
+def test_asset_url_with_version_is_cached_forever(app: FastAPI) -> None:
+    response = browser(app).get(f"/static/style.css?v={asset_version('style.css')}")
+    assert response.headers["cache-control"] == CACHE_VERSIONED
+
+
+def test_asset_url_without_version_is_revalidated(app: FastAPI) -> None:
+    response = browser(app).get("/static/style.css")
+    assert response.headers["cache-control"] == CACHE_UNVERSIONED
+
+
+def test_asset_version_follows_file_content() -> None:
+    content = (STATIC_DIR / "style.css").read_bytes()
+    assert asset_version("style.css") == hashlib.sha256(content).hexdigest()[:VERSION_LENGTH]
 
 
 def test_openapi_schema_with_pages_lists_only_the_api(app: FastAPI) -> None:

@@ -1,4 +1,4 @@
-"""Library routes: a channel's characters, locations and styles; each episode's cast and style."""
+"""Library routes: a channel's characters, locations, styles and props; each episode's cast and style."""
 
 from __future__ import annotations
 
@@ -47,6 +47,12 @@ KINDS = (
         plural="styles",
         example="Warm documentary: handheld, natural light",
         usage="Each episode picks one with set_episode_style.",
+    ),
+    KindNames(
+        kind=LibraryKind.PROP,
+        plural="props",
+        example="Laptop, the one Rex types on",
+        usage="srstudio draws each with the rig its sheet names (set_prop_sheet).",
     ),
 )
 

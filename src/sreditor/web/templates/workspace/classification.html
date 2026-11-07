@@ -1,0 +1,33 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% from "workspace/_classification_form.html" import group_dialog with context %}
+{% block page_title %}{{ _("Classification") }} · {{ episode.title }}{% endblock %}
+{% block page %}
+{% set may_write = can("write_content") %}
+{% set lead = _("What kind of video the episode is: who it is for, what it is about and how it tells it.") %}
+{% include "workspace/_episode_header.html" %}
+{{ ui.form_error(errors) }}
+{% if is_proposal %}
+{% call ui.alert("info") %}
+  <p><strong>{{ _("An agent proposed this classification") }}</strong></p>
+  <p>{{ _("Percentages are how sure the agent is. Edit any group, or confirm it as it is.") }}</p>
+  {% if may_write %}
+  {% call ui.form(form_link ~ "/confirm", csrf_field, csrf_token) %}
+    {{ ui.hidden("revision", found.revision) }}
+    {{ ui.button(_("Confirm as it is"), size="small") }}
+  {% endcall %}
+  {% endif %}
+{% endcall %}
+{% endif %}
+{% for group in groups %}
+{% call ui.panel(group.title, id="group-" ~ group.key) %}
+  {{ ui.tag_facts(group.summary, _("Not classified yet")) }}
+  {% if may_write %}
+  {% call ui.panel_actions() %}{{ ui.dialog_button("edit-" ~ group.key, _("Edit"), variant="ghost", size="small") }}{% endcall %}
+  {% endif %}
+{% endcall %}
+{% endfor %}
+{% if may_write %}
+{% for group in groups %}{{ group_dialog(group, form_link, found.revision, errors, _("Save")) }}{% endfor %}
+{% endif %}
+{% endblock %}

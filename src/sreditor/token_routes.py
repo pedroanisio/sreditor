@@ -6,6 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Response, status
 
+from sreditor import operations
 from sreditor.deps import ServicesDep, SessionUser
 from sreditor.pagination import DEFAULT_LIMIT, Cursor, Limit, Page, decode_cursor, page
 from sreditor.problems import ProblemError
@@ -16,13 +17,14 @@ router = APIRouter(tags=["tokens"])
 
 @router.post("/me/tokens", status_code=status.HTTP_201_CREATED, summary="Create an API token")
 def create_token(data: TokenInput, user: SessionUser, app: ServicesDep) -> NewToken:
-    """Create an API token for an agent, limited to the given scopes.
+    """Create an API token for an agent, limited to the given scopes and, with `channels`, to
+    those channels only.
 
     The `secret` is returned only in this response; store it now. The token never grants more
     than your own role on a channel. It takes no Idempotency-Key: a replay could not return the
     secret again, so retry by creating a new token and revoking the unused one.
     """
-    return app.tokens.create(user.id, data)
+    return operations.create_token(app, user, data)
 
 
 @router.get("/me/tokens", summary="List your API tokens")

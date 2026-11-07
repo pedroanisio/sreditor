@@ -15,9 +15,9 @@
 
 {# A form that shows it is working: htmx marks it .htmx-request and disables its submit button,
    so it cannot be pressed twice (rule ui.microinteractions). #}
-{% macro form(action, csrf_field, csrf_token, class="", novalidate=true, token_form=false, auto_submit=false, upload=false) -%}
+{% macro form(action, csrf_field, csrf_token, class="", novalidate=true, token_form=false, auto_submit=false, upload=false, autosave=false) -%}
 <form method="post" action="{{ action }}"{% if class %} class="{{ class }}"{% endif %}{% if novalidate %} novalidate{% endif %}{% if upload %} enctype="multipart/form-data"{% endif %}
-  {%- if token_form %} data-token-form{% endif %}{% if auto_submit %} data-auto-submit{% endif %}
+  {%- if token_form %} data-token-form{% endif %}{% if auto_submit %} data-auto-submit{% endif %}{% if autosave %} data-autosave{% endif %}
   hx-disabled-elt="find button[type='submit']">
   {{ csrf(csrf_field, csrf_token) }}
   {{ caller() }}
@@ -48,6 +48,8 @@
   {%- elif name == "pitches" %}<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/>
   {%- elif name == "episodes" %}<path d="M4 11v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8Z"/><path d="m4 11-.9-3.6a1 1 0 0 1 .7-1.2l13.5-3.4a1 1 0 0 1 1.2.7l.6 2.5Z"/><path d="m7.7 5.3 3.1 4"/><path d="m13.6 3.8 3.1 4"/>
   {%- elif name == "library" %}<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5Z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>
+  {%- elif name == "profile" %}<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/>
+  {%- elif name == "external-media" %}<rect x="3" y="4" width="18" height="14" rx="2"/><path d="m10 8 5 3-5 3Z"/><path d="M7 21h10"/>
   {%- elif name == "members" %}<circle cx="9" cy="8" r="4"/><path d="M2 21v-1a7 7 0 0 1 14 0v1"/><path d="M16 4a4 4 0 0 1 0 8"/><path d="M22 21v-1a7 7 0 0 0-4-6.3"/>
   {%- elif name == "settings" %}<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>
   {%- elif name == "channels" %}<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
@@ -58,6 +60,7 @@
   {%- elif name == "font" %}<path d="M4 20 10 4h1l6 16"/><path d="M6.5 14h8"/><path d="M17 20h4"/>
   {%- elif name == "plus" %}<path d="M12 5v14M5 12h14"/>
   {%- elif name == "back" %}<path d="m15 18-6-6 6-6"/>
+  {%- elif name == "search" %}<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
   {%- elif name == "close" %}<path d="M18 6 6 18M6 6l12 12"/>
   {%- else %}<path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/>{% endif -%}
 </svg>
@@ -244,6 +247,38 @@
 {# ——— Workspace: the signed-in area ——— #}
 
 {# A status; tone is "", success, warning or accent. #}
+{# Values as chips the person toggles: real checkboxes (radios when `single`), so it works without
+   script. `muted` values read as states rather than choices, such as "Not classified yet";
+   `states` maps a value to is-hover or is-focus for the /design page. #}
+{% macro pills(name, legend, options, errors, selected=[], single=false, hint="", muted=[], states={}, id="") -%}
+{% set error = errors.get(name) %}
+{% set field_id = id or name %}
+<fieldset class="pills{% if error %} invalid{% endif %}"{% if error %} aria-invalid="true" aria-describedby="{{ field_id }}-error"{% elif hint %} aria-describedby="{{ field_id }}-hint"{% endif %}>
+  <legend>{{ legend }}</legend>
+  <div class="pill-list">
+    {% for option_value, option_label in options %}
+    <span class="pill{% if option_value in muted %} muted{% endif %}{% if states.get(option_value) %} {{ states.get(option_value) }}{% endif %}">
+      <input class="visually-hidden" id="{{ field_id }}-{{ loop.index }}" name="{{ name }}" type="{{ 'radio' if single else 'checkbox' }}" value="{{ option_value }}"{% if option_value in selected %} checked{% endif %}>
+      <label for="{{ field_id }}-{{ loop.index }}">{{ option_label }}</label>
+    </span>
+    {% endfor %}
+  </div>
+  {% if error %}<p class="error" id="{{ field_id }}-error">{{ error }}</p>
+  {% elif hint %}<p class="hint" id="{{ field_id }}-hint">{{ hint }}</p>{% endif %}
+</fieldset>
+{%- endmacro %}
+
+{# Terms with tags as values: entries are (term, [(label, variant)]); an empty list shows
+   `empty_label`, quietly. #}
+{% macro tag_facts(entries, empty_label) -%}
+<dl class="facts tag-facts">
+  {% for term, labels in entries %}
+  <dt>{{ term }}</dt>
+  <dd>{% if labels %}<ul class="tags">{% for label, variant in labels %}<li>{{ tag(label, variant) }}</li>{% endfor %}</ul>{% else %}<span class="tag-facts-empty">{{ empty_label }}</span>{% endif %}</dd>
+  {% endfor %}
+</dl>
+{%- endmacro %}
+
 {% macro badge(label, tone="") -%}
 <span class="badge{% if tone %} {{ tone }}{% endif %}">{{ label }}</span>
 {%- endmacro %}
@@ -256,21 +291,33 @@
 </details>
 {%- endmacro %}
 
-{# The sidebar's links; `items` are (href, label, key), the key names the icon and `current` is
-   the open key. In the compact layout the list becomes a row that scrolls sideways. #}
-{% macro sidenav(items, current, label, states={}) -%}
+{# The sidebar's links in groups; `groups` are (heading, [(href, label, key)]), the key names
+   the icon and `current` is the open key. An empty heading shows no title. In the compact
+   layout the headings hide and the groups become one row that scrolls sideways. #}
+{% macro sidenav(groups, current, label, states={}) -%}
 <nav class="sidenav" aria-label="{{ label }}">
-  <ul>
+  {% for heading, items in groups %}
+  {% if heading %}<p class="sidenav-heading" id="sidenav-{{ loop.index }}">{{ heading }}</p>{% endif %}
+  <ul{% if heading %} aria-labelledby="sidenav-{{ loop.index }}"{% endif %}>
     {% for href, item_label, key in items %}
     <li><a href="{{ href }}"{% if states.get(key) %} class="{{ states[key] }}"{% endif %}{% if key == current %} aria-current="page"{% endif %}>{{ icon(key) }}<span>{{ item_label }}</span></a></li>
     {% endfor %}
   </ul>
+  {% endfor %}
 </nav>
 {%- endmacro %}
 
 {# A square with a name's first letter: a channel or a platform; `round` for a person. #}
 {% macro mark(name, round=false) -%}
 <span class="mark{% if round %} round{% endif %}" aria-hidden="true">{{ name[:1] | upper }}</span>
+{%- endmacro %}
+
+{# A platform's logo (from static/platforms.svg, passed as `sprite`) in a square, or its first
+   letter when the sprite has no logo for it. #}
+{% macro platform_mark(key, name, sprite) -%}
+{% if key in ("tiktok", "instagram", "youtube", "x", "facebook") -%}
+<span class="mark platform" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="{{ sprite }}#{{ key }}"/></svg></span>
+{%- else %}{{ mark(name) }}{% endif %}
 {%- endmacro %}
 
 {# The note after a change, in a corner; it fades after a while and holds while hovered
@@ -301,15 +348,77 @@
 <button class="{{ ['button', variant, size] | select | join(' ') }}" type="button" data-dialog="{{ target }}">{% if plus %}{{ icon("plus") }}{% endif %}{{ label }}</button>
 {%- endmacro %}
 
-{# The levels of one page, such as the channel and each platform; `items` are (href, label, key). #}
-{% macro tabs(items, current, label, states={}) -%}
+{# The levels of one page, such as the channel and each platform; `items` are (href, label, key).
+   `counts` maps a key to how many things its page holds, shown beside the label when above 0. #}
+{% macro tabs(items, current, label, states={}, counts={}) -%}
 <nav class="tabs" aria-label="{{ label }}">
   <ul>
     {% for href, item_label, key in items %}
-    <li><a href="{{ href }}"{% if states.get(key) %} class="{{ states[key] }}"{% endif %}{% if key == current %} aria-current="page"{% endif %}>{{ item_label }}</a></li>
+    <li><a href="{{ href }}"{% if states.get(key) %} class="{{ states[key] }}"{% endif %}{% if key == current %} aria-current="page"{% endif %}>{{ item_label }}{% if counts.get(key) %} <span class="tab-count">{{ counts[key] }}</span>{% endif %}</a></li>
     {% endfor %}
   </ul>
 </nav>
+{%- endmacro %}
+
+{# Stages in order, such as an episode's statuses; `items` are (key, label) and `current` the
+   key reached: earlier stages show as done, later ones as still to come. #}
+{% macro steps(items, current, label) -%}
+{% set reached = items | map("first") | list %}
+{% set position = reached.index(current) if current in reached else -1 %}
+<ol class="steps" aria-label="{{ label }}">
+  {% for key, item_label in items %}
+  <li class="{{ 'is-done' if loop.index0 < position else ('is-current' if loop.index0 == position else 'is-next') }}"{% if loop.index0 == position %} aria-current="step"{% endif %}>
+    <span class="step-dot" aria-hidden="true">{% if loop.index0 < position %}{{ icon("success") }}{% endif %}</span><span>{{ item_label }}</span>
+  </li>
+  {% endfor %}
+</ol>
+{%- endmacro %}
+
+{# Two or more ways to show the same page, such as a board and a list; `items` are
+   (href, label, key) and `current` the key shown. #}
+{% macro view_switch(items, current, label) -%}
+<nav class="view-switch" aria-label="{{ label }}">
+  {% for href, item_label, key in items %}<a href="{{ href }}"{% if key == current %} aria-current="page"{% endif %}>{{ item_label }}</a>{% endfor %}
+</nav>
+{%- endmacro %}
+
+{# A board: columns side by side that scroll sideways together when they do not fit. #}
+{% macro board(label) -%}
+<div class="board" role="region" aria-label="{{ label }}" tabindex="0">{{ caller() }}</div>
+{%- endmacro %}
+
+{# One column of a board, for the stage `key`; cards dropped on it move to that stage. #}
+{% macro board_column(key, title, count) -%}
+<section class="board-column" data-stage="{{ key }}" aria-labelledby="column-{{ key }}">
+  <header class="board-column-header"><h2 id="column-{{ key }}">{{ title }}</h2><span class="tab-count">{{ count }}</span></header>
+  <ul class="board-cards">{{ caller() }}</ul>
+</section>
+{%- endmacro %}
+
+{# A card on a board: a link to the thing and a short detail. With `movable`, the card can be
+   dragged to another column, and what the caller renders (its move form) does the same by
+   keyboard and without JavaScript. #}
+{% macro board_card(title, detail="", href="", movable=false, state="") -%}
+<li class="board-card{% if state %} {{ state }}{% endif %}"{% if movable %} draggable="true" data-board-card{% endif %}>
+  <a href="{{ href }}">{{ title }}</a>
+  {% if detail %}<p>{{ detail }}</p>{% endif %}
+  {{ caller() }}
+</li>
+{%- endmacro %}
+
+{# The form on a board card that moves it to the stage picked in its list; workspace.js sends
+   it as soon as a stage is picked, so its button only shows without JavaScript. #}
+{% macro board_move(action, csrf_field, csrf_token, options, value, id, label, button_label) -%}
+<form method="post" action="{{ action }}" class="board-move" hx-disabled-elt="find select">
+  {{ csrf(csrf_field, csrf_token) }}
+  <label for="{{ id }}" class="visually-hidden">{{ label }}</label>
+  <select id="{{ id }}" class="input" name="status">
+    {% for option_value, option_label in options %}
+    <option value="{{ option_value }}"{% if option_value == value %} selected{% endif %}>{{ option_label }}</option>
+    {% endfor %}
+  </select>
+  <button class="button ghost small" type="submit">{{ button_label }}</button>
+</form>
 {%- endmacro %}
 
 {# The way up to the list a page belongs to, shown above its title, such as "‹ Episodes". #}
@@ -342,6 +451,31 @@
   <h3 id="{{ id }}-title">{{ title }}</h3>
   {{ caller() }}
 </section>
+{%- endmacro %}
+
+{# Two panels side by side on wide screens, such as an editor and its preview; stacked below. #}
+{% macro split() -%}
+<div class="split">{{ caller() }}</div>
+{%- endmacro %}
+
+{# A screenplay formatted like a printed script; `blocks` are fountain.Block. With
+   `refresh_url`, it reloads from there each time the screenplay saves itself. #}
+{% macro screenplay(blocks, empty_text, refresh_url="") -%}
+<div class="screenplay" id="screenplay-preview"{% if refresh_url %} hx-get="{{ refresh_url }}" hx-trigger="sreditor-autosaved from:body" hx-swap="innerHTML"{% endif %}>
+  {{- screenplay_blocks(blocks, empty_text) -}}
+</div>
+{%- endmacro %}
+
+{# The blocks inside ui.screenplay, also sent alone when the preview reloads. #}
+{% macro screenplay_blocks(blocks, empty_text) -%}
+{% for block in blocks %}<p class="screenplay-{{ block.kind.value }}">{{ block.text }}</p>{% else %}<p class="muted">{{ empty_text }}</p>{% endfor %}
+{%- endmacro %}
+
+{# What an autosaving form (ui.form with autosave) last did, beside its Save button. The texts
+   are for workspace.js, which says each in turn; `saved` holds %(time)s for the time of day.
+   Empty without JavaScript, where the button is the only way to save. #}
+{% macro autosave_status(saving, saved, failed, changed, invalid, state="") -%}
+<span class="autosave-status{% if state %} {{ state }}{% endif %}" role="status" data-saving="{{ saving }}" data-saved="{{ saved }}" data-failed="{{ failed }}" data-changed="{{ changed }}" data-invalid="{{ invalid }}">{% if state == "is-saved" %}{{ saved | replace("%(time)s", "14:32") }}{% endif %}</span>
 {%- endmacro %}
 
 {# Buttons at the end of a panel's form. #}
@@ -425,6 +559,22 @@
 {%- else -%}
 <audio class="player" controls preload="metadata" src="{{ src }}" aria-label="{{ label }}"></audio>
 {%- endif %}
+{%- endmacro %}
+
+{# A 3D model drawn in the page by static/model-viewer.js with the vendored three.js; `format` is
+   "glb" or "fbx" and `texts` holds loading, ready, error and reset. Dragging turns the model and
+   the wheel or a pinch zooms; the status line says what is happening (rule ui.microinteractions)
+   and the aspect ratio is fixed, so nothing shifts when the model arrives. Without JavaScript it
+   hides (noscript.css) and the download next to it stays. #}
+{% macro model_viewer(src, format, label, texts, state="is-loading") -%}
+{# Only a viewer that starts loading draws the model; another state stays as shown, for /design. #}
+<figure class="model-viewer {{ state }}"{% if state == "is-loading" %} data-model-viewer{% endif %} data-src="{{ src }}" data-format="{{ format }}">
+  <canvas class="model-viewer-canvas" role="img" aria-label="{{ label }}" tabindex="0"></canvas>
+  <figcaption class="model-viewer-bar">
+    <span class="model-viewer-status" role="status" data-loading="{{ texts.loading }}" data-ready="{{ texts.ready }}" data-error="{{ texts.error }}">{{ texts.error if state == "is-error" else texts.ready if state == "is-ready" else texts.loading }}</span>
+    <button class="button ghost small" type="button" data-model-reset{% if state != "is-ready" %} disabled{% endif %}>{{ texts.reset }}</button>
+  </figcaption>
+</figure>
 {%- endmacro %}
 
 {# A quiet detail next to a title or badge, such as a handle or a date. #}
@@ -533,6 +683,41 @@
   {{ brand("/app", icon_src) }}
   {{ caller() }}
 </aside>
+{%- endmacro %}
+
+{# The sidebar's way into the quick search: a link to the search page that the script turns into
+   a button opening the search dialog, with the keyboard shortcut beside it. #}
+{% macro search_trigger(href, label, shortcut, state="") -%}
+<a class="search-trigger{% if state %} {{ state }}{% endif %}" href="{{ href }}" hx-boost="false" aria-label="{{ label }}" aria-keyshortcuts="Control+K Meta+K" data-search-open>{{ icon("search") }}<span>{{ label }}</span><kbd>{{ shortcut }}</kbd></a>
+{%- endmacro %}
+
+{# The quick search's field: without JavaScript it submits to the search page; with it, each
+   pause in typing asks for the results alone and swaps them into #search-results. #}
+{% macro search_box(action, label, query="", channel="", id="search") -%}
+<form class="search-box" role="search" method="get" action="{{ action }}">
+  <label class="visually-hidden" for="{{ id }}-query">{{ label }}</label>
+  {{ icon("search") }}
+  <input id="{{ id }}-query" type="search" name="q" value="{{ query }}" placeholder="{{ label }}" autocomplete="off" spellcheck="false" maxlength="100"
+    hx-get="{{ action }}" hx-trigger="input changed delay:200ms, sreditor-search-open" hx-target="#{{ id }}-results" hx-swap="outerHTML" hx-include="closest form" aria-controls="{{ id }}-results">
+  {% if channel %}<input type="hidden" name="channel" value="{{ channel }}">{% endif %}
+</form>
+{%- endmacro %}
+
+{# What the quick search found, as (heading, [(href, title, detail)]) groups; arrow keys move
+   between the links. `empty_text` shows when the person typed something and nothing matched. #}
+{% macro search_results(groups, empty_text, query="", id="search") -%}
+<div id="{{ id }}-results" class="search-results" aria-live="polite">
+  {% for heading, links in groups %}
+  <p class="search-heading" id="{{ id }}-group-{{ loop.index }}">{{ heading }}</p>
+  <ul aria-labelledby="{{ id }}-group-{{ loop.index }}">
+    {% for href, title, detail in links %}
+    <li><a class="search-result" href="{{ href }}"><span>{{ title }}</span>{% if detail %}<small>{{ detail }}</small>{% endif %}</a></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  {% if query %}<p class="search-empty">{{ empty_text }}</p>{% endif %}
+  {% endfor %}
+</div>
 {%- endmacro %}
 
 {# A form's submit button styled as a menu entry, such as Sign out in the person's menu. #}

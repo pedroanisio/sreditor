@@ -4,7 +4,7 @@
 {% block page %}
 {% set may_write = can("write_content") %}
 {% set may_remove = can("write_channel") %}
-{% call ui.page_header(_("Library"), _("The characters, locations and visual styles the channel's episodes share. A screenplay refers to characters and locations by name; each episode picks a style.")) %}{% endcall %}
+{% call ui.page_header(_("Library"), _("The characters, locations, visual styles and props the channel's episodes share. A screenplay refers to characters and locations by name; each episode picks a style.")) %}{% endcall %}
 {{ ui.form_error(errors) }}
 {% for group in kinds %}
 {% set text = group.text %}
@@ -16,9 +16,11 @@
       <strong>{{ entry.name }}</strong>
       {% if entry.description %}<p>{{ entry.description }}</p>{% endif %}
     {% endcall %}
-    {% if may_write %}
-    {% call ui.item_side() %}{{ ui.dialog_button("edit-" ~ entry.id, _("Edit"), variant="ghost", size="small") }}{% endcall %}
-    {% endif %}
+    {% call ui.item_side() %}
+      {{ ui.link_button(group.link ~ "/" ~ entry.id ~ "/srstudio", _("srstudio sheet"), variant="ghost", size="small") }}
+      {{ ui.link_button(channel_link ~ "/items/" ~ entry.kind ~ "/" ~ entry.id, _("Context"), variant="ghost", size="small") }}
+      {% if may_write %}{{ ui.dialog_button("edit-" ~ entry.id, _("Edit"), variant="ghost", size="small") }}{% endif %}
+    {% endcall %}
   {% endcall %}
   {% if group.next_cursor %}{{ ui.pager(library_link ~ "?kind=" ~ group.kind ~ "&cursor=" ~ group.next_cursor, _(text.more)) }}{% endif %}
   {% else %}

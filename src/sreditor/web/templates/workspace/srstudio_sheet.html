@@ -1,0 +1,113 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{#
+  A library entry's srstudio sheet (rules project.srstudio.*). Texts left empty export as open
+  questions, so a sheet can be saved half done. Repeated rows (facts, open questions) end with a
+  blank row; filling it adds one, and emptying a row removes it.
+#}
+{% block page_title %}srstudio · {{ entry.name }}{% endblock %}
+{% block page %}
+{% set may_write = can("write_content") %}
+{{ ui.back_link(library_link ~ "#" ~ entry.kind ~ "s", _("Library")) }}
+{% call ui.page_header(entry.name, _("What srstudio needs to draw and voice this entry. Empty texts become open questions in srstudio's bible.")) %}{{ ui.badge(_(kind_title)) }}{% endcall %}
+{{ ui.form_error(errors) }}
+{% call ui.form(action, csrf_field, csrf_token) %}
+{{ ui.hidden("revision", stored.revision) }}
+{% call ui.panel(_("Identity"), id="identity") %}
+  {% call ui.fields_row() %}
+    {{ ui.field("slug", _("Slug"), errors, value=slug_value, maxlength=80, hint=_("How srstudio names it: lowercase words joined by hyphens, such as rex or toon-office.")) }}
+    {% if kind in ["character", "location"] %}{{ ui.select("world", _("World"), worlds, errors, value=sheet.world or "") }}{% endif %}
+    {% if kind == "style" %}{{ ui.select("style", _("srstudio style"), styles, errors, value=sheet.style or "", hint=_("It fixes the frame size and frames per second.")) }}{% endif %}
+  {% endcall %}
+  {% if kind == "character" %}
+  {% call ui.fields_row() %}
+    {{ ui.select("status", _("Status"), statuses, errors, value=sheet.status) }}
+    {{ ui.select("character_kind", _("Kind"), kinds, errors, value=sheet.character_kind or "") }}
+  {% endcall %}
+  {% endif %}
+  {% if kind != "style" %}
+  {% call ui.fields_row() %}
+    {{ ui.field("rig", _("Rig"), errors, value=sheet.rig, required=false, maxlength=80, hint=_("The srstudio drawing, such as toon-dog or laptop.")) }}
+    {% if kind == "character" %}{{ ui.field("rig_version", _("Rig version"), errors, type="number", value=sheet.rig_version) }}{% endif %}
+  {% endcall %}
+  {% endif %}
+{% endcall %}
+{% if kind == "style" %}
+{% set palette = sheet.palette or {} %}
+{% call ui.panel(_("Palette"), id="palette") %}
+  <p class="muted">{{ _("Leave all four empty to use the style's own palette.") }}</p>
+  {% call ui.fields_row() %}
+    {% for key, label in [("ink", _("Ink")), ("white", _("Light")), ("shade", _("Shade")), ("background", _("Background"))] %}
+    {{ ui.field("palette_" ~ key, label, errors, value=palette.get(key, ""), required=false, maxlength=7, hint="#1a1a1a") }}
+    {% endfor %}
+  {% endcall %}
+{% endcall %}
+{% endif %}
+{% if kind == "character" %}
+{% call ui.panel(_("Look"), id="look") %}
+  {{ ui.textarea("look_palette", _("Colors"), errors, value=sheet.look.palette, limit=text_limit, rows=2) }}
+  {{ ui.textarea("look_outfits", _("Outfits"), errors, value=sheet.look.outfits, limit=text_limit, rows=2) }}
+  {{ ui.textarea("look_never_changes", _("What never changes"), errors, value=sheet.look.never_changes, limit=text_limit, rows=2) }}
+{% endcall %}
+{% call ui.panel(_("Voice"), id="voice") %}
+  {% call ui.fields_row() %}
+    {{ ui.field("voice_voice_name", _("Voice name"), errors, value=sheet.voice.voice_name, required=false, maxlength=200, hint=_("Such as Charlie.")) }}
+    {{ ui.field("voice_voice_id", _("ElevenLabs voice id"), errors, value=sheet.voice.voice_id, required=false, maxlength=40) }}
+  {% endcall %}
+  {% call ui.fields_row() %}
+    {{ ui.field("voice_stability", _("Stability"), errors, type="number", value=sheet.voice.stability, hint="0–1") }}
+    {{ ui.field("voice_similarity_boost", _("Similarity"), errors, type="number", value=sheet.voice.similarity_boost, hint="0–1") }}
+    {{ ui.field("voice_style", _("Style"), errors, type="number", value=sheet.voice.style, hint="0–1") }}
+    {{ ui.field("voice_speed", _("Speed"), errors, type="number", value=sheet.voice.speed, hint="0.7–1.2") }}
+    {{ ui.select("voice_use_speaker_boost", _("Speaker boost"), booleans, errors, value="yes" if sheet.voice.use_speaker_boost else "no") }}
+  {% endcall %}
+  {% for key, label in [("pace", _("Pace")), ("tics", _("Verbal tics")), ("uses", _("Words they use")), ("never_uses", _("Words they never use"))] %}
+  {{ ui.textarea("voice_" ~ key, label, errors, value=sheet.voice[key], limit=text_limit, rows=2) }}
+  {% endfor %}
+{% endcall %}
+{% call ui.panel(_("Who they are"), id="who") %}
+  {% for key, label in [("age_range", _("Age range")), ("job", _("Job")), ("home", _("Home")), ("normal_day", _("A normal day")), ("wants", _("What they want")), ("flaw", _("Flaw")), ("habit", _("Habit")), ("pov", _("Point of view"))] %}
+  {{ ui.textarea("who_" ~ key, label, errors, value=sheet.who[key], limit=text_limit, rows=2) }}
+  {% endfor %}
+{% endcall %}
+{% call ui.panel(_("Comedy"), id="comic") %}
+  {{ ui.select("comic_role", _("Comic role"), roles, errors, value=sheet.comic.role or "") }}
+  {{ ui.textarea("comic_under_pressure", _("Under pressure"), errors, value=sheet.comic.under_pressure, limit=text_limit, rows=2) }}
+  {{ ui.textarea("comic_always_gets_them", _("What always gets them"), errors, value=sheet.comic.always_gets_them, limit=text_limit, rows=2) }}
+  {{ ui.textarea("never", _("Never"), errors, value=sheet.never | join("\n"), rows=3, hint=_("Things this character never does, one per line.")) }}
+{% endcall %}
+{% call ui.panel(_("Open questions"), id="open") %}
+  {% for item in sheet.open + [{"question": "", "proposal": ""}] %}
+  {% set row = loop.index0 %}
+  {% call ui.fields_row() %}
+    {{ ui.field("open_question", _("Question"), {"open_question": errors.get("open_question-" ~ row)}, value=item.question, required=false, id="open_question-" ~ row) }}
+    {{ ui.field("open_proposal", _("Proposal"), {"open_proposal": errors.get("open_proposal-" ~ row)}, value=item.proposal, required=false, id="open_proposal-" ~ row) }}
+  {% endcall %}
+  {% endfor %}
+{% endcall %}
+{% endif %}
+{% if kind in ["character", "location"] %}
+{% set prefix = "canon" if kind == "character" else "cites" %}
+{% call ui.panel(_("Facts from published episodes"), id="facts") %}
+  {% if episodes %}
+  <p class="muted">{{ _("Each fact cites the published episode that shows it, with the words or drawing that show it.") }}</p>
+  {% for item in sheet[prefix] + [{"fact": "", "field": "identity" if kind == "character" else "world", "episode": "", "kind": "line", "quote": ""}] %}
+  {% set row = loop.index0 %}
+  {% call ui.subsection(_("Fact %(number)s", number=row + 1), "fact-" ~ row) %}
+    {{ ui.field(prefix ~ "_fact", _("Fact"), {prefix ~ "_fact": errors.get(prefix ~ "_fact-" ~ row)}, value=item.fact, required=false, id=prefix ~ "_fact-" ~ row) }}
+    {% call ui.fields_row() %}
+      {{ ui.select(prefix ~ "_episode", _("Episode"), [("", _("Pick an episode"))] + episodes, {prefix ~ "_episode": errors.get(prefix ~ "_episode-" ~ row)}, value=item.episode | string, id=prefix ~ "_episode-" ~ row) }}
+      {{ ui.select(prefix ~ "_field", _("About"), fact_fields, {}, value=item.field, id=prefix ~ "_field-" ~ row) }}
+      {{ ui.select(prefix ~ "_kind", _("Shown as"), fact_kinds, {}, value=item.kind, id=prefix ~ "_kind-" ~ row) }}
+    {% endcall %}
+    {{ ui.field(prefix ~ "_quote", _("Quote"), {prefix ~ "_quote": errors.get(prefix ~ "_quote-" ~ row)}, value=item.quote, required=false, id=prefix ~ "_quote-" ~ row) }}
+  {% endcall %}
+  {% endfor %}
+  {% else %}
+  <p class="muted">{{ _("Facts cite published episodes. Publish an episode to cite it here.") }}</p>
+  {% endif %}
+{% endcall %}
+{% endif %}
+{% if may_write %}{% call ui.panel_actions() %}{{ ui.button(_("Save sheet")) }}{% endcall %}{% endif %}
+{% endcall %}
+{% endblock %}
