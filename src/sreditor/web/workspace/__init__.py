@@ -10,6 +10,7 @@ from sreditor.web.routes import Notice, message, redirect
 from sreditor.web.workspace import (
     account,
     books,
+    brand_fonts,
     brand_kit,
     channels,
     classification,
@@ -44,6 +45,7 @@ ROUTERS = (
     channels.router,
     platforms.router,
     brand_kit.router,
+    brand_fonts.router,
     editorial.router,
     episodes.router,
     research.router,

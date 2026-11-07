@@ -24,7 +24,7 @@ from sreditor import context_operations, episode_operations, library_operations,
 from sreditor import external_media_operations as third_party
 from sreditor import srstudio_operations as srstudio
 from sreditor.assets import StoredFile
-from sreditor.channels import Asset, AssetKind, Color
+from sreditor.channels import Asset, AssetKind, Color, primary_of
 from sreditor.classification import ChannelProfile, ObservedProfile
 from sreditor.context import ItemContext, ItemKind, ItemRef, Link, LinkDirection
 from sreditor.deps import ChannelAccess, Services
@@ -185,6 +185,11 @@ class BookBrand(BaseModel):
 
     colors: list[Color]
     logo: Asset | None = Field(default=None, exclude=True)
+
+    @property
+    def cover_color(self) -> Color | None:
+        """The primary-role color the cover is drawn in; the first color when none is primary."""
+        return primary_of(self.colors)
 
 
 class PitchBookPart(BaseModel):

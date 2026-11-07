@@ -13,7 +13,8 @@ from uuid import uuid4
 from fastapi import status
 from pydantic import BaseModel, ConfigDict
 
-from sreditor.channels import BrandKit, Channel, Platform, PlatformAccount
+from sreditor.brand import BrandPatch, own_brand, with_brand, with_patch
+from sreditor.channels import BrandKit, Channel, ChannelRename, Platform, PlatformAccount
 from sreditor.deps import ChannelAccess, Services, author
 from sreditor.editorial import Editorial, Guideline, GuidelineInput
 from sreditor.members import Permission
@@ -199,6 +200,14 @@ def replace_channel(
     return gated(app, access, Operation.CHANNEL_WRITE, replace)
 
 
+def rename_channel(
+    app: Services, access: ChannelAccess, rename: ChannelRename, expected_revision: int | None
+) -> Revised:
+    """Change the channel's display name; the slug stays (rule project.brand)."""
+    updated = access.channel.model_copy(update={"name": rename.name})
+    return replace_channel(app, access, updated, expected_revision)
+
+
 def put_account(
     app: Services, access: ChannelAccess, account: PlatformAccount, expected_revision: int | None
 ) -> Revised:
@@ -237,6 +246,21 @@ def get_brand(access: ChannelAccess, platform: Platform | None) -> BrandKit:
     access.require(Permission.READ)
     require_account(access.channel, platform)
     return access.channel.brand_for(platform)
+
+
+def update_brand(
+    app: Services,
+    access: ChannelAccess,
+    platform: Platform | None,
+    patch: BrandPatch,
+    expected_revision: int | None,
+) -> Revised:
+    """Change the colors and fonts of the channel's kit, or of one account's overrides."""
+    access.require(Permission.WRITE_CHANNEL)
+    require_account(access.channel, platform)
+    kit = with_patch(own_brand(access.channel, platform), patch)
+    updated = with_brand(access.channel, platform, kit)
+    return replace_channel(app, access, updated, expected_revision)
 
 
 def get_editorial(app: Services, access: ChannelAccess, platform: Platform | None) -> Editorial:

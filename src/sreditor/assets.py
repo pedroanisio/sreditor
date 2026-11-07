@@ -145,7 +145,12 @@ SLOT_FAMILY: dict[BrandSlot, FileFamily] = {
 FAMILY_ACCEPT: dict[FileFamily, tuple[FileFormat, ...]] = {
     FileFamily.IMAGE: (PNG, JPEG, WEBP),
     FileFamily.VIDEO: (MP4, QUICKTIME, WEBM),
-    FileFamily.FONT: (WOFF2, WOFF, TTF, OTF),
+    FileFamily.FONT: (WOFF2, TTF, OTF),
+}
+# Stings play inside renders, so they are MP4 or WebM only, not the QuickTime other video takes.
+SLOT_FORMATS: dict[BrandSlot, tuple[FileFormat, ...]] = {
+    BrandSlot.INTRO: (MP4, WEBM),
+    BrandSlot.OUTRO: (MP4, WEBM),
 }
 
 
@@ -205,7 +210,7 @@ class FileFacts(BaseModel):
 
 def accepted_formats(slot: BrandSlot) -> tuple[FileFormat, ...]:
     """The formats a slot takes."""
-    return FAMILY_ACCEPT[SLOT_FAMILY[slot]]
+    return SLOT_FORMATS.get(slot) or FAMILY_ACCEPT[SLOT_FAMILY[slot]]
 
 
 def accept_attribute(slot: BrandSlot) -> str:

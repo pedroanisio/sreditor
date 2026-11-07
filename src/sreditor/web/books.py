@@ -559,7 +559,8 @@ def cover_texts(book: Book, translate: Translator) -> dict[str, str]:
 
 def book_context(book: Book, translate: Translator, files: dict[str, Path]) -> dict[str, Any]:
     """What book.html renders."""
-    brand_color = book.brand.colors[0].hex if book.brand.colors else ""
+    cover = book.brand.cover_color
+    brand_color = cover.hex if cover else ""
     return {
         "book": book,
         **cover_texts(book, translate),
