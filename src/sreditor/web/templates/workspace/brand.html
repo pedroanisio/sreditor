@@ -82,6 +82,7 @@
     {% endcall %}
     {% call ui.panel_actions() %}{{ ui.button(_("Save font")) }}{% endcall %}
   {% endcall %}
+  {% if not shown and shown_errors.get("file") %}<p class="error">{{ shown_errors.get("file") }}</p>{% endif %}
   {% if shown %}
   {% call ui.form(channel_link ~ "/brand/fonts/" ~ row.role ~ "/file", csrf_field, csrf_token, upload=true) %}
     {{ ui.hidden("platform", level) }}
