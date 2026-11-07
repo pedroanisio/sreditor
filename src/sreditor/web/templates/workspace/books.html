@@ -1,0 +1,26 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% block page_title %}{{ _("Books") }}{% endblock %}
+{% block page %}
+{% call ui.page_header(_("Books"), _("Ready-made files to read, print or hand on. Pitch and episode books are in the Export menu of each pitch and episode.")) %}{% endcall %}
+{{ ui.tabs(tabs, current, _("Books")) }}
+{% call ui.panel(id="book") %}
+  <p>{{ form.hint }}</p>
+  <form method="get" action="{{ form.action }}" hx-boost="false" data-download>
+    {{ ui.choices("section", _("Sections"), form.sections, {}, selected=form.sections|map("first")|list, code_labels=false) }}
+    {% if form.has_episodes %}
+    {{ ui.choices("status", _("Episodes of these statuses"), form.statuses, {}, selected=[], code_labels=false) }}
+    {% call ui.fields_row() %}
+      {{ ui.field("from", _("From episode"), {}, type="number", required=false, hint=_("Leave empty to start at the first.")) }}
+      {{ ui.field("to", _("To episode"), {}, type="number", required=false, hint=_("Leave empty to go to the last.")) }}
+    {% endcall %}
+    {% endif %}
+    {% call ui.fields_row() %}
+      {{ ui.select("format", _("Format"), form.formats, {}, value="pdf") }}
+      {{ ui.select("lang", _("Language"), form.languages, {}, value=locale) }}
+    {% endcall %}
+    {% call ui.panel_actions() %}{{ ui.button(_("Download")) }}{% endcall %}
+    <p class="hint" role="status" data-download-status data-working="{{ _("Building the book…") }}" data-done="{{ _("Downloaded.") }}" data-failed="{{ _("The book could not be built. Try again.") }}"></p>
+  </form>
+{% endcall %}
+{% endblock %}

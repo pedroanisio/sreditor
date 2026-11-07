@@ -30,7 +30,7 @@
     {{ ui.item_main(link.target.label, _(question_labels[link.question]) ~ " · " ~ _(kind_labels[link.target.kind]) ~ (" · " ~ link.note if link.note else ""), href=item_links[(link.target.kind, link.target.id)]) }}
     {% if may_write %}
     {% call ui.item_side() %}
-      {{ ui.confirm(_("Remove"), _("Remove this link? Neither item changes."), page_link ~ "/links/remove", csrf_field, csrf_token, _("Remove link"), fields=[("link_id", link.id)]) }}
+      {{ ui.confirm(_("Remove"), _("Remove this link? Neither item changes."), page_link ~ "/links/remove", csrf_field, csrf_token, _("Remove link"), fields=[("link_id", link.id)], target=link.target.label) }}
     {% endcall %}
     {% endif %}
   {% endcall %}

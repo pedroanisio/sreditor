@@ -61,7 +61,7 @@
     {% endcall %}
     {% if may_write %}
     {% call ui.item_side() %}
-      {{ ui.confirm(_("Remove"), _("Stop citing this source?"), remove_source_link, csrf_field, csrf_token, _("Remove source"), fields=[("source_id", source.id), ("revision", source.revision)]) }}
+      {{ ui.confirm(_("Remove"), _("Stop citing this source?"), remove_source_link, csrf_field, csrf_token, _("Remove source"), fields=[("source_id", source.id), ("revision", source.revision)], target=source.title) }}
     {% endcall %}
     {% endif %}
   {% endcall %}

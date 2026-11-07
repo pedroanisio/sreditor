@@ -326,3 +326,22 @@ def test_short_script_speech_in_other_language_than_voice_warns(owner: TestClien
 def test_short_script_voice_summary_names_model_and_language(owner: TestClient) -> None:
     page = flash_after(owner, submit(owner, SHORT_SCRIPT, FIELDS))
     assert "Voice: v1 · v3" in page and "voice on their srstudio sheet" in page
+
+
+def test_short_script_move_block_down_carries_its_beats(owner: TestClient, rex: str) -> None:
+    fields = FIELDS | beat_fields(rex) | {"action": "down-block-0"}
+    flash_after(owner, submit(owner, SHORT_SCRIPT, fields))
+    script = owner.get("/channels/funny-memes/episodes/1/short-script").json()
+    first, second = script["blocks"]
+    assert first["speech"] == "Tchau." and first["beats"] == []
+    assert second["speaker"] == rex and second["beats"][0]["mouth"] == "grin"
+
+
+def test_short_script_add_block_above_renumbers_beats_with_their_block(
+    owner: TestClient, rex: str
+) -> None:
+    page = submit(owner, SHORT_SCRIPT, FIELDS | beat_fields(rex) | {"action": "add-block--1"}).text
+    assert re.search(
+        rf'name="block-1-beat-0-character"[^>]*>\s*(<option[^>]*>[^<]*</option>\s*)*?<option value="{rex}" selected',
+        page,
+    )

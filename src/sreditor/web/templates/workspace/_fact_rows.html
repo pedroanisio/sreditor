@@ -1,0 +1,18 @@
+{#
+  Facts that cite published episodes, as repeated rows ending with a blank one that adds a fact.
+  Needs `prefix` (the list the rows fill), `facts`, `blank_field` (what a new fact is about),
+  `errors`, `episodes`, `fact_fields` and `fact_kinds`. Rows post as <prefix>_<field>, in order.
+#}
+{% import "_ui.html" as ui %}
+  {% for item in facts + [{"fact": "", "field": blank_field, "episode": "", "kind": "line", "quote": ""}] %}
+  {% set row = loop.index0 %}
+  {% call ui.subsection(_("Fact %(number)s", number=row + 1), "fact-" ~ row) %}
+    {{ ui.field(prefix ~ "_fact", _("Fact"), {prefix ~ "_fact": errors.get(prefix ~ "_fact-" ~ row)}, value=item.fact, required=false, id=prefix ~ "_fact-" ~ row) }}
+    {% call ui.fields_row() %}
+      {{ ui.select(prefix ~ "_episode", _("Episode"), [("", _("Pick an episode"))] + episodes, {prefix ~ "_episode": errors.get(prefix ~ "_episode-" ~ row)}, value=item.episode | string, id=prefix ~ "_episode-" ~ row) }}
+      {{ ui.select(prefix ~ "_field", _("About"), fact_fields, {}, value=item.field, id=prefix ~ "_field-" ~ row) }}
+      {{ ui.select(prefix ~ "_kind", _("Shown as"), fact_kinds, {}, value=item.kind, id=prefix ~ "_kind-" ~ row) }}
+    {% endcall %}
+    {{ ui.field(prefix ~ "_quote", _("Quote"), {prefix ~ "_quote": errors.get(prefix ~ "_quote-" ~ row)}, value=item.quote, required=false, id=prefix ~ "_quote-" ~ row) }}
+  {% endcall %}
+  {% endfor %}

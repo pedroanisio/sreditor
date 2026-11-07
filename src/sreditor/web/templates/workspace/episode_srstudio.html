@@ -12,13 +12,13 @@
 {% call ui.panel(_("Export"), id="export") %}
   {% if missing %}
   <p class="muted">{{ _("Before srstudio can render this episode:") }}</p>
-  {{ ui.checklist(missing) }}
+  {{ ui.checklist(missing, _("Done"), _("To do")) }}
   {% else %}
   {% call ui.alert("success") %}{{ _("Everything srstudio needs is here.") }}{% endcall %}
   {% call ui.panel_actions() %}{{ ui.link_button(zip_link, _("Download srstudio zip"), download=true) }}{% endcall %}
   {% endif %}
 {% endcall %}
-{% call ui.panel(_("Slug and seed"), id="slug") %}
+{% call ui.panel(_("Slug and seed"), id="slug-seed") %}
   {% call ui.form(action, csrf_field, csrf_token) %}
     {{ ui.hidden("revision", stored.revision) }}
     {% call ui.fields_row() %}

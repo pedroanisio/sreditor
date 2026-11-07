@@ -34,6 +34,8 @@ from sreditor.mail import Mailer
 from sreditor.media import MediaStore
 from sreditor.members import MemberStore, Permission, Role, allows
 from sreditor.pitches import PitchStore
+from sreditor.render_upload import PartStore
+from sreditor.renders import RenderStore
 from sreditor.repository import ChannelNotFound, ChannelRepository
 from sreditor.research import ResearchStore
 from sreditor.screenplay import ScreenplayStore
@@ -93,6 +95,8 @@ class Services:
     stmt: StmtClient
     tokens: TokenStore
     assets: AssetStore
+    renders: RenderStore
+    render_parts: PartStore
     voice: ElevenLabs | None = None  # None: SREDITOR_ELEVENLABS_API_KEY is not set
 
     def accounts(self, locale: str = BASE_LOCALE) -> Accounts:

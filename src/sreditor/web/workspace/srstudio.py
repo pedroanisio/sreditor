@@ -59,7 +59,12 @@ SECTIONS = ("look", "voice", "who", "comic", "palette")
 FACT_COLUMNS = ("fact", "field", "episode", "kind", "quote")
 # Selects always carry a value, so only these columns tell a filled row from the blank one.
 CHOSEN_COLUMNS = frozenset({"field", "kind"})
-ROWS = {"canon": FACT_COLUMNS, "cites": FACT_COLUMNS, "open": ("question", "proposal")}
+ROWS = {
+    "canon": FACT_COLUMNS,
+    "cites": FACT_COLUMNS,
+    "history": FACT_COLUMNS,
+    "open": ("question", "proposal"),
+}
 KIND_ROWS = {LibraryKind.CHARACTER: ("canon", "open"), LibraryKind.LOCATION: ("cites",)}
 SKIPPED = frozenset({"csrf_token", "revision", "slug"})
 NEVER_FIELD = "never"
@@ -127,16 +132,17 @@ def is_filled(row: dict[str, str]) -> bool:
 
 def row_lists(kind: LibraryKind, form: FormData) -> dict[str, list[dict[str, str]]]:
     """A kind's repeated lists, leaving out rows whose fields are all empty (the blank row to add)."""
-    lists: dict[str, list[dict[str, str]]] = {}
-    for prefix in KIND_ROWS.get(kind, ()):
-        fields = ROWS[prefix]
-        columns = [form.getlist(f"{prefix}_{field}") for field in fields]
-        rows = [
-            dict(zip(fields, map(str, values), strict=True))
-            for values in zip(*columns, strict=False)
-        ]
-        lists[prefix] = [row for row in rows if is_filled(row)]
-    return lists
+    return {prefix: filled_rows(form, prefix) for prefix in KIND_ROWS.get(kind, ())}
+
+
+def filled_rows(form: FormData, prefix: str) -> list[dict[str, str]]:
+    """One list's rows as posted (<prefix>_<field>, in order), without the blank row that adds one."""
+    fields = ROWS[prefix]
+    columns = [form.getlist(f"{prefix}_{field}") for field in fields]
+    rows = [
+        dict(zip(fields, map(str, values), strict=True)) for values in zip(*columns, strict=False)
+    ]
+    return [row for row in rows if is_filled(row)]
 
 
 def sheet_data(kind: LibraryKind, form: FormData) -> dict[str, Any]:

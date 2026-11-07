@@ -466,6 +466,47 @@ END;
 CREATE INDEX IF NOT EXISTS memberships_by_user ON memberships (user_id);
 CREATE INDEX IF NOT EXISTS api_tokens_by_user ON api_tokens (user_id);
 CREATE INDEX IF NOT EXISTS sessions_by_user ON sessions (user_id);
+CREATE TABLE IF NOT EXISTS render_workers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    prefix TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    last_seen_at TEXT,
+    engine_version TEXT,
+    gpus TEXT NOT NULL DEFAULT '[]',
+    revoked_at TEXT
+);
+CREATE TABLE IF NOT EXISTS render_jobs (
+    position INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT NOT NULL UNIQUE,
+    channel_slug TEXT NOT NULL,
+    number INTEGER NOT NULL,
+    preset TEXT NOT NULL,
+    export_sha256 TEXT NOT NULL,
+    export_path TEXT NOT NULL,
+    engine_version TEXT NOT NULL,
+    status TEXT NOT NULL,
+    progress REAL NOT NULL DEFAULT 0,
+    worker_id TEXT REFERENCES render_workers (id) ON DELETE SET NULL,
+    lease_expires_at TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    failure TEXT,
+    findings TEXT NOT NULL DEFAULT '[]',
+    media_id TEXT,
+    scene_path TEXT,
+    requested_by TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (channel_slug, number) REFERENCES episodes (channel_slug, number)
+        ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS render_jobs_by_episode ON render_jobs (channel_slug, number, position);
+CREATE INDEX IF NOT EXISTS render_jobs_by_status ON render_jobs (status, position);
+CREATE INDEX IF NOT EXISTS render_jobs_by_export
+    ON render_jobs (channel_slug, number, export_sha256, preset, engine_version);
 """
 
 Clock = Callable[[], datetime]

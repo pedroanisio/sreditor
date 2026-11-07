@@ -86,6 +86,7 @@ SCOPE_HINTS: dict[Scope, str] = {
     Scope.MEMBERS_WRITE: N_("Invite people and change their roles."),
     Scope.CONTENT_WRITE: N_("Create and edit episodes."),
     Scope.WAIVERS_READ: N_("Read episodes' signed waivers, which hold personal data."),
+    Scope.RENDER_WRITE: N_("Render episodes into video on the render workers."),
 }
 
 

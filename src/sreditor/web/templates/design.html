@@ -123,6 +123,7 @@
   {{ ui.sidenav([(_("Channel"), [("/design", _("Overview"), "overview"), ("/design", _("Accounts"), "accounts"), ("/design", _("Brand"), "brand"), ("/design", _("Editorial"), "editorial")]), (_("Production"), [("/design", _("Pitches"), "pitches"), ("/design", _("Episodes"), "episodes"), ("/design", _("Library"), "library")]), (_("Team"), [("/design", _("Members"), "members"), ("/design", _("Settings"), "settings")]), ("", [("/design", _("Channels"), "channels"), ("/design", _("Account"), "account"), ("/design", _("API tokens"), "tokens")])], "accounts", _("Channel sections"), states={"overview": "is-hover", "brand": "is-active", "editorial": "is-focus"}) }}
   <div class="row">
     {% call ui.menu(_("Pressed"), state="is-active") %}<a href="/design">Funny Memes</a>{% endcall %}
+    {{ ui.skip_link(_("Skip to content"), state="is-focus") }}
     {{ ui.icon_button("close", _("Close"), type="button") }}
     {{ ui.icon_button("close", _("Hover"), type="button", state="is-hover") }}
     {{ ui.icon_button("close", _("Focus"), type="button", state="is-focus") }}
@@ -158,14 +159,14 @@
       {% call ui.board_column("script", _("Script"), 0) %}{% endcall %}
     {% endcall %}
     {% call ui.panel(_("Getting ready"), id=theme ~ "-ready") %}
-      {{ ui.checklist([(true, _("Add an account"), "/design"), (false, _("Upload an avatar"), "/design"), (false, _("Set the channel to active"), "")]) }}
+      {{ ui.checklist([(true, _("Add an account"), "/design"), (false, _("Upload an avatar"), "/design"), (false, _("Set the channel to active"), "")], _("Done"), _("To do")) }}
       {% call ui.panel_actions() %}{{ ui.button(_("Save changes"), type="button") }}{% endcall %}
       {% call ui.subsection(_("Pitch research"), theme ~ "-research") %}<p class="muted">{{ _("The pitch has no notes yet.") }}</p>{% endcall %}
     {% endcall %}
     {% call ui.panel(_("Colors"), id=theme ~ "-colors") %}
       {% call(color) ui.items([("#ff0066", "Pink"), ("#12111a", "Ink")], _("Colors")) %}
         {% call ui.item_body() %}{{ ui.chip(color[0], color[1]) }}{% endcall %}
-        {% call ui.item_side() %}{{ ui.confirm(_("Remove"), _("Remove %(name)s?", name=color[1]), "/design", csrf_field, csrf_token, _("Remove color")) }}{% endcall %}
+        {% call ui.item_side() %}{{ ui.confirm(_("Remove"), _("Remove %(name)s?", name=color[1]), "/design", csrf_field, csrf_token, _("Remove color"), target=color[1]) }}{% endcall %}
       {% endcall %}
     {% endcall %}
     {% call ui.panel(_("Blocks"), id=theme ~ "-script") %}

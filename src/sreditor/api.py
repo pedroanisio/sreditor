@@ -13,6 +13,7 @@ from starlette.routing import Route
 
 from sreditor import (
     auth_routes,
+    book_routes,
     classification_routes,
     context_routes,
     episode_routes,
@@ -27,6 +28,7 @@ from sreditor import (
     operations,
     pitch_routes,
     problems,
+    render_routes,
     research_routes,
     screenplay_routes,
     short_script_routes,
@@ -62,6 +64,8 @@ from sreditor.members import MemberStore, Permission
 from sreditor.pagination import DEFAULT_LIMIT, Cursor, Limit, Page
 from sreditor.pitches import PitchStore
 from sreditor.problems import ProblemError, problem_response, problem_type
+from sreditor.render_upload import PartStore
+from sreditor.renders import RenderStore
 from sreditor.repository import (
     AccountTaken,
     ChannelExists,
@@ -155,6 +159,8 @@ def create_app(
         stmt=client,
         tokens=TokenStore(database, users),
         assets=assets,
+        renders=RenderStore(database),
+        render_parts=PartStore(settings.assets_dir, settings.max_media_bytes),
         voice=build_voice(settings.voice),
     )
     mcp = mcp_server.build(services)
@@ -187,6 +193,7 @@ def create_app(
     install_production_error_handlers(app)
     install_media_error_handlers(app)
     srstudio_routes.install_srstudio_error_handlers(app)
+    render_routes.install_error_handlers(app)
     pitch_routes.install_error_handlers(app)
     context_routes.install_error_handlers(app)
     external_media_routes.install_error_handlers(app)
@@ -208,7 +215,10 @@ def create_app(
     app.include_router(external_media_routes.router)
     app.include_router(classification_routes.router)
     app.include_router(srstudio_routes.router)
+    app.include_router(render_routes.router)
+    app.include_router(render_routes.worker_router)
     app.include_router(export_routes.router)
+    app.include_router(book_routes.router)
     add_channel_routes(app)
     app.router.routes.append(Route(mcp_server.PATH, mcp_app, methods=["GET", "POST", "DELETE"]))
     workspace.mount(app)

@@ -15,6 +15,7 @@ from tests.conftest import RecordingMailer, fast_passwords
 
 WEB = Path(__file__).resolve().parent.parent / "src" / "sreditor" / "web"
 STYLE = (WEB / "static" / "style.css").read_text()
+EXPORT_STYLE = (WEB / "static" / "export.css").read_text()
 TOKENS = re.sub(r"/\*.*?\*/", "", (WEB / "static" / "tokens.css").read_text(), flags=re.DOTALL)
 ORIGIN = "https://sreditor.test"
 
@@ -134,6 +135,7 @@ def test_tokens_control_outlines_meet_wcag_aa_contrast() -> None:
 def test_tokens_defined_in_tokens_css_are_all_used() -> None:
     defined = set(TOKEN_DEFINITION.findall(TOKENS))
     used = set(TOKEN_USE.findall(STYLE)) | set(TOKEN_USE.findall(TOKENS))
+    used |= set(TOKEN_USE.findall(EXPORT_STYLE))
     conditions = set(MEDIA_CONDITION.findall(COMMENT.sub("", STYLE)))
     used |= {name for name, value in BREAKPOINT.findall(TOKENS) if value in conditions}
     assert defined - used == set()

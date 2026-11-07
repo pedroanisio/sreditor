@@ -12,6 +12,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from sreditor.export_formats import ExportFormat
 from sreditor.export_operations import every_item
 from sreditor.i18n import Translator
 from sreditor.pagination import Page
@@ -19,7 +20,6 @@ from sreditor.web.export_files import (
     CELL_LIMIT,
     FONTS,
     AppFontsOnly,
-    ExportFormat,
     Sheet,
     file_name,
     workbook,
@@ -249,12 +249,12 @@ def test_translator_used_for_sheets_is_the_request_locale() -> None:
 # The pages
 
 
-def test_episode_page_header_offers_each_export_format(owner: TestClient) -> None:
+def test_episode_page_header_offers_each_book_format(owner: TestClient) -> None:
     page = owner.get("/app/channels/funny-memes/episodes/1").text
     for export_format in ("pdf", "xlsx", "json"):
-        assert f'href="{EPISODE_EXPORT}?format={export_format}" download' in page
+        assert f'href="{EPISODE}/book?format={export_format}" download' in page
 
 
-def test_channel_overview_offers_channel_export(owner: TestClient) -> None:
+def test_channel_overview_offers_channel_book(owner: TestClient) -> None:
     page = owner.get("/app/channels/funny-memes").text
-    assert f'href="{CHANNEL_EXPORT}?format=pdf" download' in page
+    assert f'href="{BASE}/books/channel?format=pdf" download' in page

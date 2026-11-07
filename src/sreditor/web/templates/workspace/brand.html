@@ -53,7 +53,7 @@
     {% call ui.item_body() %}{{ ui.chip(color.hex, color.name) }}{% endcall %}
     {% if may_write %}
     {% call ui.item_side() %}
-      {{ ui.confirm(_("Remove"), _("Remove %(name)s?", name=color.name), channel_link ~ "/brand/colors/remove", csrf_field, csrf_token, _("Remove color"), fields=[("name", color.name), ("platform", level), ("revision", revision)]) }}
+      {{ ui.confirm(_("Remove"), _("Remove %(name)s?", name=color.name), channel_link ~ "/brand/colors/remove", csrf_field, csrf_token, _("Remove color"), fields=[("name", color.name), ("platform", level), ("revision", revision)], target=color.name) }}
     {% endcall %}
     {% endif %}
   {% endcall %}

@@ -91,18 +91,9 @@
 {% call ui.panel(_("Facts from published episodes"), id="facts") %}
   {% if episodes %}
   <p class="muted">{{ _("Each fact cites the published episode that shows it, with the words or drawing that show it.") }}</p>
-  {% for item in sheet[prefix] + [{"fact": "", "field": "identity" if kind == "character" else "world", "episode": "", "kind": "line", "quote": ""}] %}
-  {% set row = loop.index0 %}
-  {% call ui.subsection(_("Fact %(number)s", number=row + 1), "fact-" ~ row) %}
-    {{ ui.field(prefix ~ "_fact", _("Fact"), {prefix ~ "_fact": errors.get(prefix ~ "_fact-" ~ row)}, value=item.fact, required=false, id=prefix ~ "_fact-" ~ row) }}
-    {% call ui.fields_row() %}
-      {{ ui.select(prefix ~ "_episode", _("Episode"), [("", _("Pick an episode"))] + episodes, {prefix ~ "_episode": errors.get(prefix ~ "_episode-" ~ row)}, value=item.episode | string, id=prefix ~ "_episode-" ~ row) }}
-      {{ ui.select(prefix ~ "_field", _("About"), fact_fields, {}, value=item.field, id=prefix ~ "_field-" ~ row) }}
-      {{ ui.select(prefix ~ "_kind", _("Shown as"), fact_kinds, {}, value=item.kind, id=prefix ~ "_kind-" ~ row) }}
-    {% endcall %}
-    {{ ui.field(prefix ~ "_quote", _("Quote"), {prefix ~ "_quote": errors.get(prefix ~ "_quote-" ~ row)}, value=item.quote, required=false, id=prefix ~ "_quote-" ~ row) }}
-  {% endcall %}
-  {% endfor %}
+  {% set facts = sheet[prefix] %}
+  {% set blank_field = "identity" if kind == "character" else "world" %}
+  {% include "workspace/_fact_rows.html" %}
   {% else %}
   <p class="muted">{{ _("Facts cite published episodes. Publish an episode to cite it here.") }}</p>
   {% endif %}

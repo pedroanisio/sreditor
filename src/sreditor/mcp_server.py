@@ -118,7 +118,10 @@ INSTRUCTIONS = (
     "Episodes, pitches, sources, media and library entries each keep a context (what, who, "
     "where, when, why, how) and links to one another: read it with get_context, set answers "
     "and links with write_context, and find ids with list_linkable_items. "
-    "Owners and editors can list an episode's signed waivers with list_waivers."
+    "Owners and editors can list an episode's signed waivers with list_waivers. "
+    "Owners and editors render an episode into video with request_render, which answers at once; "
+    "follow it with get_render until it is done, then download the video from its download_path "
+    "with the same token."
 )
 
 # Domain errors an agent can act on, reported as tool errors with their message.
@@ -345,6 +348,7 @@ def build(services: Services) -> MCPServer:
     from sreditor.context_tools import add_context_tools
     from sreditor.external_media_tools import add_external_media_tools
     from sreditor.pitch_tools import add_pitch_tools
+    from sreditor.render_tools import add_render_tools
     from sreditor.short_script_tools import add_short_script_tools
 
     server: MCPServer = MCPServer(name="sreditor", instructions=INSTRUCTIONS)
@@ -359,6 +363,7 @@ def build(services: Services) -> MCPServer:
     add_library_tools(server, services)
     add_style_tools(server, services)
     add_media_tools(server, services)
+    add_render_tools(server, services)
     add_external_media_tools(server, services)
     add_classification_tools(server, services)
     add_context_tools(server, services)

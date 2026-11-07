@@ -8,6 +8,7 @@
     <a href="{{ export_link }}?format=pdf" download hx-boost="false">PDF</a>
     <a href="{{ export_link }}?format=xlsx" download hx-boost="false">Excel</a>
     <a href="{{ export_link }}?format=json" download hx-boost="false">JSON</a>
+    <a href="{{ books_link }}">{{ _("More books…") }}</a>
   {% endcall %}
 {% endcall %}
 {% call ui.panel(_("Getting ready"), id="ready") %}
@@ -16,7 +17,7 @@
   {% else %}
   <p>{{ _("The channel has everything it needs.") }}</p>
   {% endif %}
-  {{ ui.checklist(checklist_items) }}
+  {{ ui.checklist(checklist_items, _("Done"), _("To do")) }}
 {% endcall %}
 {% call ui.panel(_("At a glance"), id="glance") %}
   {{ ui.facts([

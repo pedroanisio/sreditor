@@ -66,8 +66,19 @@ def get_media(app: Services, access: ChannelAccess, number: int, media_id: UUID)
     return app.media.get(slug, number, media_id)
 
 
+class RenderNotUploadable(ValueError):
+    """A render arrives only from a render worker (rule project.render), never by upload."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "A render cannot be uploaded; request one with request_render (POST .../renders)"
+        )
+
+
 def add_media(app: Services, access: ChannelAccess, new: NewMedia, source: BinaryIO) -> MediaFile:
     """Check, store and add a file to the episode; the gate decides before anything is stored."""
+    if new.kind is MediaKind.RENDER:
+        raise RenderNotUploadable
     episode_access(app, access, new.number, Permission.WRITE_CONTENT)
     placed = new.model_copy(update={"channel": access.channel.slug})
     return gated(app, access, MediaOperation.CREATE, lambda: app.media.add(placed, source))

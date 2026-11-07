@@ -72,12 +72,24 @@ function frame(model, camera, controls) {
   controls.saveState();
 }
 
+var described = 0;
+
+// The status line says how to drag and zoom, so the canvas that takes those keys points to it.
+function describe(figure, canvas) {
+  var status = figure.querySelector("[role=status]");
+  described += 1;
+  status.id = status.id || "model-viewer-status-" + described;
+  canvas.setAttribute("aria-describedby", status.id);
+}
+
 export function mount(figure) {
   var canvas = figure.querySelector("canvas");
+  describe(figure, canvas);
   var renderer;
   try {
     renderer = new WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
   } catch (missing) {
+    console.error("WebGL is not available", missing);
     say(figure, "error");
     return;
   }
@@ -110,17 +122,19 @@ export function mount(figure) {
   figure.querySelector("[data-model-reset]").addEventListener("click", function () {
     controls.reset();
   });
-  // A page htmx swaps out takes its viewer along; free the WebGL context, which browsers ration.
-  document.addEventListener(
-    "htmx:beforeSwap",
-    function () {
-      sizes.disconnect();
-      controls.dispose();
-      renderer.dispose();
-      renderer.forceContextLoss();
-    },
-    { once: true }
-  );
+  // A swap that takes the viewer along frees its WebGL context, which browsers ration; other
+  // swaps, such as quick search results, leave it drawing.
+  function release(event) {
+    if (!event.detail.target.contains(figure)) {
+      return;
+    }
+    document.removeEventListener("htmx:beforeSwap", release);
+    sizes.disconnect();
+    controls.dispose();
+    renderer.dispose();
+    renderer.forceContextLoss();
+  }
+  document.addEventListener("htmx:beforeSwap", release);
 
   var choose = LOADERS[figure.getAttribute("data-format")];
   if (!choose) {
@@ -137,7 +151,9 @@ export function mount(figure) {
       resize();
       say(figure, "ready");
     })
-    .catch(function () {
+    .catch(function (failure) {
+      // The page says the model could not be shown; the console keeps why, for whoever debugs it.
+      console.error("3D model could not be shown", failure);
       say(figure, "error");
     });
 }

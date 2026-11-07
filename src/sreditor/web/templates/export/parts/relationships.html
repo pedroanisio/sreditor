@@ -1,0 +1,8 @@
+<table>
+  <thead><tr><th>{{ _("Character") }}</th><th>{{ _("Character") }}</th><th>{{ _("Relation") }}</th><th>{{ _("Dynamic") }}</th><th>{{ _("Tension") }}</th><th>{{ _("Status") }}</th></tr></thead>
+  <tbody>
+  {% for row in part.relationships %}
+  <tr><td>{{ row.first }}</td><td>{{ row.second }}</td><td>{{ row.relationship.relation }}</td><td>{{ row.relationship.dynamic }}</td><td>{{ row.relationship.tension }}</td><td>{{ labels.pairs[row.relationship.status] }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>

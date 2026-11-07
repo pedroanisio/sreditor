@@ -1,0 +1,7 @@
+<article class="book-part">
+  <h3>#{{ part.episode.number }} · {{ part.episode.title }}</h3>
+  {% if part.credits.credits %}
+  <ol>{% for line in part.credits.credits %}<li>{{ line.text }} · <span class="doc-link">{{ line.url }}</span></li>{% endfor %}</ol>
+  {% else %}<p class="book-empty">{{ _("Nothing to credit yet.") }}</p>{% endif %}
+  {% if part.credits.warnings %}<p class="doc-muted">{{ _("Check the rights before publishing") }}: {% for warning in part.credits.warnings %}{{ warning.title }}{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+</article>

@@ -18,6 +18,13 @@
 // - A form with data-autosave (a text part) saves itself a moment after typing stops, sending
 //   the revision it last saved; the Save button stays for when this does not run. When someone
 //   else changed the text meanwhile (409), it stops saving and says so, so nothing is lost.
+//   Leaving the page, by a link or by closing it, saves what is still waiting at once.
+// - A request htmx could not finish (no network, a server error) shows an error toast, in the
+//   page's language from the body's data-error-* attributes, so a failure is never silent.
+// - When a form comes back with errors, focus goes to the first field in error, so people who
+//   use the keyboard or a screen reader land where the problem is.
+// - Opening a "Remove" confirmation moves focus to its confirm button, since the button that
+//   opened it hides.
 // - On the episode board, picking a stage on a card moves it at once (its Move button then
 //   hides), and a card dragged onto another column moves there through the same form.
 // - Ctrl+K (Cmd+K on a Mac), or the sidebar's Search link, opens the quick search dialog instead
@@ -44,6 +51,8 @@
   var AUTOSAVE_HEADER = "Sreditor-Autosave";
   var REVISION_HEADER = "Sreditor-Revision";
   var HTTP_NO_CONTENT = 204;
+  var HTTP_BAD_REQUEST = 400;
+  var HTTP_SERVER_ERROR = 500;
   var HTTP_CONFLICT = 409;
   var HTTP_UNPROCESSABLE = 422;
 
@@ -261,7 +270,49 @@
     }
     toast.addEventListener("mouseenter", hold);
     toast.addEventListener("mouseleave", wait);
+    toast.addEventListener("focusin", hold);
+    toast.addEventListener("focusout", wait);
     wait();
+  }
+
+  // A toast made here rather than by the server, from the page's hidden template of that tone.
+  function showToast(message, tone) {
+    var template = document.getElementById("toast-" + tone);
+    if (!template || !message) {
+      return;
+    }
+    var toast = template.content.firstElementChild.cloneNode(true);
+    toast.querySelector("span").textContent = message;
+    document.body.append(toast);
+    once(bindToast)(toast);
+  }
+
+  function failed(key) {
+    return function () {
+      showToast(document.body.getAttribute("data-error-" + key), "error");
+    };
+  }
+  document.addEventListener("htmx:sendError", failed("network"));
+  document.addEventListener("htmx:responseError", failed("server"));
+
+  document.addEventListener("htmx:afterSettle", function (event) {
+    var status = event.detail.xhr ? event.detail.xhr.status : 0;
+    if (status < HTTP_BAD_REQUEST || status >= HTTP_SERVER_ERROR) {
+      return;
+    }
+    var invalid = document.querySelector("[aria-invalid='true']");
+    if (invalid) {
+      invalid.focus();
+    }
+  });
+
+  function bindConfirm(confirm) {
+    confirm.addEventListener("toggle", function () {
+      var button = confirm.querySelector(".confirm-box button[type=submit]");
+      if (confirm.open && button) {
+        button.focus();
+      }
+    });
   }
 
   function bindAutosave(form) {
@@ -287,8 +338,9 @@
       status.classList.toggle("is-error", Boolean(isError));
     }
     function finished(response) {
-      if (response.status === HTTP_NO_CONTENT) {
-        revision.value = response.headers.get(REVISION_HEADER);
+      var saved = response.headers.get(REVISION_HEADER);
+      if (response.status === HTTP_NO_CONTENT && saved) {
+        revision.value = saved;
         say("saved");
         // Parts of the page that show the saved text, such as the screenplay preview, reload.
         document.body.dispatchEvent(new CustomEvent("sreditor-autosaved"));
@@ -301,7 +353,9 @@
         say("failed", true);
       }
     }
-    function save() {
+    // isLeaving: the page is going away, so the request must outlive it (keepalive).
+    function save(isLeaving) {
+      timer = null;
       if (isPaused) {
         return;
       }
@@ -313,11 +367,19 @@
       say("saving");
       var headers = {};
       headers[AUTOSAVE_HEADER] = "1";
-      fetch(form.action, { method: "POST", body: new FormData(form), headers: headers, credentials: "same-origin" })
+      // Not form.action: a field or button named "action" (a short script's row buttons) would
+      // stand in its place.
+      fetch(form.getAttribute("action"), {
+        method: "POST",
+        body: new FormData(form),
+        headers: headers,
+        credentials: "same-origin",
+        keepalive: Boolean(isLeaving),
+      })
         .then(finished, function () {
           say("failed", true);
         })
-        .then(function () {
+        .finally(function () {
           isSaving = false;
           if (isPending) {
             isPending = false;
@@ -325,12 +387,34 @@
           }
         });
     }
+    // Typing that has not been saved yet is saved now, before the page goes.
+    function flush(isLeaving) {
+      if (timer !== null && form.isConnected) {
+        window.clearTimeout(timer);
+        save(isLeaving);
+      }
+    }
     form.addEventListener("input", function () {
       window.clearTimeout(timer);
       timer = window.setTimeout(save, AUTOSAVE_AFTER_MS);
     });
     form.addEventListener("submit", function () {
       window.clearTimeout(timer);
+      timer = null;
+    });
+    // A boosted link loads the next page with htmx; this form's own requests are its submit.
+    document.addEventListener("htmx:beforeRequest", function (event) {
+      if (!form.contains(event.detail.elt)) {
+        flush(false);
+      }
+    });
+    window.addEventListener("pagehide", function () {
+      flush(true);
+    });
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "hidden") {
+        flush(true);
+      }
     });
   }
 
@@ -454,6 +538,64 @@
   }
 
   // htmx also fires htmx:load for the first page, so bind each element only once.
+  // A book form downloads with fetch, so its button shows it is working while the server
+  // builds the file and says so when it is done or failed; without JavaScript the form's GET
+  // downloads it all the same.
+  var FILE_NAME = /filename="([^"]+)"/;
+
+  function saveFile(blob, name) {
+    var link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(function () {
+      URL.revokeObjectURL(link.href);
+    }, 0);
+  }
+
+  function bindDownload(form) {
+    var button = form.querySelector("button[type=submit]");
+    var status = form.querySelector("[data-download-status]");
+    function finish(state) {
+      form.classList.remove("htmx-request");
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+      status.textContent = status.getAttribute("data-" + state);
+    }
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      if (button.disabled) {
+        return;
+      }
+      form.classList.add("htmx-request");
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+      status.textContent = status.getAttribute("data-working");
+      var query = new URLSearchParams(new FormData(form)).toString();
+      fetch(form.getAttribute("action") + "?" + query, { credentials: "same-origin" })
+        .then(function (response) {
+          if (!response.ok) {
+            throw new Error("Book download answered " + response.status);
+          }
+          var found = FILE_NAME.exec(response.headers.get("Content-Disposition") || "");
+          return response.blob().then(function (blob) {
+            saveFile(blob, found ? found[1] : "book");
+          });
+        })
+        .then(
+          function () {
+            finish("done");
+          },
+          function (failure) {
+            console.error("The book could not be downloaded", failure);
+            finish("failed");
+          }
+        );
+    });
+  }
+
   function once(bind) {
     return function (element) {
       if (element.hasAttribute("data-enhanced")) {
@@ -479,10 +621,12 @@
     root.querySelectorAll("form.search-box").forEach(once(bindSearchBox));
     root.querySelectorAll(".app-sidebar .sidenav, .tabs ul").forEach(once(bindScrollRow));
     root.querySelectorAll("form[data-autosave]").forEach(once(bindAutosave));
+    root.querySelectorAll("details.confirm").forEach(once(bindConfirm));
     root.querySelectorAll("form.board-move").forEach(once(bindBoardMove));
     root.querySelectorAll("[data-board-card]").forEach(once(bindBoardCard));
     root.querySelectorAll("ol[data-words-per-second]").forEach(once(bindScriptRows));
     root.querySelectorAll(".board-column[data-stage]").forEach(once(bindBoardColumn));
+    root.querySelectorAll("form[data-download]").forEach(once(bindDownload));
     loadViewers(root);
   }
 

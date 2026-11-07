@@ -1,0 +1,52 @@
+{# A book (rule project.export): a branded cover that lists what the book holds, then each
+   section's parts. Styled by static/export.css. #}
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<title>{{ heading }}</title>
+{% if brand_color %}<style>:root { --brand: {{ brand_color }}; --on-brand: var({{ on_brand }}); }</style>{% endif %}
+</head>
+<body class="doc book">
+  <section class="book-cover">
+    {# Both live on the cover so they start no page of their own; later pages repeat them. #}
+    <span class="book-name">{{ book.channel.name }} · {{ book_label }}</span>
+    <div class="book-running">
+      {% if files.logo %}<img class="book-running-logo" src="{{ files.logo }}" alt="">{% endif %}
+      <span>{{ book.channel.name }}</span>
+    </div>
+    <header class="book-masthead">
+      {% if files.logo %}<img class="book-logo" src="{{ files.logo }}" alt="">{% endif %}
+      <span>{{ book.channel.name }}</span>
+    </header>
+    <div class="book-titles">
+      {% if eyebrow %}<p class="doc-eyebrow">{{ eyebrow }}</p>{% endif %}
+      <h1 class="book-title">{{ heading }}</h1>
+      {% if lead %}<p class="doc-lead">{{ lead }}</p>{% endif %}
+    </div>
+    <dl class="doc-facts">
+      <dt>{{ _("Exported on") }}</dt><dd>{{ exported_on }}</dd>
+      {% if book.options.episodes.statuses %}<dt>{{ _("Episodes") }}</dt><dd>{% for status in book.options.episodes.statuses|sort %}{{ labels.episode_status[status] }}{% if not loop.last %}, {% endif %}{% endfor %}</dd>{% endif %}
+      {% if book.options.episodes.first or book.options.episodes.last %}<dt>{{ _("Numbers") }}</dt><dd>{{ book.options.episodes.first or 1 }}–{{ book.options.episodes.last or "…" }}</dd>{% endif %}
+    </dl>
+    {% if sections|length > 1 %}
+    <nav class="book-contents">
+      <h2>{{ _("In this book") }}</h2>
+      <ol>{% for anchor, title, parts in sections %}<li><a href="#{{ anchor }}">{{ title }}</a></li>{% endfor %}</ol>
+    </nav>
+    {% endif %}
+    {% if book.brand.colors %}
+    <ul class="book-swatches">{% for color in book.brand.colors %}<li><span class="book-swatch" style="background: {{ color.hex }}"></span>{{ color.name }}</li>{% endfor %}</ul>
+    {% endif %}
+  </section>
+
+  {% for anchor, title, parts in sections %}
+  <section class="book-section is-{{ anchor }}" id="{{ anchor }}">
+    {% if is_sectioned %}<h2 class="book-heading">{{ title }}</h2>{% endif %}
+    {% for part in parts %}{% include "parts/" ~ part.type ~ ".html" %}{% endfor %}
+  </section>
+  {% else %}
+  <p class="book-empty">{{ _("This book has nothing yet.") }}</p>
+  {% endfor %}
+</body>
+</html>

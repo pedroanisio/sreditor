@@ -232,9 +232,14 @@ def signed_in(request: Request, app: Services) -> User | None:
 
 
 def safe_next(target: str) -> str:
-    """Only follow a local path after sign-in, never another site."""
+    """Only follow a local path after sign-in, never another site.
+
+    Browsers drop tabs and line breaks from a URL before reading it, so "/<tab>/evil.com" would
+    become "//evil.com", another site; any whitespace or control character is refused.
+    """
+    is_plain = target.isprintable() and not any(character.isspace() for character in target)
     local = target.startswith("/") and not target.startswith("//") and "\\" not in target
-    return target if local else APP_PATH
+    return target if local and is_plain else APP_PATH
 
 
 def renewed_form(request: Request, app: Services) -> Response:

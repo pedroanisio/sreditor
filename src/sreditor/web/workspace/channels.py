@@ -7,10 +7,10 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Form, Request, Response
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from sreditor.book_operations import CHANNEL_BOOK
 from sreditor.channels import Channel, Status
 from sreditor.deps import ChannelAccess, Services, ServicesDep, request_locale
 from sreditor.editorial import Editorial
-from sreditor.export_operations import CHANNEL_EXPORT
 from sreditor.i18n import N_
 from sreditor.members import Permission
 from sreditor.operations import create_channel, delete_channel, list_channels, replace_channel
@@ -177,7 +177,8 @@ def overview(request: Request, app: ServicesDep, access: PageAccess) -> Response
         "remaining": sum(1 for item in items if not item[0]),
         "member_count": len(app.members.list(channel.slug)),
         "episode_count": app.episodes.count(channel.slug),
-        "export_link": CHANNEL_EXPORT.format(slug=channel.slug),
+        "export_link": CHANNEL_BOOK.format(slug=channel.slug),
+        "books_link": f"{APP_PATH}/channels/{channel.slug}/books",
         "status_labels": STATUS_LABELS,
         "status_tones": STATUS_TONES,
     }

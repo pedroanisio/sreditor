@@ -49,6 +49,22 @@ DEFAULT_ASSETS_DIR = "var/assets"
 DEFAULT_AGENT_REQUESTS_PER_MINUTE = 120
 # Only a proxy on this machine may set X-Forwarded-For / -Proto unless configured otherwise.
 DEFAULT_FORWARDED_ALLOW_IPS = "127.0.0.1"
+# A rendered video arrives in parts (rule project.render.upload), so only the disk bounds it.
+DEFAULT_MAX_RENDER_BYTES = 8 * 1024 * 1024 * 1024
+# A worker renews its lease well within this; a lapsed lease sends the job back to the queue.
+DEFAULT_RENDER_LEASE_SECONDS = 120
+# The scene-render version workers must run, so one export renders to the same file everywhere.
+DEFAULT_RENDER_ENGINE_VERSION = "0.9.0"
+
+
+class RenderSettings(BaseModel):
+    """Rendering on GPU workers (rule project.render.workers)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    max_render_bytes: int = Field(default=DEFAULT_MAX_RENDER_BYTES, ge=1)
+    lease_seconds: int = Field(default=DEFAULT_RENDER_LEASE_SECONDS, ge=10)
+    engine_version: str = DEFAULT_RENDER_ENGINE_VERSION
 
 
 class AppSettings(BaseModel):
@@ -69,6 +85,7 @@ class AppSettings(BaseModel):
     max_media_bytes: int = Field(default=DEFAULT_MAX_MEDIA_BYTES, ge=1)
     mail: MailSettings = MailSettings()
     voice: VoiceSettings = VoiceSettings()
+    render: RenderSettings = RenderSettings()
     # Requests one API token may make per minute, counted across the API and /mcp.
     agent_requests_per_minute: int = Field(default=DEFAULT_AGENT_REQUESTS_PER_MINUTE, ge=1)
     # Proxies trusted to report the client's address, such as the Cloudflare tunnel; without
@@ -104,6 +121,7 @@ class AppSettings(BaseModel):
             has_dev_pages=environ.get("SREDITOR_DEV_PAGES", "false").lower() == "true",
             mail=mail_settings(environ),
             voice=voice_settings(environ),
+            render=render_settings(environ, project),
             agent_requests_per_minute=int(
                 environ.get("SREDITOR_AGENT_REQUESTS_PER_MINUTE")
                 or DEFAULT_AGENT_REQUESTS_PER_MINUTE
@@ -119,6 +137,19 @@ def max_media_bytes(environ: Mapping[str, str], project: Mapping[str, str]) -> i
     """SREDITOR_MAX_MEDIA_BYTES, then max_media_bytes in pyproject.toml, then 95 MB."""
     limit = environ.get("SREDITOR_MAX_MEDIA_BYTES") or project.get("max_media_bytes")
     return int(limit) if limit else DEFAULT_MAX_MEDIA_BYTES
+
+
+def render_settings(environ: Mapping[str, str], project: Mapping[str, str]) -> RenderSettings:
+    """SREDITOR_MAX_RENDER_BYTES, SREDITOR_RENDER_LEASE_SECONDS and SREDITOR_RENDER_ENGINE_VERSION,
+    then [tool.sreditor] in pyproject.toml, then the defaults."""
+    max_bytes = environ.get("SREDITOR_MAX_RENDER_BYTES") or project.get("max_render_bytes")
+    lease = environ.get("SREDITOR_RENDER_LEASE_SECONDS") or project.get("render_lease_seconds")
+    engine = environ.get("SREDITOR_RENDER_ENGINE_VERSION") or project.get("render_engine_version")
+    return RenderSettings(
+        max_render_bytes=int(max_bytes) if max_bytes else DEFAULT_MAX_RENDER_BYTES,
+        lease_seconds=int(lease) if lease else DEFAULT_RENDER_LEASE_SECONDS,
+        engine_version=str(engine) if engine else DEFAULT_RENDER_ENGINE_VERSION,
+    )
 
 
 def metrics_port(environ: Mapping[str, str], project: Mapping[str, str]) -> int | None:

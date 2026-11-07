@@ -39,6 +39,7 @@ class Scope(StrEnum):
     MEMBERS_WRITE = "members:write"
     CONTENT_WRITE = "content:write"
     WAIVERS_READ = "waivers:read"
+    RENDER_WRITE = "render:write"
 
 
 # The scope a token needs, on top of the user's role, for each channel permission.
@@ -48,6 +49,7 @@ SCOPE_FOR: dict[Permission, Scope] = {
     Permission.WRITE_EDITORIAL: Scope.EDITORIAL_WRITE,
     Permission.READ_WAIVERS: Scope.WAIVERS_READ,
     Permission.GENERATE_VOICE: Scope.CONTENT_WRITE,
+    Permission.RENDER: Scope.RENDER_WRITE,
     Permission.WRITE_CHANNEL: Scope.CHANNELS_WRITE,
     Permission.MANAGE_MEMBERS: Scope.MEMBERS_WRITE,
     Permission.MANAGE_OWNERS: Scope.MEMBERS_WRITE,

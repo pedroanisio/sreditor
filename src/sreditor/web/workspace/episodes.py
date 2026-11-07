@@ -8,6 +8,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Form, Request, Response
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from sreditor.book_operations import EPISODE_BOOK
 from sreditor.deps import ChannelAccess, Services, ServicesDep
 from sreditor.episode_operations import (
     count_episode_parts,
@@ -28,7 +29,6 @@ from sreditor.episodes import (
     EpisodeStatus,
     RevisedEpisode,
 )
-from sreditor.export_operations import EPISODE_EXPORT
 from sreditor.i18n import N_, Translator
 from sreditor.members import Permission
 from sreditor.pagination import DEFAULT_LIMIT, MAX_LIMIT
@@ -114,7 +114,7 @@ def episode_frame(
             "waivers": counts.waivers,
         },
         "episode_steps": episode_options(translate),
-        "export_link": EPISODE_EXPORT.format(slug=access.channel.slug, number=number),
+        "export_link": EPISODE_BOOK.format(slug=access.channel.slug, number=number),
     }
 
 

@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Form, Request, Response
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from sreditor.book_operations import PITCH_BOOK
 from sreditor.deps import ChannelAccess, Services, ServicesDep
 from sreditor.episode_texts import PartChanged
 from sreditor.i18n import N_, Translator
@@ -277,6 +278,7 @@ def pitch_page(
     context = pitch_context(app, access, pitch, shown)
     context["status_options"] = status_options(translator(request))
     context["errors"] = shown.outcome.errors
+    context["book_link"] = PITCH_BOOK.format(slug=access.channel.slug, pitch_id=pitch.id)
     view = View(
         template="workspace/pitch.html",
         section=SECTION,

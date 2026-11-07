@@ -50,6 +50,7 @@
   {%- elif name == "library" %}<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5Z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>
   {%- elif name == "profile" %}<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/>
   {%- elif name == "external-media" %}<rect x="3" y="4" width="18" height="14" rx="2"/><path d="m10 8 5 3-5 3Z"/><path d="M7 21h10"/>
+  {%- elif name == "books" %}<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/><path d="M12 11v6"/><path d="m9 14 3 3 3-3"/>
   {%- elif name == "members" %}<circle cx="9" cy="8" r="4"/><path d="M2 21v-1a7 7 0 0 1 14 0v1"/><path d="M16 4a4 4 0 0 1 0 8"/><path d="M22 21v-1a7 7 0 0 0-4-6.3"/>
   {%- elif name == "settings" %}<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>
   {%- elif name == "channels" %}<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
@@ -640,9 +641,10 @@
 {%- endmacro %}
 
 {# A destructive action that asks once more in place, with no script (rule ui.microinteractions). #}
-{% macro confirm(label, question, action, csrf_field, csrf_token, confirm_label, fields=[], state="") -%}
+{# `target` names what the action applies to, so a list of "Remove" buttons can be told apart. #}
+{% macro confirm(label, question, action, csrf_field, csrf_token, confirm_label, fields=[], state="", target="") -%}
 <details class="confirm"{% if state == "is-open" %} open{% endif %}>
-  <summary class="button ghost danger small" role="button">{{ label }}</summary>
+  <summary class="button ghost danger small"{% if target %} aria-label="{{ label }}: {{ target }}"{% endif %}>{{ label }}</summary>
   <div class="confirm-box" role="group" aria-label="{{ label }}">
     <p>{{ question }}</p>
     {% call form(action, csrf_field, csrf_token) %}
@@ -664,10 +666,10 @@
 {%- endmacro %}
 
 {# What a channel still needs; `entries` are (done, label, href), with no link when href is empty. #}
-{% macro checklist(entries) -%}
+{% macro checklist(entries, done_label="", todo_label="") -%}
 <ul class="checklist">
   {% for done, label, href in entries %}
-  <li class="{{ 'done' if done else 'todo' }}">{{ icon('done' if done else 'todo') }}{% if done or not href %}<span>{{ label }}</span>{% else %}<a href="{{ href }}">{{ label }}</a>{% endif %}</li>
+  <li class="{{ 'done' if done else 'todo' }}">{{ icon('done' if done else 'todo') }}<span class="visually-hidden">{{ done_label if done else todo_label }}: </span>{% if done or not href %}<span>{{ label }}</span>{% else %}<a href="{{ href }}">{{ label }}</a>{% endif %}</li>
   {% endfor %}
 </ul>
 {%- endmacro %}
@@ -692,6 +694,11 @@
    signed-in sidebar, built from the parts below so /design can show them too. #}
 
 {# The product's icon and name, linking to `href`; the compact sidebar hides the name. #}
+{# The first link of every page: hidden until focused, it jumps past the menus to <main id="main">. #}
+{% macro skip_link(label, state="") -%}
+<a class="skip-link{% if state %} {{ state }}{% endif %}" href="#main">{{ label }}</a>
+{%- endmacro %}
+
 {% macro brand(href, icon_src) -%}
 <a class="brand" href="{{ href }}"><img src="{{ icon_src }}" alt=""><span>sreditor</span></a>
 {%- endmacro %}

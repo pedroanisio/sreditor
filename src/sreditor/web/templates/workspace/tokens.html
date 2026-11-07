@@ -20,7 +20,7 @@
       {{ ui.badge(_("Revoked")) }}
       {% else %}
       {{ ui.meta(_("Expires %(date)s", date=_.day(token.expires_at))) }}
-      {{ ui.confirm(_("Revoke"), _("Revoke %(name)s? Agents using it lose access at once.", name=token.name), "/app/account/tokens/" ~ (token.id | string) ~ "/revoke", csrf_field, csrf_token, _("Revoke token")) }}
+      {{ ui.confirm(_("Revoke"), _("Revoke %(name)s? Agents using it lose access at once.", name=token.name), "/app/account/tokens/" ~ (token.id | string) ~ "/revoke", csrf_field, csrf_token, _("Revoke token"), target=token.name) }}
       {% endif %}
     {% endcall %}
   {% endcall %}

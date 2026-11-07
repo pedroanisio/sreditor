@@ -9,6 +9,7 @@ from sreditor.i18n import N_
 from sreditor.web.routes import Notice, message, redirect
 from sreditor.web.workspace import (
     account,
+    books,
     brand_kit,
     channels,
     classification,
@@ -23,6 +24,7 @@ from sreditor.web.workspace import (
     oauth,
     pitches,
     platforms,
+    relationships,
     research,
     screenplay,
     search,
@@ -52,8 +54,10 @@ ROUTERS = (
     waivers.router,
     library.router,
     srstudio.router,
+    relationships.router,
     episode_srstudio.router,
     external_media.router,
+    books.router,
     classification.router,
     item_context.router,
     members.router,

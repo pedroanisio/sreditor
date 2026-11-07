@@ -27,6 +27,7 @@ SILENCE = 128
 
 PITCH_TITLE = "Why Mondays hurt"
 PITCH_SOURCE = "Sleep debt study"
+VIEWER_TIMEOUT_MS = 30_000
 
 
 @pytest.fixture(params=LOCALES)
@@ -292,9 +293,12 @@ def write_screenplay(page: Page, translate: Translator, evidence: Evidence) -> N
     upload_voice_over(page, translate, evidence)
     upload_waiver(page, translate, evidence)
     check_library(page, translate, evidence)
+    relate_characters(page, translate, evidence)
     pick_style(page, translate, evidence)
     use_third_party_media(page, translate, evidence)
     write_short_script(page, translate, evidence)
+    add_beat(page, translate, evidence)
+    prepare_for_srstudio(page, translate, evidence)
     export_episode(page, translate, evidence)
     classify_episode(page, translate, evidence)
 
@@ -363,6 +367,28 @@ def check_library(page: Page, translate: Translator, evidence: Evidence) -> None
     evidence.capture("library")
 
 
+def relate_characters(page: Page, translate: Translator, evidence: Evidence) -> None:
+    dialog = open_dialog(page, "add-character")
+    dialog.locator("#new-character-name").fill("Bia")
+    dialog.get_by_role("button", name=translate("Add character")).click()
+    flash(page, translate("Added to the library."))
+    page.get_by_role("main").get_by_role("link", name=translate("Relationships")).click()
+    heading(page, translate("Relationships"))
+    evidence.capture("relationships-empty")
+    dialog = open_dialog(page, "add-relationship")
+    dialog.locator("#first").select_option(label="ANA")
+    dialog.locator("#second").select_option(label="Bia")
+    dialog.locator("#relation").fill("flatmates")
+    dialog.get_by_role("button", name=translate("Add relationship")).click()
+    flash(page, translate("Added to the library."))
+    heading(page, "ANA & Bia")
+    page.locator("#tension").fill("Who finished the coffee")
+    page.get_by_role("button", name=translate("Save changes")).click()
+    flash(page, translate("Changes saved."))
+    expect(page.locator("#tension")).to_have_value("Who finished the coffee")
+    evidence.capture("relationship")
+
+
 def pick_style(page: Page, translate: Translator, evidence: Evidence) -> None:
     section(page, translate, "Episodes")
     page.get_by_role("link", name=re.compile("Pilot")).first.click()
@@ -421,7 +447,8 @@ def add_3d_model(page: Page, translate: Translator, evidence: Evidence) -> None:
     upload.get_by_role("button", name=translate("Upload")).click()
     # The viewer draws the cube with the vendored three.js, which the CSP lets load.
     viewer = page.locator("figure.model-viewer")
-    expect(viewer).to_have_class(re.compile(r"\bis-ready\b"))
+    # The container draws WebGL in software, so building the studio light can take seconds.
+    expect(viewer).to_have_class(re.compile(r"\bis-ready\b"), timeout=VIEWER_TIMEOUT_MS)
     expect(viewer.get_by_role("status")).to_have_text(
         translate("Drag to turn, scroll or pinch to zoom.")
     )
@@ -440,6 +467,9 @@ def write_short_script(page: Page, translate: Translator, evidence: Evidence) ->
     script.locator("#block-0-speech").fill("Monday [pause:0.3] [emphasis]again[/emphasis]?")
     script.locator("#block-0-duration_s").fill("3")
     expect(script.locator("#block-0 [data-range]")).to_have_text("0.0–3.0 s")
+    # The script saves itself a moment after typing stops.
+    saved_at = translate("Saved at %(time)s").split("%")[0].strip()
+    expect(script.locator(".autosave-status")).to_contain_text(saved_at)
     script.get_by_role("button", name=translate("Add text")).click()
     script = page.locator("form", has=page.locator("#text-0-text"))
     expect(script.locator("#block-0-speech")).to_have_value(
@@ -458,6 +488,40 @@ def write_short_script(page: Page, translate: Translator, evidence: Evidence) ->
     evidence.capture("short-script")
 
 
+def add_beat(page: Page, translate: Translator, evidence: Evidence) -> None:
+    block = page.locator("#block-0")
+    block.locator("details.more > summary", has_text=translate("Beats")).click()
+    # The blank row adds a beat once it names a character; the first beat starts at 0.
+    expect(block.locator("#block-0-beat-0-at_s")).to_have_value("0")
+    block.locator("#block-0-beat-0-character").select_option(label="ANA")
+    block.locator("#block-0-beat-0-eyes").select_option("shock")
+    block.locator("#block-0-beat-0-mouth").select_option("o")
+    evidence.capture("short-script-beat")
+    page.get_by_role("button", name=translate("Save short script")).first.click()
+    flash(page, translate("Changes saved."))
+    beats = page.locator("#block-0 details.more > summary", has_text=translate("Beats"))
+    expect(beats).to_contain_text("1")
+    expect(page.locator("#block-0-beat-0-eyes")).to_have_value("shock")
+
+
+def prepare_for_srstudio(page: Page, translate: Translator, evidence: Evidence) -> None:
+    tabs = page.get_by_role("navigation", name=translate("Episode pages"))
+    tabs.get_by_role("link", name="srstudio", exact=True).click()
+    export = page.locator("#export")
+    # Without ElevenLabs there is no voice-over, so the checklist sends people to generate one.
+    expect(export).to_contain_text(
+        translate("Generate the voice-over of the short script, one take per block.")
+    )
+    expect(export.get_by_role("link", name=translate("Download srstudio zip"))).to_have_count(0)
+    expect(page.locator("#slug")).to_have_value("pilot")
+    page.locator("#slug").fill("pilot-mondays")
+    page.locator("#seed").fill("7")
+    page.get_by_role("button", name=translate("Save changes")).click()
+    flash(page, translate("Changes saved."))
+    expect(page.locator("#slug")).to_have_value("pilot-mondays")
+    evidence.capture("srstudio")
+
+
 def pick_chip(dialog: Locator, name: str, label: str) -> None:
     """Click the chip with this label among the inputs that carry this name."""
     chips = dialog.locator(f"input[name='{name}'] + label")
@@ -468,10 +532,10 @@ def export_episode(page: Page, translate: Translator, evidence: Evidence) -> Non
     menu = page.locator("summary").get_by_text(translate("Export"), exact=True)
     menu.click()
     evidence.capture("export-menu")
-    # Each format goes to the browser as a download, named after the channel and episode.
+    # Each format downloads the episode book, named after the channel and the book.
     with page.expect_download() as saved:
         page.get_by_role("link", name="PDF", exact=True).click()
-    assert saved.value.suggested_filename.startswith("funny-memes-ep1-")
+    assert saved.value.suggested_filename.startswith("funny-memes-episode-book-")
     assert Path(saved.value.path()).read_bytes().startswith(b"%PDF-")
     # Choosing a format closes the menu, so it never covers the tabs behind it.
     expect(page.get_by_role("link", name="Excel", exact=True)).to_be_hidden()
@@ -502,6 +566,20 @@ def classify_episode(page: Page, translate: Translator, evidence: Evidence) -> N
     section(page, translate, "Profile")
     expect(page.locator("#group-genre")).to_contain_text(translate("Comedy") + " 100%")
     evidence.capture("profile")
+
+
+def download_book(page: Page, translate: Translator, evidence: Evidence) -> None:
+    section(page, translate, "Books")
+    tabs = page.get_by_role("navigation", name=translate("Books"))
+    tabs.get_by_role("link", name=translate("Library book")).click()
+    evidence.capture("books")
+    # The button shows it is working while the server builds the book, then says it is done.
+    with page.expect_download() as saved:
+        page.get_by_role("button", name=translate("Download")).click()
+    assert saved.value.suggested_filename.startswith("funny-memes-library-book-")
+    assert Path(saved.value.path()).read_bytes().startswith(b"%PDF-")
+    expect(page.locator("[data-download-status]")).to_have_text(translate("Downloaded."))
+    evidence.capture("books-downloaded")
 
 
 def invite_member(page: Page, translate: Translator, evidence: Evidence) -> None:
@@ -555,6 +633,7 @@ def test_workspace_in_browser_sets_up_a_channel_end_to_end(
     set_up_brand(page, translate, evidence)
     write_editorial(page, translate, evidence)
     produce_episode(page, translate, evidence)
+    download_book(page, translate, evidence)
     invite_member(page, translate, evidence)
     create_token(page, translate, evidence)
     delete_channel(page, server, translate, evidence)

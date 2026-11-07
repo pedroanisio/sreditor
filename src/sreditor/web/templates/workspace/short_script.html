@@ -42,16 +42,16 @@
     {% call ui.script_row(row.range, id="block-" ~ index, state="is-new" if row.is_new else "") %}
       <div class="script-main">
         <div class="script-chips">
-          {{ ui.select(prefix ~ "function", _("Function"), function_options, errors, value=row.function, label_hidden=true) }}
-          {{ ui.select(prefix ~ "speaker", _("Who speaks"), speaker_options, errors, value=row.speaker or "", label_hidden=true) }}
+          {{ ui.select(prefix ~ "function", _("%(label)s, block %(number)s", label=_("Function"), number=index + 1), function_options, errors, value=row.function, label_hidden=true) }}
+          {{ ui.select(prefix ~ "speaker", _("%(label)s, block %(number)s", label=_("Who speaks"), number=index + 1), speaker_options, errors, value=row.speaker or "", label_hidden=true) }}
         </div>
-        {{ ui.textarea(prefix ~ "speech", _("Speech"), errors, value=row.speech, limit=speech_limit, rows=1, label_hidden=true) }}
+        {{ ui.textarea(prefix ~ "speech", _("%(label)s, block %(number)s", label=_("Speech"), number=index + 1), errors, value=row.speech, limit=speech_limit, rows=1, label_hidden=true) }}
       </div>
       <div class="script-side">
-        {{ ui.field(prefix ~ "duration_s", _("Seconds"), errors, value=row.duration_s, required=false, label_hidden=true, placeholder=_("auto")) }}
-        {% if not loop.first %}{{ ui.icon_button("up", _("Move up"), submit_name="action", submit_value="up-block-" ~ index) }}{% endif %}
-        {% if not loop.last %}{{ ui.icon_button("down", _("Move down"), submit_name="action", submit_value="down-block-" ~ index) }}{% endif %}
-        {{ ui.icon_button("close", _("Remove block"), submit_name="action", submit_value="remove-block-" ~ index, danger=true) }}
+        {{ ui.field(prefix ~ "duration_s", _("%(label)s, block %(number)s", label=_("Seconds"), number=index + 1), errors, value=row.duration_s, required=false, label_hidden=true, placeholder=_("auto")) }}
+        {% if not loop.first %}{{ ui.icon_button("up", _("%(label)s, block %(number)s", label=_("Move up"), number=index + 1), submit_name="action", submit_value="up-block-" ~ index) }}{% endif %}
+        {% if not loop.last %}{{ ui.icon_button("down", _("%(label)s, block %(number)s", label=_("Move down"), number=index + 1), submit_name="action", submit_value="down-block-" ~ index) }}{% endif %}
+        {{ ui.icon_button("close", _("%(label)s, block %(number)s", label=_("Remove block"), number=index + 1), submit_name="action", submit_value="remove-block-" ~ index, danger=true) }}
       </div>
       {% call ui.more(_("Details"), open=details_errors) %}
         <div class="wide">{{ ui.textarea(prefix ~ "note", _("What should click for the viewer"), errors, value=row.note, rows=2) }}</div>
@@ -104,15 +104,15 @@
     {% set prefix = "text-" ~ index ~ "-" %}
     {% call ui.script_row("", id="text-" ~ index, state="is-new" if row.is_new else "") %}
       <div class="script-main">
-        {{ ui.field(prefix ~ "text", _("Text"), errors, value=row.text, maxlength=screen_text_limit, required=false, label_hidden=true) }}
+        {{ ui.field(prefix ~ "text", _("%(label)s, text %(number)s", label=_("Text"), number=index + 1), errors, value=row.text, maxlength=screen_text_limit, required=false, label_hidden=true) }}
         <div class="script-chips">
-          {{ ui.select(prefix ~ "shown", _("Shown"), shown_options, errors, value=row.shown, label_hidden=true) }}
-          {{ ui.field(prefix ~ "start_s", _("From (s)"), errors, value=row.start_s, required=false, label_hidden=true, placeholder=_("From (s)")) }}
-          {{ ui.field(prefix ~ "end_s", _("Until (s)"), errors, value=row.end_s, required=false, label_hidden=true, placeholder=_("Until (s)")) }}
+          {{ ui.select(prefix ~ "shown", _("%(label)s, text %(number)s", label=_("Shown"), number=index + 1), shown_options, errors, value=row.shown, label_hidden=true) }}
+          {{ ui.field(prefix ~ "start_s", _("%(label)s, text %(number)s", label=_("From (s)"), number=index + 1), errors, value=row.start_s, required=false, label_hidden=true, placeholder=_("From (s)")) }}
+          {{ ui.field(prefix ~ "end_s", _("%(label)s, text %(number)s", label=_("Until (s)"), number=index + 1), errors, value=row.end_s, required=false, label_hidden=true, placeholder=_("Until (s)")) }}
         </div>
       </div>
       <div class="script-side">
-        {{ ui.icon_button("close", _("Remove text"), submit_name="action", submit_value="remove-text-" ~ index, danger=true) }}
+        {{ ui.icon_button("close", _("%(label)s, text %(number)s", label=_("Remove text"), number=index + 1), submit_name="action", submit_value="remove-text-" ~ index, danger=true) }}
       </div>
     {% endcall %}
     {% endfor %}

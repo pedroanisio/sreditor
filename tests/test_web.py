@@ -271,7 +271,16 @@ def test_login_page_with_next_keeps_it_in_the_form(app: FastAPI) -> None:
     assert 'value="/invitations/abc"' in page
 
 
-@pytest.mark.parametrize("target", ["https://evil.example", "//evil.example", "/\\evil.example"])
+@pytest.mark.parametrize(
+    "target",
+    [
+        "https://evil.example",
+        "//evil.example",
+        "/\\evil.example",
+        "/\t/evil.example",
+        "/\n/evil.example",
+    ],
+)
 def test_sign_in_with_foreign_next_redirects_to_the_app(
     app: FastAPI, mailer: RecordingMailer, target: str
 ) -> None:

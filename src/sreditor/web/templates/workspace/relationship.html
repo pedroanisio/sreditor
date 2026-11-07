@@ -1,0 +1,49 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{#
+  One pair of characters (srstudio's relationships.json): the texts srstudio reads, its status and
+  the history of facts from published episodes. Empty texts export as open questions.
+#}
+{% block page_title %}{{ names.get(pair.first | string, "?") }} & {{ names.get(pair.second | string, "?") }}{% endblock %}
+{% block page %}
+{% set title = names.get(pair.first | string, "?") ~ " & " ~ names.get(pair.second | string, "?") %}
+{% set may_write = can("write_content") %}
+{{ ui.back_link(relationships_link, _("Relationships")) }}
+{% call ui.page_header(title, _("Empty texts become open questions in srstudio's bible.")) %}{{ ui.badge(_(status_labels[pair.status]), "success" if pair.status == "canon" else "") }}{% endcall %}
+{{ ui.form_error(errors) }}
+{% call ui.form(action, csrf_field, csrf_token) %}
+{{ ui.hidden("revision", pair.revision) }}
+{% call ui.panel(_("The pair"), id="pair") %}
+  {% call ui.fields_row() %}
+    {{ ui.select("first", _("Character"), character_options, errors, value=shown.first | string) }}
+    {{ ui.select("second", _("And"), character_options, errors, value=shown.second | string) }}
+    {{ ui.select("status", _("Status"), status_options, errors, value=shown.status, hint=_("Canon once a published episode shows it.")) }}
+  {% endcall %}
+  {% for name, label, hint in [
+    ("relation", _("What they are to each other"), _("Such as neighbours, rivals or siblings.")),
+    ("how_they_know", _("How they know each other"), ""),
+    ("dynamic", _("How they act together"), _("Who leads, who gives in, the joke they keep playing.")),
+    ("tension", _("What keeps them apart"), ""),
+    ("meet", _("How they met"), ""),
+  ] %}
+  {{ ui.textarea(name, label, errors, value=shown[name], limit=text_limit, rows=2, hint=hint) }}
+  {% endfor %}
+{% endcall %}
+{% call ui.panel(_("History from published episodes"), id="history") %}
+  {% if episodes %}
+  <p class="muted">{{ _("Each fact cites the published episode that shows it, with the words or drawing that show it.") }}</p>
+  {% set prefix = "history" %}
+  {% set facts = shown.history %}
+  {% include "workspace/_fact_rows.html" %}
+  {% else %}
+  <p class="muted">{{ _("Facts cite published episodes. Publish an episode to cite it here.") }}</p>
+  {% endif %}
+{% endcall %}
+{% if may_write %}{% call ui.panel_actions() %}{{ ui.button(_("Save changes")) }}{% endcall %}{% endif %}
+{% endcall %}
+{% if can("write_channel") %}
+{% call ui.panel_actions() %}
+  {{ ui.confirm(_("Remove"), _("Remove this relationship? srstudio's bible will no longer have it."), action ~ "/remove", csrf_field, csrf_token, _("Remove"), fields=[("revision", pair.revision)], target=title) }}
+{% endcall %}
+{% endif %}
+{% endblock %}

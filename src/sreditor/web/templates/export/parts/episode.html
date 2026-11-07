@@ -1,0 +1,63 @@
+{% from "_macros.html" import classification_table, sources_table %}
+{% set export = part.export %}
+<article class="book-part is-episode">
+  <h3>#{{ export.episode.number }} · {{ export.episode.title }} <span class="doc-pill">{{ labels.episode_status[export.episode.status] }}</span></h3>
+  {% if export.episode.summary %}<p class="doc-lead">{{ export.episode.summary }}</p>{% endif %}
+  <dl class="doc-facts">
+    {% if export.pitch %}<dt>{{ _("Pitch") }}</dt><dd>{{ export.pitch.pitch.title }}</dd>{% endif %}
+    {% if export.style %}<dt>{{ _("Visual style") }}</dt><dd>{{ export.style.name }}</dd>{% endif %}
+    {% if part.cast.characters %}<dt>{{ _("Characters") }}</dt><dd>{% for member in part.cast.characters %}{{ member.name }}{% if not loop.last %}, {% endif %}{% endfor %}</dd>{% endif %}
+    {% if part.cast.locations %}<dt>{{ _("Places") }}</dt><dd>{% for member in part.cast.locations %}{{ member.name }}{% if not loop.last %}, {% endif %}{% endfor %}</dd>{% endif %}
+  </dl>
+  {% include "parts/_context.html" %}
+
+  <h4>{{ _("Classification") }}</h4>
+  {% set rows = classification(export.classification.classification) %}
+  {% if not export.classification.revision or not rows %}<p class="book-empty">{{ _("Not classified yet") }}</p>
+  {% else %}
+  {% if not export.classification.is_reviewed %}<p class="doc-muted">{{ _("An agent proposed this classification") }}</p>{% endif %}
+  {{ classification_table(rows) }}
+  {% endif %}
+
+  <h4>{{ _("Research") }}</h4>
+  {% if export.research_notes %}<p class="doc-text">{{ export.research_notes }}</p>{% else %}<p class="book-empty">{{ _("No research notes yet.") }}</p>{% endif %}
+  {% if export.sources %}{{ sources_table(export.sources) }}{% endif %}
+  {% if export.pitch %}
+  <h4>{{ _("Pitch") }}: {{ export.pitch.pitch.title }}</h4>
+  {% if export.pitch.notes %}<p class="doc-text">{{ export.pitch.notes }}</p>{% endif %}
+  {% if export.pitch.sources %}{{ sources_table(export.pitch.sources) }}{% endif %}
+  {% endif %}
+
+  <h4>{{ _("Screenplay") }}</h4>
+  {% if export.screenplay.text %}<pre class="doc-script">{{ export.screenplay.text }}</pre>{% else %}<p class="book-empty">{{ _("No screenplay yet.") }}</p>{% endif %}
+
+  {% if export.short_script %}
+  <h4>{{ _("Short script") }}</h4>
+  <table>
+    <thead><tr><th>{{ _("Time") }}</th><th>{{ _("Function") }}</th><th>{{ _("Speech") }}</th></tr></thead>
+    <tbody>
+    {% for block in export.short_script.blocks %}
+    <tr><td>{{ block.start_s }}–{{ block.end_s }} s</td><td>{{ labels.functions[block.function] }}</td><td>{{ block.speech }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if export.third_party %}
+  <h4>{{ _("Third-party media") }}</h4>
+  <table>
+    <thead><tr><th>{{ _("Item") }}</th><th>{{ _("Purpose") }}</th><th>{{ _("Scene") }}</th><th>{{ _("Rights") }}</th></tr></thead>
+    <tbody>
+    {% for found in export.third_party %}
+    <tr><td>{{ found.item.title }}</td><td>{{ labels.purposes[found.use.purpose] }}</td><td>{{ found.use.scene }}</td><td>{{ labels.rights[found.item.rights] }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <h4>{{ _("Credits") }}</h4>
+  {% if export.credits.credits %}
+  <ol>{% for line in export.credits.credits %}<li>{{ line.text }} · <span class="doc-link">{{ line.url }}</span></li>{% endfor %}</ol>
+  {% else %}<p class="book-empty">{{ _("Nothing to credit yet.") }}</p>{% endif %}
+  {% if export.credits.warnings %}<p class="doc-muted">{{ _("Check the rights before publishing") }}</p>{% endif %}
+</article>

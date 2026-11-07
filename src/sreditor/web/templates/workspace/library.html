@@ -4,7 +4,7 @@
 {% block page %}
 {% set may_write = can("write_content") %}
 {% set may_remove = can("write_channel") %}
-{% call ui.page_header(_("Library"), _("The characters, locations, visual styles and props the channel's episodes share. A screenplay refers to characters and locations by name; each episode picks a style.")) %}{% endcall %}
+{% call ui.page_header(_("Library"), _("The characters, locations, visual styles and props the channel's episodes share. A screenplay refers to characters and locations by name; each episode picks a style.")) %}{{ ui.link_button(channel_link ~ "/relationships", _("Relationships"), variant="ghost") }}{% endcall %}
 {{ ui.form_error(errors) }}
 {% for group in kinds %}
 {% set text = group.text %}

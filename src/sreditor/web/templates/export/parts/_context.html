@@ -1,0 +1,2 @@
+{% set answers = context_pairs(part.context) %}
+{% if answers %}<dl class="doc-facts book-context">{% for question, answer in answers %}<dt>{{ question }}</dt><dd class="doc-text">{{ answer }}</dd>{% endfor %}</dl>{% endif %}

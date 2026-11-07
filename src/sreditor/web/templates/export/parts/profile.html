@@ -1,0 +1,5 @@
+{% from "_macros.html" import classification_table %}
+{% set rows = classification(part.declared.classification) %}
+{% if part.declared.revision and rows %}{{ classification_table(rows) }}
+{% else %}<p class="book-empty">{{ _("No profile declared yet.") }}</p>{% endif %}
+{% if part.observed.sample_size %}<p class="doc-muted">{{ _("Counted over %(count)s classified episodes.", count=part.observed.sample_size) }}</p>{% endif %}

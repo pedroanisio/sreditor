@@ -1,0 +1,12 @@
+<article class="book-part">
+  <h3>{{ part.item.title }} <span class="doc-pill">{{ labels.media_kinds[part.item.kind] }}</span></h3>
+  <dl class="doc-facts">
+    {% if part.item.creator %}<dt>{{ _("Creator") }}</dt><dd>{{ part.item.creator }}</dd>{% endif %}
+    <dt>{{ _("Rights") }}</dt><dd>{{ labels.rights[part.item.rights] }}{% if part.item.license_name %} · {{ part.item.license_name }}{% endif %}</dd>
+    {% if part.item.attribution %}<dt>{{ _("Credit") }}</dt><dd>{{ part.item.attribution }}</dd>{% endif %}
+    {% if part.item.rights_note %}<dt>{{ _("Note") }}</dt><dd>{{ part.item.rights_note }}</dd>{% endif %}
+    <dt>{{ _("Link") }}</dt><dd class="doc-link">{{ part.item.url }}</dd>
+    <dt>{{ _("Episodes") }}</dt><dd>{% for number in part.episodes %}#{{ number }}{% if not loop.last %}, {% endif %}{% else %}<span class="doc-muted">{{ _("Not used yet") }}</span>{% endfor %}</dd>
+  </dl>
+  {% include "parts/_context.html" %}
+</article>

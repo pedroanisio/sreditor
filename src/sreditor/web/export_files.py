@@ -11,7 +11,6 @@ from __future__ import annotations
 import io
 import re
 from datetime import datetime
-from enum import StrEnum
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
@@ -23,6 +22,7 @@ from weasyprint import CSS, HTML  # type: ignore[import-untyped]  # ships no typ
 from weasyprint.urls import URLFetcher, URLFetcherResponse  # type: ignore[import-untyped]
 
 from sreditor.classification import Classification, Dimension, State
+from sreditor.export_formats import MEDIA_TYPES, ExportFormat
 from sreditor.export_operations import ChannelExport, EpisodeExport
 from sreditor.i18n import Translator
 from sreditor.web.classification_labels import DIMENSION_LABELS, STATE_LABELS, VALUE_LABELS
@@ -42,21 +42,6 @@ SHEET_NAME_LIMIT = 31
 COLUMN_WIDTH = 28
 NAME_SAFE = re.compile(r"[^a-z0-9-]+")
 JOIN = ", "
-
-
-class ExportFormat(StrEnum):
-    """The formats an export downloads as."""
-
-    JSON = "json"
-    XLSX = "xlsx"
-    PDF = "pdf"
-
-
-MEDIA_TYPES = {
-    ExportFormat.JSON: "application/json",
-    ExportFormat.XLSX: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    ExportFormat.PDF: "application/pdf",
-}
 
 
 class ExportFile(BaseModel):

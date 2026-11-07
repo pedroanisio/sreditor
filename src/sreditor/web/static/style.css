@@ -553,6 +553,23 @@ kbd {
   white-space: nowrap;
 }
 
+/* Skip link: the first stop for the keyboard, shown only while it has focus. */
+.skip-link {
+  position: absolute;
+  inset-block-start: var(--space-2);
+  inset-inline-start: var(--space-2);
+  z-index: var(--layer-toast);
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-on-accent);
+  background: var(--color-accent);
+  border-radius: var(--radius-md);
+  transform: translateY(calc(-1 * var(--space-8)));
+  opacity: 0;
+}
+.skip-link:focus-visible, .skip-link.is-focus { transform: none; opacity: 1; }
+/* On /design it sits in the page, not over it. */
+.design .skip-link.is-focus { position: static; display: inline-block; }
+
 /* Page header: the page's title, a lead and its main actions. */
 /* The way back to the list, above the title (ui.back_link). */
 .back-link { margin: var(--space-0) var(--space-0) var(--space-2); font-size: var(--font-size-sm); }
@@ -1158,7 +1175,8 @@ video.player { max-block-size: var(--height-player); background: var(--color-bg)
     border-right: none;
     border-bottom: var(--border-width) solid var(--color-border);
   }
-  .app-sidebar .brand span { display: none; }
+  /* Hidden from sight only: the text stays the link's name for screen readers. */
+  .app-sidebar .brand span { position: absolute; width: var(--border-width); height: var(--border-width); overflow: hidden; clip-path: inset(var(--width-full)); white-space: nowrap; }
   .app-sidebar .sidenav { grid-column: 1 / -1; grid-row: 2; overflow-x: auto; }
   .sidenav { display: flex; gap: var(--space-1); }
   .sidenav ul { flex-direction: row; }
@@ -1167,7 +1185,7 @@ video.player { max-block-size: var(--height-player); background: var(--color-bg)
   .search-trigger { margin: var(--space-0); padding: var(--space-2); border-color: transparent; background: none; }
   .search-trigger span, .search-trigger kbd { display: none; }
   .tag-facts { grid-template-columns: minmax(var(--space-0), 1fr); }
-  .app-user .menu > summary > span:not(.mark) { display: none; }
+  .app-user .menu > summary > span:not(.mark) { position: absolute; width: var(--border-width); height: var(--border-width); overflow: hidden; clip-path: inset(var(--width-full)); white-space: nowrap; }
   .menu.up .menu-list { bottom: auto; margin-bottom: var(--space-0); margin-top: var(--space-2); }
   .app-content { padding-top: var(--space-5); }
   .toast { inset-inline: var(--space-4); max-width: none; }

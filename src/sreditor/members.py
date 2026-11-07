@@ -31,6 +31,7 @@ class Permission(StrEnum):
     WRITE_EDITORIAL = "write_editorial"
     READ_WAIVERS = "read_waivers"
     GENERATE_VOICE = "generate_voice"  # spends the account's ElevenLabs credits
+    RENDER = "render"  # takes GPU time on the render workers (rule agentic.render.scope)
     WRITE_CHANNEL = "write_channel"
     MANAGE_MEMBERS = "manage_members"
     MANAGE_OWNERS = "manage_owners"
@@ -43,6 +44,7 @@ _EDITOR = _CONTRIBUTOR | {
     Permission.WRITE_EDITORIAL,
     Permission.READ_WAIVERS,
     Permission.GENERATE_VOICE,
+    Permission.RENDER,
     Permission.WRITE_CHANNEL,
     Permission.MANAGE_MEMBERS,
 }

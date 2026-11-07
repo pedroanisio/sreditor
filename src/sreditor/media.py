@@ -38,6 +38,7 @@ class MediaKind(StrEnum):
     SOUND_EFFECT = "sound_effect"
     SCORE = "score"
     VISUAL_EFFECT = "visual_effect"
+    RENDER = "render"  # a finished video from a render worker, never uploaded by hand
 
 
 KIND_FORMATS: dict[MediaKind, tuple[FileFormat, ...]] = {
@@ -45,7 +46,10 @@ KIND_FORMATS: dict[MediaKind, tuple[FileFormat, ...]] = {
     MediaKind.SOUND_EFFECT: AUDIO_FORMATS,
     MediaKind.SCORE: AUDIO_FORMATS,
     MediaKind.VISUAL_EFFECT: VIDEO_FORMATS,
+    MediaKind.RENDER: VIDEO_FORMATS,
 }
+# Kinds a person or agent may upload; a render arrives only from a worker (rule project.render).
+UPLOADABLE_KINDS = tuple(kind for kind in MediaKind if kind is not MediaKind.RENDER)
 EXTENSIONS = {item.media_type: item.extension for item in AUDIO_FORMATS + VIDEO_FORMATS}
 
 
@@ -192,6 +196,10 @@ class MediaStore:
         stored = self.assets.save_stream(
             new.channel, KIND_FORMATS[new.kind], source, self.max_bytes
         )
+        return self.insert(new, stored)
+
+    def insert(self, new: NewMedia, stored: StoredFile) -> MediaFile:
+        """Add a file already checked and stored, such as a render assembled from its parts."""
         now = self.database.now()
         with self.database.connect() as connection:
             row = connection.execute(

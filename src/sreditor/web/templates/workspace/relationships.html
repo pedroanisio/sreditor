@@ -1,0 +1,38 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{#
+  How the library's characters relate (srstudio's relationships.json): one row per pair, each
+  opening its own page, and for writers a dialog that adds a pair from two characters.
+#}
+{% block page_title %}{{ _("Relationships") }}{% endblock %}
+{% block page %}
+{% set may_write = can("write_content") %}
+{{ ui.back_link(library_link, _("Library")) }}
+{% call ui.page_header(_("Relationships"), _("How the library's characters relate: what they are to each other, how they know each other and what keeps them apart. srstudio reads them as the channel bible.")) %}{% endcall %}
+{{ ui.form_error(errors) }}
+{% call ui.panel(_("Relationships"), id="relationships") %}
+  {% if relationships %}
+  {% call(pair) ui.items(relationships, _("Relationships")) %}
+    {{ ui.item_main(names.get(pair.first | string, "?") ~ " & " ~ names.get(pair.second | string, "?"), pair.relation, relationships_link ~ "/" ~ pair.id) }}
+    {% call ui.item_side() %}{{ ui.badge(_(status_labels[pair.status]), "success" if pair.status == "canon" else "") }}{% endcall %}
+  {% endcall %}
+  {% elif names | length < 2 %}
+  <p class="muted">{{ _("A relationship pairs two characters. Add at least two characters to the library first.") }}</p>
+  {% else %}
+  <p class="muted">{{ _("No relationships yet. Add one for each pair of characters whose bond the episodes play on.") }}</p>
+  {% endif %}
+  {% if may_write and names | length >= 2 %}{% call ui.panel_actions() %}{{ ui.dialog_button("add-relationship", _("Add relationship"), plus=true) }}{% endcall %}{% endif %}
+{% endcall %}
+{% if may_write and names | length >= 2 %}
+{% call ui.dialog("add-relationship", _("Add relationship"), _("Close"), open=errors and true) %}
+  {% call ui.form(relationships_link, csrf_field, csrf_token) %}
+    {% call ui.fields_row() %}
+      {{ ui.select("first", _("Character"), character_options, errors, value=sent.get("first", "")) }}
+      {{ ui.select("second", _("And"), character_options, errors, value=sent.get("second", "")) }}
+    {% endcall %}
+    {{ ui.field("relation", _("What they are to each other"), errors, value=sent.get("relation", ""), required=false, maxlength=text_limit, hint=_("Such as neighbours, rivals or siblings. You can fill in the rest on its page.")) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Add relationship")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% endif %}
+{% endblock %}

@@ -23,7 +23,7 @@
         {{ ui.select("role", _("Role of %(name)s", name=member.display_name), role_choices, errors if target == member_id else {}, value=member.role.value, id="role-" ~ member_id, label_hidden=true) }}
         {{ ui.button(_("Change role"), variant="ghost", size="small") }}
       {% endcall %}
-      {{ ui.confirm(_("Remove"), _("Remove %(name)s from the channel?", name=member.display_name), channel_link ~ "/members/" ~ member_id ~ "/remove", csrf_field, csrf_token, _("Remove member")) }}
+      {{ ui.confirm(_("Remove"), _("Remove %(name)s from the channel?", name=member.display_name), channel_link ~ "/members/" ~ member_id ~ "/remove", csrf_field, csrf_token, _("Remove member"), target=member.display_name) }}
       {% else %}
       {{ ui.badge(_.role(member.role) | capitalize) }}
       {% endif %}
@@ -41,7 +41,7 @@
     {{ ui.item_main(invitation.email, _("%(role)s · expires %(date)s", role=_.role(invitation.role), date=_.day(invitation.expires_at))) }}
     {% if invitation.role.value in role_options %}
     {% call ui.item_side() %}
-      {{ ui.confirm(_("Revoke"), _("Revoke the invitation to %(email)s? Its link stops working.", email=invitation.email), channel_link ~ "/invitations/" ~ (invitation.id | string) ~ "/revoke", csrf_field, csrf_token, _("Revoke invitation")) }}
+      {{ ui.confirm(_("Revoke"), _("Revoke the invitation to %(email)s? Its link stops working.", email=invitation.email), channel_link ~ "/invitations/" ~ (invitation.id | string) ~ "/revoke", csrf_field, csrf_token, _("Revoke invitation"), target=invitation.email) }}
     {% endcall %}
     {% endif %}
   {% endcall %}

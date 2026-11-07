@@ -201,6 +201,13 @@ SECTIONS: tuple[Section, ...] = (
         group=SectionGroup.PRODUCTION,
     ),
     Section(
+        key="books",
+        label=N_("Books"),
+        suffix="/books",
+        permission=Permission.READ,
+        group=SectionGroup.PRODUCTION,
+    ),
+    Section(
         key="members",
         label=N_("Members"),
         suffix="/members",

@@ -22,7 +22,7 @@
     {{ ui.item_main(item.title if item else _("Third-party item"), [_(purpose_labels[use.purpose]), where, use.scene] | select | join(" · "), library_link ~ "/" ~ use.media_id) }}
     {% if may_write %}
     {% call ui.item_side() %}
-      {{ ui.confirm(_("Remove"), _("Remove this use from the episode? The item stays in the library."), uses_link ~ "/remove", csrf_field, csrf_token, _("Remove"), fields=[("use_id", use.id), ("revision", use.revision)]) }}
+      {{ ui.confirm(_("Remove"), _("Remove this use from the episode? The item stays in the library."), uses_link ~ "/remove", csrf_field, csrf_token, _("Remove"), fields=[("use_id", use.id), ("revision", use.revision)], target=item.title if item else "") }}
     {% endcall %}
     {% endif %}
   {% endcall %}

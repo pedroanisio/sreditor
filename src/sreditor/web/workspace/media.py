@@ -22,6 +22,7 @@ from sreditor.library_operations import choose_episode_style, get_episode_style,
 from sreditor.media import (
     NAME_LENGTH,
     NOTE_LENGTH,
+    UPLOADABLE_KINDS,
     MediaFile,
     MediaInput,
     MediaKind,
@@ -182,7 +183,7 @@ def kind_lists(app: Services, access: ChannelAccess, shown: MediaView) -> list[d
     """Each kind with its files, its next page, its texts and what it accepts."""
     base = media_url(access.channel.slug, shown.number)
     lists = []
-    for kind in MediaKind:
+    for kind in UPLOADABLE_KINDS:  # renders have their own page (rule project.render)
         cursor = shown.cursor if shown.cursor_kind == kind else ""
         query = MediaQuery(
             number=shown.number, kind=kind, cursor=cursor or None, limit=DEFAULT_LIMIT

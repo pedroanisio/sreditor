@@ -1,0 +1,22 @@
+<article class="book-part book-entry">
+  {% if part.images %}
+  <div class="book-pictures">
+    {% for image in part.images %}{% set src = files.get(image.media_id|string) %}{% if src %}
+    <figure class="book-picture"><img src="{{ src }}" alt="{{ image.title }}">{% if image.attribution %}<figcaption>{{ image.attribution }}</figcaption>{% endif %}</figure>
+    {% endif %}{% endfor %}
+  </div>
+  {% endif %}
+  <h3>{{ part.entry.name }}</h3>
+  {% if part.entry.description %}<p class="doc-lead">{{ part.entry.description }}</p>{% endif %}
+  {% set facts = sheet_pairs(part) %}
+  {% if facts %}<dl class="doc-facts">{% for label, value in facts %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>{% endif %}
+  {% include "parts/_context.html" %}
+  {% set canon = entry_facts(part) %}
+  {% if canon %}
+  <h4>{{ _("Canon facts") }}</h4>
+  <table>
+    <thead><tr><th>{{ _("Fact") }}</th><th>{{ _("Episode") }}</th><th>{{ _("How it shows") }}</th><th>{{ _("Quote") }}</th></tr></thead>
+    <tbody>{% for fact in canon %}<tr><td>{{ fact.fact }}</td><td>#{{ fact.episode }}</td><td>{{ labels.fact_kinds[fact.kind] }}</td><td>{{ fact.quote }}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% endif %}
+</article>

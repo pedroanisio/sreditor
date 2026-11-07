@@ -205,6 +205,11 @@
   --width-menu: 16rem;
   --size-preview: 6rem;
   --size-chip: 1.5rem;
+  /* Printed books (static/export.css): fixed sizes, since the PDF renderer reads no clamp(). */
+  --font-size-print-title: 2.6rem;
+  --size-print-logo: 4rem;
+  --size-print-mark: 0.9rem;
+  --size-print-picture: 9rem;
   --layer-menu: 10;
 
   /* Motion (rule ui.motion): short and gentle; entering eases out. */
