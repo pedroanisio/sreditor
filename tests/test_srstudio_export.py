@@ -53,8 +53,8 @@ def created(client: TestClient, path: str, body: dict[str, Any]) -> dict[str, An
     return found
 
 
-def saved(client: TestClient, path: str, body: dict[str, Any]) -> None:
-    response = client.put(path, json=body)
+def saved(client: TestClient, path: str, body: dict[str, Any], if_match: str = "") -> None:
+    response = client.put(path, json=body, headers={"If-Match": if_match} if if_match else {})
     assert response.status_code == 200, response.text
 
 
@@ -247,6 +247,7 @@ def test_export_zip_holds_timeline_audio_bible_and_beats_but_no_waiver(
     assert names == {
         "episode.json", "timeline.json", "bible/cast.json", "bible/relationships.json",
         "assets/poses.json", "assets/events.json", "audio/take-01.wav", "audio/take-02.wav",
+        "style.json",
     }  # fmt: skip
     timeline = json.loads(archive.read("timeline.json"))
     first, second = timeline["items"]
@@ -277,6 +278,40 @@ def test_export_poses_show_the_toon_each_beat_draws(
     poses = json.loads(archive.read("assets/poses.json"))
     assert [appearance["who"] for appearance in poses] == ["dog"]
     assert [pose["eyes"] for pose in poses[0]["poses"]] == ["wide", "shock"]
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="needs ffmpeg to turn takes into WAV")
+def test_export_style_json_carries_the_visual_style_as_data(
+    owner: TestClient, voiced: FakeTransport
+) -> None:
+    style_id = owner.get(f"{EPISODE}/style").json()["style"]["id"]
+    palette = {"ink": "#111111", "white": "#ffffff", "shade": "#888888", "background": "#eeeeee"}
+    fonts = {"heading": {"family": "Inter", "weight": 700}}
+    rhythm = {"shortest_shot_s": 0.4, "average_shot_s": 1.5}
+    zone = {"top": 10, "right": 5, "bottom": 20, "left": 5}
+    sheet = {"kind": "style", "style": "toon", "palette": palette, "fonts": fonts}
+    sheet |= {"cut_rhythm": rhythm, "min_text_px": 48, "safe_zone": zone}
+    saved(owner, f"{CHANNEL}/styles/{style_id}/srstudio", {"slug": "office", "sheet": sheet}, '"1"')
+    archive = zipfile.ZipFile(io.BytesIO(owner.get(ZIP).content))
+    assert json.loads(archive.read("style.json")) == {
+        "slug": "office",
+        "style": "toon",
+        "palette": palette,
+        "fonts": {**fonts, "body": None, "caption": None},
+        "cut_rhythm": rhythm,
+        "min_text_px": 48,
+        "safe_zone": zone,
+    }
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="needs ffmpeg to turn takes into WAV")
+def test_export_style_json_without_structured_data_holds_nulls(
+    owner: TestClient, voiced: FakeTransport
+) -> None:
+    archive = zipfile.ZipFile(io.BytesIO(owner.get(ZIP).content))
+    document = json.loads(archive.read("style.json"))
+    assert document["style"] == "toon" and document["fonts"] is None
+    assert document["safe_zone"] is None and document["min_text_px"] is None
 
 
 def test_direction_keeps_known_tags_and_moves_others_to_quality() -> None:

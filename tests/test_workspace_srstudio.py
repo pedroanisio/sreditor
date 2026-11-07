@@ -147,6 +147,79 @@ def test_srstudio_sheet_style_saves_palette(owner: TestClient) -> None:
     assert 'value="#888888"' in flash_after(owner, submit(owner, style, form))
 
 
+STYLE_FORM = {
+    "revision": "0",
+    "slug": "flat",
+    "style": "toon",
+    "fonts_heading_family": "Inter",
+    "fonts_heading_weight": "700",
+    "fonts_body_family": "",
+    "fonts_body_weight": "",
+    "cut_rhythm_shortest_shot_s": "0.4",
+    "cut_rhythm_average_shot_s": "1.5",
+    "min_text_px": "48",
+    "safe_zone_top": "10",
+    "safe_zone_right": "5",
+    "safe_zone_bottom": "20",
+    "safe_zone_left": "5",
+}
+
+
+def test_srstudio_sheet_style_saves_fonts_rhythm_text_and_safe_zone(owner: TestClient) -> None:
+    style = first_entry(owner, "styles", "Flat")
+    page = flash_after(owner, submit(owner, style, STYLE_FORM))
+    assert 'value="Inter"' in page and 'value="0.4"' in page and 'value="48"' in page
+    assert (
+        '<option value="700" selected>' in page
+        and 'name="safe_zone_bottom" type="number" value="20.0"' in page
+    )
+
+
+def test_srstudio_sheet_style_empty_data_fields_save_as_nothing(owner: TestClient) -> None:
+    style = first_entry(owner, "styles", "Flat")
+    blank = {key: "" for key in STYLE_FORM} | {"revision": "0", "slug": "flat", "style": "toon"}
+    page = flash_after(owner, submit(owner, style, blank))
+    assert 'name="min_text_px" type="number" value=""' in page
+
+
+def test_srstudio_sheet_style_inverted_rhythm_shows_error_next_to_the_field(
+    owner: TestClient,
+) -> None:
+    style = first_entry(owner, "styles", "Flat")
+    form = STYLE_FORM | {"cut_rhythm_shortest_shot_s": "3"}
+    response = submit(owner, style, form)
+    assert response.status_code == 422 and 'id="cut_rhythm_average_shot_s-error"' in response.text
+    assert 'value="3"' in response.text
+
+
+def test_srstudio_sheet_style_half_filled_safe_zone_names_the_missing_edge(
+    owner: TestClient,
+) -> None:
+    style = first_entry(owner, "styles", "Flat")
+    response = submit(owner, style, STYLE_FORM | {"safe_zone_left": ""})
+    assert response.status_code == 422 and 'id="safe_zone_left-error"' in response.text
+
+
+def test_srstudio_sheet_style_font_without_weight_names_the_weight(owner: TestClient) -> None:
+    style = first_entry(owner, "styles", "Flat")
+    response = submit(owner, style, STYLE_FORM | {"fonts_heading_weight": ""})
+    assert response.status_code == 422 and 'id="fonts_heading_weight-error"' in response.text
+
+
+def test_srstudio_sheet_style_text_that_is_not_a_number_shows_error(owner: TestClient) -> None:
+    style = first_entry(owner, "styles", "Flat")
+    response = submit(owner, style, STYLE_FORM | {"min_text_px": "big"})
+    assert response.status_code == 422 and 'id="min_text_px-error"' in response.text
+
+
+def test_srstudio_sheet_style_page_in_portuguese_names_the_new_panels(owner: TestClient) -> None:
+    style = first_entry(owner, "styles", "Flat")
+    page = owner.get(style, params={"lang": "pt-BR"}).text
+    assert (
+        "Ritmo de corte" in page and "Tamanho do texto e zona segura" in page and "Fontes" in page
+    )
+
+
 def test_srstudio_sheet_prop_saves_rig(owner: TestClient) -> None:
     prop = first_entry(owner, "props", "Laptop")
     form = {"revision": "0", "slug": "laptop", "rig": "laptop"}

@@ -110,6 +110,8 @@ FIXED_MESSAGES = {
     "literal_error": N_("Choose one of the options."),
     "int_parsing": N_("Enter a whole number."),
     "int_type": N_("Enter a whole number."),
+    "float_parsing": N_("Enter a number."),
+    "float_type": N_("Enter a number."),
 }
 # Messages with one number from the error's context: type -> (context key, message).
 COUNTED_MESSAGES = {
@@ -117,6 +119,7 @@ COUNTED_MESSAGES = {
     "string_too_long": ("max_length", N_("Use at most %(count)s characters.")),
     "greater_than_equal": ("ge", N_("Use %(count)s or more.")),
     "less_than_equal": ("le", N_("Use %(count)s or less.")),
+    "greater_than": ("gt", N_("Use more than %(count)s.")),
 }
 # A pattern says what shape a value must have; each one we use has its own message.
 PATTERN_MESSAGES = {

@@ -47,7 +47,10 @@ SHEET_FIELDS = {
     LibraryKind.CHARACTER: "the bible entry: world, status, kind, rig, look, voice, who, comic "
     "role, what never changes, open questions and canon facts",
     LibraryKind.LOCATION: "the world, the rig that draws it and the facts episodes established",
-    LibraryKind.STYLE: "the srstudio style it renders with and an optional palette",
+    LibraryKind.STYLE: "the srstudio style it renders with and, all optional, its palette "
+    "(#RRGGBB by role), fonts by role (heading, body, caption: family and weight), cut rhythm "
+    "(shortest and average shot in seconds), min_text_px (smallest text in px at frame height) "
+    "and safe_zone (percent of the frame kept clear on each edge, 0 to 50)",
     LibraryKind.PROP: "the srstudio rig that draws it",
 }
 
