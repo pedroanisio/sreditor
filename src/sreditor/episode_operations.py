@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from fastapi import status
 
+from sreditor.claims import warning_text
 from sreditor.deps import ChannelAccess, Services
 from sreditor.episodes import Episode, EpisodeInput, EpisodeStatus, PartCounts, RevisedEpisode
 from sreditor.members import Permission
@@ -87,15 +88,23 @@ def replace_episode(
     data: EpisodeInput,
     expected_revision: int | None,
 ) -> RevisedEpisode:
-    """Replace an episode's title, summary and status."""
+    """Replace an episode's title, summary and status.
+
+    Moving to published is never refused for unchecked claims (rule project.claims); the result
+    carries a warning that names how many there are.
+    """
     access.require(Permission.WRITE_CONTENT)
     slug = access.channel.slug
-    return gated(
+    revised = gated(
         app,
         access,
         EpisodeOperation.WRITE,
         lambda: app.episodes.replace(slug, number, data, expected_revision),
     )
+    if data.status is not EpisodeStatus.PUBLISHED:
+        return revised
+    warning = warning_text(app.claims.unchecked(slug, number).count)
+    return revised.model_copy(update={"claims_warning": warning})
 
 
 def delete_episode(

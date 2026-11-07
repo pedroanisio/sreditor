@@ -211,7 +211,7 @@ def episode_rows(book: Book, translate: Translator) -> list[list[str]]:
                 export.episode.title,
                 translate(EPISODE_STATUS_LABELS[export.episode.status]),
                 export.episode.summary,
-                export.pitch.pitch.title if export.pitch else "",
+                ", ".join(part_of.pitch.title for part_of in export.pitches),
                 export.style.name if export.style else "",
                 export.research_notes,
                 export.screenplay.text,

@@ -17,9 +17,9 @@ from sreditor.episodes import EpisodeInput, EpisodeStore
 from sreditor.pagination import encode_cursor
 from sreditor.pitch_tools import pitch_error_message
 from sreditor.pitches import (
-    PitchChoice,
     PitchInput,
     PitchInUse,
+    PitchList,
     PitchNotesInput,
     PitchStatus,
     PitchStore,
@@ -34,6 +34,12 @@ from tests.test_episodes import joined
 
 PITCHES = "/channels/funny-memes/pitches"
 EPISODE_PITCH = "/channels/funny-memes/episodes/1/pitch"
+EPISODE_PITCHES = "/channels/funny-memes/episodes/1/pitches"
+LEGACY_EPISODE_PITCHES = (
+    "CREATE TABLE episode_pitches (channel_slug TEXT NOT NULL, number INTEGER NOT NULL,"
+    " pitch_id TEXT, revision INTEGER NOT NULL, updated_at TEXT NOT NULL,"
+    " PRIMARY KEY (channel_slug, number))"
+)
 STUDY = {
     "url": "https://example.com/mondays",
     "title": "Mondays study",
@@ -130,7 +136,7 @@ def test_pitch_store_unknown_source_position_raises_not_found(pitch_store: Pitch
 
 def test_pitch_store_delete_in_use_raises_with_episodes(pitch_store: PitchStore) -> None:
     pitch = pitch_store.create("funny-memes", idea())
-    pitch_store.choose("funny-memes", 1, PitchChoice(pitch_id=pitch.id), None)
+    pitch_store.set_episode_pitches("funny-memes", 1, PitchList(pitch_ids=[pitch.id]), None)
     with pytest.raises(PitchInUse) as raised:
         pitch_store.delete(pitch, None)
     assert raised.value.episodes == [1]
@@ -149,17 +155,73 @@ def test_pitch_store_episode_never_chosen_has_no_pitch_at_revision_zero(
     assert (chosen.pitch_id, chosen.revision) == (None, 0)
 
 
-def test_pitch_store_choose_with_current_revision_moves_on(pitch_store: PitchStore) -> None:
+def test_pitch_store_set_episode_pitches_with_current_revision_moves_on(
+    pitch_store: PitchStore,
+) -> None:
     pitch = pitch_store.create("funny-memes", idea())
-    pitch_store.choose("funny-memes", 1, PitchChoice(pitch_id=pitch.id), 0)
-    chosen = pitch_store.choose("funny-memes", 1, PitchChoice(), 1)
-    assert (chosen.pitch_id, chosen.revision) == (None, 2)
+    pitch_store.set_episode_pitches("funny-memes", 1, PitchList(pitch_ids=[pitch.id]), 0)
+    chosen = pitch_store.set_episode_pitches("funny-memes", 1, PitchList(), 1)
+    assert (chosen.pitch_ids, chosen.revision) == ([], 2)
 
 
-def test_pitch_store_choose_stale_revision_raises_changed(pitch_store: PitchStore) -> None:
-    pitch_store.choose("funny-memes", 1, PitchChoice(), None)
+def test_pitch_store_set_episode_pitches_stale_revision_raises_changed(
+    pitch_store: PitchStore,
+) -> None:
+    pitch_store.set_episode_pitches("funny-memes", 1, PitchList(), None)
     with pytest.raises(PartChanged):
-        pitch_store.choose("funny-memes", 1, PitchChoice(), 0)
+        pitch_store.set_episode_pitches("funny-memes", 1, PitchList(), 0)
+
+
+def test_pitch_store_set_episode_pitches_keeps_the_given_order(pitch_store: PitchStore) -> None:
+    first = pitch_store.create("funny-memes", idea("First"))
+    second = pitch_store.create("funny-memes", idea("Second"))
+    pitch_store.set_episode_pitches(
+        "funny-memes", 1, PitchList(pitch_ids=[second.id, first.id]), None
+    )
+    assert pitch_store.episode_pitches("funny-memes", 1).pitch_ids == [second.id, first.id]
+
+
+def test_pitch_store_episode_pitch_is_the_first_one(pitch_store: PitchStore) -> None:
+    first = pitch_store.create("funny-memes", idea("First"))
+    second = pitch_store.create("funny-memes", idea("Second"))
+    pitch_store.set_episode_pitches(
+        "funny-memes", 1, PitchList(pitch_ids=[second.id, first.id]), None
+    )
+    assert pitch_store.episode_pitch("funny-memes", 1).pitch_id == second.id
+
+
+def test_pitch_list_repeating_a_pitch_is_refused() -> None:
+    pitch_id = uuid4()
+    with pytest.raises(ValueError, match="once"):
+        PitchList(pitch_ids=[pitch_id, pitch_id])
+
+
+def test_pitch_store_delete_pitch_after_the_second_slot_is_still_in_use(
+    pitch_store: PitchStore,
+) -> None:
+    first = pitch_store.create("funny-memes", idea("First"))
+    second = pitch_store.create("funny-memes", idea("Second"))
+    pitch_store.set_episode_pitches(
+        "funny-memes", 1, PitchList(pitch_ids=[first.id, second.id]), None
+    )
+    with pytest.raises(PitchInUse):
+        pitch_store.delete(second, None)
+
+
+def test_database_single_pitch_references_move_to_position_zero(pitch_store: PitchStore) -> None:
+    pitch = pitch_store.create("funny-memes", idea())
+    database = pitch_store.database
+    with database.connect() as connection:
+        connection.execute("DROP TABLE episode_pitches")
+        connection.execute("DROP TABLE episode_pitch_revisions")
+        connection.execute(LEGACY_EPISODE_PITCHES)
+        connection.execute(
+            "INSERT INTO episode_pitches VALUES ('funny-memes', 1, ?, 4, '2026-01-01')",
+            (str(pitch.id),),
+        )
+    reopened = PitchStore(Database(database.path))
+    chosen = reopened.episode_pitches("funny-memes", 1)
+    assert (chosen.pitch_ids, chosen.revision) == ([pitch.id], 4)
 
 
 # API
@@ -313,6 +375,57 @@ def test_episode_pitch_cleared_frees_pitch_for_delete(
     assert owner.delete(pitch_path(pitch)).status_code == 204
 
 
+def two_pitches(owner: TestClient) -> list[str]:
+    ids = []
+    for title in ("First", "Second"):
+        ids.append(owner.post(PITCHES, json={"title": title}).json()["id"])
+    return ids
+
+
+def test_episode_pitches_put_keeps_order_and_returns_etag(owner: TestClient) -> None:
+    first, second = two_pitches(owner)
+    response = owner.put(
+        EPISODE_PITCHES, json={"pitch_ids": [second, first]}, headers={"If-Match": '"0"'}
+    )
+    assert (response.json()["pitch_ids"], response.headers["etag"]) == ([second, first], '"1"')
+
+
+def test_episode_pitches_put_stale_etag_returns_precondition_failed(owner: TestClient) -> None:
+    owner.put(EPISODE_PITCHES, json={"pitch_ids": []})
+    response = owner.put(EPISODE_PITCHES, json={"pitch_ids": []}, headers={"If-Match": '"0"'})
+    assert response.status_code == 412
+
+
+def test_episode_pitches_put_repeated_pitch_returns_unprocessable(owner: TestClient) -> None:
+    first, _ = two_pitches(owner)
+    response = owner.put(EPISODE_PITCHES, json={"pitch_ids": [first, first]})
+    assert response.status_code == 422
+
+
+def test_episode_pitches_put_unknown_pitch_returns_not_found(owner: TestClient) -> None:
+    response = owner.put(EPISODE_PITCHES, json={"pitch_ids": [str(uuid4())]})
+    assert response.status_code == 404
+
+
+def test_episode_pitch_put_replaces_the_whole_list_with_one_pitch(owner: TestClient) -> None:
+    first, second = two_pitches(owner)
+    owner.put(EPISODE_PITCHES, json={"pitch_ids": [first, second]})
+    owner.put(EPISODE_PITCH, json={"pitch_id": second})
+    assert owner.get(EPISODE_PITCHES).json()["pitch_ids"] == [second]
+
+
+def test_episode_pitch_get_shows_the_main_pitch_of_several(owner: TestClient) -> None:
+    first, second = two_pitches(owner)
+    owner.put(EPISODE_PITCHES, json={"pitch_ids": [second, first]})
+    assert owner.get(EPISODE_PITCH).json()["pitch_id"] == second
+
+
+def test_pitch_delete_used_as_second_pitch_returns_conflict(owner: TestClient) -> None:
+    first, second = two_pitches(owner)
+    owner.put(EPISODE_PITCHES, json={"pitch_ids": [first, second]})
+    assert owner.delete(f"{PITCHES}/{second}").status_code == 409
+
+
 def test_episode_pitch_of_another_channel_returns_not_found(
     owner: TestClient, pitch: dict[str, Any]
 ) -> None:
@@ -441,9 +554,35 @@ def test_mcp_remove_unknown_pitch_source_points_at_get_pitch(mcp: TestClient) ->
     assert result["isError"] and "call get_pitch" in result["content"][0]["text"]
 
 
-def test_pitch_error_message_in_use_names_set_episode_pitch() -> None:
+def test_mcp_set_episode_pitches_then_get_research_shows_every_pitch_live(
+    mcp: TestClient,
+) -> None:
+    first, second = created_pitch(mcp, "First"), created_pitch(mcp, "Second")
+    tool(
+        mcp,
+        "write_pitch_notes",
+        {"slug": "funny-memes", "pitch_id": second["id"], "notes": {"text": "Live"}},
+    )
+    arguments = {"slug": "funny-memes", "number": 1, "pitch_ids": [second["id"], first["id"]]}
+    assert tool(mcp, "set_episode_pitches", arguments)["structuredContent"]["pitch_ids"] == [
+        second["id"],
+        first["id"],
+    ]
+    research = tool(mcp, "get_research", {"slug": "funny-memes", "number": 1})["structuredContent"]
+    assert [item["pitch"]["title"] for item in research["pitches"]] == ["Second", "First"]
+    assert research["pitches"][0]["notes"]["text"] == "Live"
+
+
+def test_mcp_set_episode_pitches_repeated_pitch_names_the_fix(mcp: TestClient) -> None:
+    pitch = created_pitch(mcp)
+    arguments = {"slug": "funny-memes", "number": 1, "pitch_ids": [pitch["id"], pitch["id"]]}
+    result = tool(mcp, "set_episode_pitches", arguments)
+    assert result["isError"] and "once" in result["content"][0]["text"]
+
+
+def test_pitch_error_message_in_use_names_set_episode_pitches() -> None:
     message = pitch_error_message(PitchInUse(uuid4(), [1, 3]))
-    assert message is not None and "episodes 1, 3" in message and "set_episode_pitch" in message
+    assert message is not None and "episodes 1, 3" in message and "set_episode_pitches" in message
 
 
 def test_pitch_error_message_other_error_is_none() -> None:

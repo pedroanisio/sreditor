@@ -132,7 +132,7 @@ def episode_facts(export: EpisodeExport, translate: Translator) -> list[list[str
         [translate("Title"), episode.title],
         [translate("Summary"), episode.summary],
         [translate("Status"), translate(EPISODE_STATUS_LABELS[episode.status])],
-        [translate("Pitch"), export.pitch.pitch.title if export.pitch else ""],
+        [translate("Pitch"), ", ".join(part.pitch.title for part in export.pitches)],
         [translate("Visual style"), export.style.name if export.style else ""],
         [translate("Research notes"), export.research_notes],
         [translate("Screenplay"), export.screenplay.text],
@@ -147,7 +147,8 @@ def source_rows(export: EpisodeExport, translate: Translator) -> list[list[str]]
     ]
     pitch_sources = [
         [translate("Pitch"), source.title, str(source.url), source.claim, str(source.accessed_on)]
-        for source in (export.pitch.sources if export.pitch else [])
+        for part in export.pitches
+        for source in part.sources
     ]
     return episode_sources + pitch_sources
 

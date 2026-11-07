@@ -66,6 +66,9 @@ class RevisedEpisode(BaseModel):
 
     episode: Episode
     revision: int
+    # Set when a write moves the episode to published and claims still lack a checked primary
+    # source: a heads-up that never blocks the change (rule project.claims).
+    claims_warning: str | None = None
 
 
 class EpisodeNotFound(LookupError):

@@ -79,6 +79,8 @@ class Flash(StrEnum):
     VOICE_REUSED = "voice_reused"
     TIMINGS_APPLIED = "timings_applied"
     LINK_ADDED = "link_added"
+    CLAIM_ADDED = "claim_added"
+    CLAIMS_UNCHECKED = "claims_unchecked"
 
 
 CHANGED_MEANWHILE = N_(
@@ -112,6 +114,10 @@ FLASH_TEXT: dict[Flash, str] = {
     Flash.VOICE_REUSED: N_("Nothing changed since the last take, so it was reused at no cost."),
     Flash.TIMINGS_APPLIED: N_("The blocks now use the times measured in the voice-over."),
     Flash.LINK_ADDED: N_("Link added."),
+    Flash.CLAIM_ADDED: N_("Claim added."),
+    Flash.CLAIMS_UNCHECKED: N_(
+        "Changes saved, but some claims still have no checked primary source. See the Claims page."
+    ),
 }
 
 

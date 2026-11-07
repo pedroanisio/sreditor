@@ -341,14 +341,14 @@ CREATE TABLE IF NOT EXISTS pitch_sources (
     updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS pitch_sources_by_pitch ON pitch_sources (pitch_id, position);
--- SET NULL only matters when the channel goes; the app refuses to delete a pitch in use.
+-- An episode's pitches in order, the first its main one. CASCADE only matters when the channel
+-- goes; the app refuses to delete a pitch in use.
 CREATE TABLE IF NOT EXISTS episode_pitches (
     channel_slug TEXT NOT NULL,
     number INTEGER NOT NULL,
-    pitch_id TEXT REFERENCES pitches (id) ON DELETE SET NULL,
-    revision INTEGER NOT NULL,
-    updated_at TEXT NOT NULL,
-    PRIMARY KEY (channel_slug, number),
+    pitch_id TEXT NOT NULL REFERENCES pitches (id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (channel_slug, number, pitch_id),
     FOREIGN KEY (channel_slug, number) REFERENCES episodes (channel_slug, number)
         ON DELETE CASCADE
 );
@@ -507,6 +507,50 @@ CREATE INDEX IF NOT EXISTS render_jobs_by_episode ON render_jobs (channel_slug, 
 CREATE INDEX IF NOT EXISTS render_jobs_by_status ON render_jobs (status, position);
 CREATE INDEX IF NOT EXISTS render_jobs_by_export
     ON render_jobs (channel_slug, number, export_sha256, preset, engine_version);
+CREATE TABLE IF NOT EXISTS episode_pitch_revisions (
+    channel_slug TEXT NOT NULL,
+    number INTEGER NOT NULL,
+    revision INTEGER NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (channel_slug, number),
+    FOREIGN KEY (channel_slug, number) REFERENCES episodes (channel_slug, number)
+        ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS episode_claims (
+    position INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT NOT NULL UNIQUE,
+    channel_slug TEXT NOT NULL,
+    number INTEGER NOT NULL,
+    quote TEXT NOT NULL,
+    place_kind TEXT NOT NULL,
+    place_ref TEXT NOT NULL DEFAULT '',
+    revision INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (channel_slug, number) REFERENCES episodes (channel_slug, number)
+        ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS episode_claims_by_episode
+    ON episode_claims (channel_slug, number, position);
+-- A claim's backing sources; the source lives in the episode or in one of its pitches, so it is
+-- named by id and not by a foreign key (triggers drop the backing when the source goes).
+CREATE TABLE IF NOT EXISTS claim_sources (
+    claim_id TEXT NOT NULL REFERENCES episode_claims (id) ON DELETE CASCADE,
+    source_id TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    is_primary INTEGER NOT NULL,
+    is_checked INTEGER NOT NULL DEFAULT 0,
+    checked_by_type TEXT,
+    checked_by_id TEXT,
+    checked_at TEXT,
+    PRIMARY KEY (claim_id, source_id)
+);
+CREATE TRIGGER IF NOT EXISTS episode_sources_forget_claims AFTER DELETE ON episode_sources BEGIN
+    DELETE FROM claim_sources WHERE source_id = OLD.id;
+END;
+CREATE TRIGGER IF NOT EXISTS pitch_sources_forget_claims AFTER DELETE ON pitch_sources BEGIN
+    DELETE FROM claim_sources WHERE source_id = OLD.id;
+END;
 """
 
 Clock = Callable[[], datetime]
@@ -541,6 +585,41 @@ def migrate(connection: sqlite3.Connection) -> None:
     if "blocks" not in take_columns:
         # Takes from before each block was its own take have no block takes to export.
         connection.execute("ALTER TABLE voice_takes ADD COLUMN blocks TEXT")
+    move_single_pitches(connection)
+
+
+LEGACY_PITCHES = "episode_pitches_single"
+
+
+def retire_single_pitch_table(connection: sqlite3.Connection) -> None:
+    """Set aside the table that held one pitch per episode, before the schema is applied.
+
+    The new episode_pitches has another shape under the same name; move_single_pitches copies
+    the old rows over once the schema has created it.
+    """
+    columns = {row["name"] for row in connection.execute("PRAGMA table_info(episode_pitches)")}
+    if columns and "position" not in columns:
+        connection.execute("DROP INDEX IF EXISTS episode_pitches_by_pitch")
+        connection.execute(f"ALTER TABLE episode_pitches RENAME TO {LEGACY_PITCHES}")
+
+
+def move_single_pitches(connection: sqlite3.Connection) -> None:
+    """Copy each episode's single pitch into the ordered list, as its main pitch (position 0)."""
+    exists = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (LEGACY_PITCHES,)
+    ).fetchone()
+    if exists is None:
+        return
+    connection.execute(
+        "INSERT INTO episode_pitches (channel_slug, number, pitch_id, position)"
+        f" SELECT channel_slug, number, pitch_id, 0 FROM {LEGACY_PITCHES}"
+        " WHERE pitch_id IS NOT NULL"
+    )
+    connection.execute(
+        "INSERT INTO episode_pitch_revisions (channel_slug, number, revision, updated_at)"
+        f" SELECT channel_slug, number, revision, updated_at FROM {LEGACY_PITCHES}"
+    )
+    connection.execute(f"DROP TABLE {LEGACY_PITCHES}")
 
 
 def index_handles(connection: sqlite3.Connection) -> None:
@@ -569,6 +648,7 @@ class Database:
         self.clock = clock
         path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as connection:
+            retire_single_pitch_table(connection)
             connection.executescript(SCHEMA)
             migrate(connection)
             index_handles(connection)

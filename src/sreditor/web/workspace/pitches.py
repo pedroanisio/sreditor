@@ -6,7 +6,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Form, Request, Response
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from sreditor.book_operations import PITCH_BOOK
 from sreditor.deps import ChannelAccess, Services, ServicesDep
@@ -19,7 +19,6 @@ from sreditor.pitch_operations import (
     PitchQuery,
     PitchSourceChange,
     add_source,
-    choose_episode_pitch,
     create_pitch,
     delete_pitch,
     get_notes,
@@ -29,15 +28,16 @@ from sreditor.pitch_operations import (
     pitch_episodes,
     remove_source,
     replace_pitch,
+    set_episode_pitches,
     write_notes,
 )
 from sreditor.pitches import (
     SUMMARY_LENGTH,
     TITLE_LENGTH,
     Pitch,
-    PitchChoice,
     PitchInput,
     PitchInUse,
+    PitchList,
     PitchNotesInput,
     PitchNotFound,
     PitchStatus,
@@ -101,9 +101,11 @@ NOTES_CHANGED = N_(
     "their changes, then try again."
 )
 SOURCE_GONE = N_("This source was already removed or changed. Reload the page.")
-PITCH_GONE = N_("This pitch no longer exists. Reload the page and choose another.")
+PITCH_GONE = N_(
+    "A chosen pitch no longer exists, or is chosen twice. Reload the page and choose again."
+)
 EPISODE_PITCH_CHANGED = N_(
-    "Someone changed this episode's pitch after you opened the page. Reload it and try again."
+    "Someone changed this episode's pitches after you opened the page. Reload it and try again."
 )
 PITCH_IN_USE = N_(
     "Episodes still use this pitch. Choose another pitch, or none, on their research pages first."
@@ -446,19 +448,17 @@ def remove_pitch(
 
 
 class PitchChoiceFields(SubmittedFields):
-    """The pitch an episode uses; an empty id means none."""
+    """The pitches an episode uses, in order, one per picker; empty pickers mean none."""
 
-    pitch_id: str = ""
+    pitch_id: list[str] = Field(default_factory=list)
     revision: str = ""
 
 
-def choice_of(fields: PitchChoiceFields) -> PitchChoice | None:
-    """The choice a form describes, or None when its id is malformed."""
-    if not fields.pitch_id:
-        return PitchChoice()
+def list_of(fields: PitchChoiceFields) -> PitchList | None:
+    """The pitches a form describes, or None when an id is malformed or repeated."""
     try:
-        return PitchChoice(pitch_id=UUID(fields.pitch_id))
-    except ValueError:
+        return PitchList(pitch_ids=[UUID(value) for value in fields.pitch_id if value])
+    except ValueError:  # a malformed id; pydantic's ValidationError is a ValueError too
         return None
 
 
@@ -470,17 +470,17 @@ def choose_pitch(
     number: int,
     fields: Annotated[PitchChoiceFields, Form()],
 ) -> Response:
-    """Point an episode at one of the channel's pitches, or at none."""
+    """Point an episode at its pitches, main one first, or at none."""
     if rejected := rejected_form(request, app, fields.csrf_token):
         return rejected
     require(access, Permission.WRITE_CONTENT)
     found_episode(app, access, number)
     translate = translator(request)
-    choice = choice_of(fields)
+    chosen = list_of(fields)
     try:
-        if choice is None:
-            raise PitchNotFound(fields.pitch_id)
-        choose_episode_pitch(app, access, number, choice, revision_of(fields.revision))
+        if chosen is None:
+            raise PitchNotFound(", ".join(fields.pitch_id))
+        set_episode_pitches(app, access, number, chosen, revision_of(fields.revision))
     except PitchNotFound:
         outcome = Outcome.invalid({"pitch_id": translate(PITCH_GONE)})
     except PartChanged:

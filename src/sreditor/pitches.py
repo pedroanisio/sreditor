@@ -1,8 +1,9 @@
 """A channel's pitches (pautas): story ideas with their own research (rule project.pitches).
 
 A pitch, its notes and each of its sources are stored and revised on their own, so editing the
-notes never conflicts with an agent adding a source. An episode refers to at most one pitch,
-in a row of its own, so choosing a pitch never moves the episode's revision.
+notes never conflicts with an agent adding a source. An episode refers to several pitches in
+order, the first its main one, in rows of their own, so choosing pitches never moves the
+episode's revision.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from enum import StrEnum
 from typing import Annotated
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, HttpUrl, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, StringConstraints, field_validator
 
 from sreditor.database import Database
 from sreditor.episode_texts import UNWRITTEN, PartChanged
@@ -22,6 +23,9 @@ from sreditor.research import Notes, SourceInput, SourceNotFound
 
 TITLE_LENGTH = 200
 SUMMARY_LENGTH = 2000
+# The most pitches one episode may be built on.
+MAX_EPISODE_PITCHES = 10
+FIRST_POSITION = 0
 
 PitchTitle = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=TITLE_LENGTH)
@@ -99,15 +103,43 @@ class PitchSource(BaseModel):
 
 
 class PitchChoice(BaseModel):
-    """The pitch an episode refers to, or none."""
+    """The one pitch an episode is set to refer to, or none."""
 
     model_config = ConfigDict(frozen=True)
 
     pitch_id: UUID | None = None
 
 
+class PitchList(BaseModel):
+    """The pitches an episode refers to, main one first; an empty list means none."""
+
+    model_config = ConfigDict(frozen=True)
+
+    pitch_ids: list[UUID] = Field(default_factory=list, max_length=MAX_EPISODE_PITCHES)
+
+    @field_validator("pitch_ids")
+    @classmethod
+    def each_pitch_once(cls, pitch_ids: list[UUID]) -> list[UUID]:
+        """A pitch cannot be listed twice, since its research would show twice."""
+        if len(set(pitch_ids)) != len(pitch_ids):
+            raise ValueError("Each pitch may be listed only once")
+        return pitch_ids
+
+
+class EpisodePitches(BaseModel):
+    """The pitches an episode refers to, in order; revision 0 until someone chooses them."""
+
+    model_config = ConfigDict(frozen=True)
+
+    channel: str
+    number: int
+    pitch_ids: list[UUID] = Field(default_factory=list)
+    revision: int = UNWRITTEN
+    updated_at: datetime | None = None
+
+
 class EpisodePitch(BaseModel):
-    """The pitch an episode refers to; revision 0 until someone chooses one."""
+    """The main pitch of an episode (the first of its list); revision 0 until chosen."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -116,6 +148,17 @@ class EpisodePitch(BaseModel):
     pitch_id: UUID | None = None
     revision: int = UNWRITTEN
     updated_at: datetime | None = None
+
+
+def main_pitch(chosen: EpisodePitches) -> EpisodePitch:
+    """The first pitch of the list, which the episode counts as its main one."""
+    return EpisodePitch(
+        channel=chosen.channel,
+        number=chosen.number,
+        pitch_id=chosen.pitch_ids[0] if chosen.pitch_ids else None,
+        revision=chosen.revision,
+        updated_at=chosen.updated_at,
+    )
 
 
 class PitchNotFound(LookupError):
@@ -393,57 +436,83 @@ class PitchStore:
             current = self.source(source.pitch_id, source.id).revision
             raise PartChanged(f"Source {source.id}", current)
 
-    def episode_pitch(self, channel: str, number: int) -> EpisodePitch:
-        """The pitch an episode refers to, at revision 0 when none was ever chosen."""
+    def episode_pitches(self, channel: str, number: int) -> EpisodePitches:
+        """The pitches an episode refers to in order, at revision 0 when never chosen."""
         with self.database.connect() as connection:
-            row = connection.execute(
-                "SELECT pitch_id, revision, updated_at FROM episode_pitches"
+            revision = connection.execute(
+                "SELECT revision, updated_at FROM episode_pitch_revisions"
                 " WHERE channel_slug = ? AND number = ?",
                 (channel, number),
             ).fetchone()
-        if row is None:
-            return EpisodePitch(channel=channel, number=number)
-        return EpisodePitch(
+            rows = connection.execute(
+                "SELECT pitch_id FROM episode_pitches WHERE channel_slug = ? AND number = ?"
+                " ORDER BY position",
+                (channel, number),
+            ).fetchall()
+        if revision is None:
+            return EpisodePitches(channel=channel, number=number)
+        return EpisodePitches(
             channel=channel,
             number=number,
-            pitch_id=UUID(row["pitch_id"]) if row["pitch_id"] else None,
-            revision=row["revision"],
-            updated_at=datetime.fromisoformat(row["updated_at"]),
+            pitch_ids=[UUID(row["pitch_id"]) for row in rows],
+            revision=revision["revision"],
+            updated_at=datetime.fromisoformat(revision["updated_at"]),
         )
 
-    def choose(
-        self, channel: str, number: int, choice: PitchChoice, expected_revision: int | None
-    ) -> EpisodePitch:
-        """Point the episode at a pitch, or none; with `expected_revision`, only if still at it."""
-        chosen = str(choice.pitch_id) if choice.pitch_id else None
-        values = (channel, number, chosen, self.database.now())
-        if expected_revision is None:
+    def episode_pitch(self, channel: str, number: int) -> EpisodePitch:
+        """The main pitch of an episode, at revision 0 when none was ever chosen."""
+        return main_pitch(self.episode_pitches(channel, number))
+
+    def set_episode_pitches(
+        self, channel: str, number: int, chosen: PitchList, expected_revision: int | None
+    ) -> EpisodePitches:
+        """Replace the episode's pitches; with `expected_revision`, only if still at it."""
+        with self.database.connect() as connection:
+            revision = self.bump_pitch_revision(connection, (channel, number), expected_revision)
+            if revision is None:
+                current = self.episode_pitches(channel, number).revision
+                raise PartChanged(f"Pitches of {channel} #{number}", current)
+            connection.execute(
+                "DELETE FROM episode_pitches WHERE channel_slug = ? AND number = ?",
+                (channel, number),
+            )
+            connection.executemany(
+                "INSERT INTO episode_pitches (channel_slug, number, pitch_id, position)"
+                " VALUES (?, ?, ?, ?)",
+                [
+                    (channel, number, str(pitch_id), position)
+                    for position, pitch_id in enumerate(chosen.pitch_ids, FIRST_POSITION)
+                ],
+            )
+        return self.episode_pitches(channel, number)
+
+    def bump_pitch_revision(
+        self, connection: sqlite3.Connection, episode: tuple[str, int], expected: int | None
+    ) -> int | None:
+        """Move the episode's pitch-list revision on; None when it is not at `expected`."""
+        values = (*episode, self.database.now())
+        if expected is None:
             sql = (
-                "INSERT INTO episode_pitches (channel_slug, number, pitch_id, revision,"
-                " updated_at) VALUES (?, ?, ?, 1, ?) ON CONFLICT (channel_slug, number)"
-                " DO UPDATE SET pitch_id = excluded.pitch_id, revision = revision + 1,"
-                " updated_at = excluded.updated_at RETURNING revision"
+                "INSERT INTO episode_pitch_revisions (channel_slug, number, revision, updated_at)"
+                " VALUES (?, ?, 1, ?) ON CONFLICT (channel_slug, number) DO UPDATE SET"
+                " revision = revision + 1, updated_at = excluded.updated_at RETURNING revision"
             )
             parameters: tuple[object, ...] = values
-        elif expected_revision == UNWRITTEN:
+        elif expected == UNWRITTEN:
             sql = (
-                "INSERT OR IGNORE INTO episode_pitches (channel_slug, number, pitch_id,"
-                " revision, updated_at) VALUES (?, ?, ?, 1, ?) RETURNING revision"
+                "INSERT OR IGNORE INTO episode_pitch_revisions"
+                " (channel_slug, number, revision, updated_at) VALUES (?, ?, 1, ?)"
+                " RETURNING revision"
             )
             parameters = values
         else:
             sql = (
-                "UPDATE episode_pitches SET pitch_id = ?, revision = revision + 1,"
-                " updated_at = ? WHERE channel_slug = ? AND number = ? AND revision = ?"
-                " RETURNING revision"
+                "UPDATE episode_pitch_revisions SET revision = revision + 1, updated_at = ?"
+                " WHERE channel_slug = ? AND number = ? AND revision = ? RETURNING revision"
             )
-            parameters = (chosen, values[3], channel, number, expected_revision)
-        with self.database.connect() as connection:
-            row = connection.execute(sql, parameters).fetchone()
-        if row is None:
-            current = self.episode_pitch(channel, number).revision
-            raise PartChanged(f"Pitch of {channel} #{number}", current)
-        return self.episode_pitch(channel, number)
+            parameters = (values[2], *episode, expected)
+        row = connection.execute(sql, parameters).fetchone()
+        return None if row is None else int(row["revision"])
 
     def episodes_of(self, pitch_id: UUID) -> builtins.list[int]:
         """The numbers of the episodes that refer to the pitch."""

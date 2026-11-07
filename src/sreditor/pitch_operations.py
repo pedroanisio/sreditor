@@ -1,7 +1,7 @@
 """Pitch operations shared by the REST routes, the MCP tools and the pages (rule agentic.mcp).
 
 Reading needs the read permission. Writing a pitch, its notes and its sources is content work,
-open to contributors and the content:write scope, and so is pointing an episode at a pitch.
+open to contributors and the content:write scope, and so is pointing an episode at its pitches.
 Deleting a whole pitch throws its research away, so it needs a role that may change the channel.
 """
 
@@ -18,14 +18,17 @@ from sreditor.operations import gated
 from sreditor.pagination import Page, encode_cursor
 from sreditor.pitches import (
     EpisodePitch,
+    EpisodePitches,
     Pitch,
     PitchChoice,
     PitchInput,
+    PitchList,
     PitchNotes,
     PitchNotesInput,
     PitchSource,
     PitchStatus,
     PositionTable,
+    main_pitch,
 )
 from sreditor.research import SourceInput
 
@@ -228,10 +231,35 @@ def remove_source(app: Services, access: ChannelAccess, change: PitchSourceChang
     )
 
 
-def get_episode_pitch(app: Services, access: ChannelAccess, number: int) -> EpisodePitch:
-    """The pitch an episode refers to, with the revision to send back when changing it."""
+def get_episode_pitches(app: Services, access: ChannelAccess, number: int) -> EpisodePitches:
+    """The pitches an episode refers to, main one first, with the revision to send back."""
     slug = episode_access(app, access, number, Permission.READ)
-    return app.pitches.episode_pitch(slug, number)
+    return app.pitches.episode_pitches(slug, number)
+
+
+def get_episode_pitch(app: Services, access: ChannelAccess, number: int) -> EpisodePitch:
+    """The main pitch of an episode (its first), with the list's revision; pitch_id is None
+    when it has none."""
+    return main_pitch(get_episode_pitches(app, access, number))
+
+
+def set_episode_pitches(
+    app: Services,
+    access: ChannelAccess,
+    number: int,
+    chosen: PitchList,
+    expected_revision: int | None,
+) -> EpisodePitches:
+    """Replace the pitches an episode refers to; the first is its main one, none clears them."""
+    slug = episode_access(app, access, number, Permission.WRITE_CONTENT)
+    for pitch_id in chosen.pitch_ids:
+        app.pitches.get(slug, pitch_id)  # only pitches of the same channel
+    return gated(
+        app,
+        access,
+        PitchOperation.EPISODE_WRITE,
+        lambda: app.pitches.set_episode_pitches(slug, number, chosen, expected_revision),
+    )
 
 
 def choose_episode_pitch(
@@ -241,30 +269,26 @@ def choose_episode_pitch(
     choice: PitchChoice,
     expected_revision: int | None,
 ) -> EpisodePitch:
-    """Point the episode at one of the channel's pitches, or at none."""
-    slug = episode_access(app, access, number, Permission.WRITE_CONTENT)
-    if choice.pitch_id is not None:
-        app.pitches.get(slug, choice.pitch_id)  # only a pitch of the same channel
-    return gated(
-        app,
-        access,
-        PitchOperation.EPISODE_WRITE,
-        lambda: app.pitches.choose(slug, number, choice, expected_revision),
-    )
+    """Set the episode's pitches to this one pitch, or to none."""
+    chosen = PitchList(pitch_ids=[choice.pitch_id] if choice.pitch_id else [])
+    done = set_episode_pitches(app, access, number, chosen, expected_revision)
+    return main_pitch(done)
 
 
 def episode_pitch_research(
     app: Services, access: ChannelAccess, number: int
-) -> PitchResearch | None:
-    """The research of the pitch an episode refers to, as it is now; None without a pitch."""
-    chosen = get_episode_pitch(app, access, number).pitch_id
-    if chosen is None:
-        return None
-    pitch = app.pitches.get(access.channel.slug, chosen)
-    rows = app.pitches.sources(pitch.id, None, SHOWN_SOURCES + 1)
-    return PitchResearch(
-        pitch=pitch,
-        notes=app.pitches.notes(pitch.id),
-        sources=rows[:SHOWN_SOURCES],
-        has_more_sources=len(rows) > SHOWN_SOURCES,
-    )
+) -> list[PitchResearch]:
+    """The research of every pitch an episode refers to, in order and as it is now."""
+    shown: list[PitchResearch] = []
+    for pitch_id in get_episode_pitches(app, access, number).pitch_ids:
+        pitch = app.pitches.get(access.channel.slug, pitch_id)
+        rows = app.pitches.sources(pitch.id, None, SHOWN_SOURCES + 1)
+        shown.append(
+            PitchResearch(
+                pitch=pitch,
+                notes=app.pitches.notes(pitch.id),
+                sources=rows[:SHOWN_SOURCES],
+                has_more_sources=len(rows) > SHOWN_SOURCES,
+            )
+        )
+    return shown

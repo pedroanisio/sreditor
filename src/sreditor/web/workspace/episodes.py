@@ -9,6 +9,7 @@ from fastapi import APIRouter, Form, Request, Response
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from sreditor.book_operations import EPISODE_BOOK
+from sreditor.claim_operations import count_claims, unchecked_claims
 from sreditor.deps import ChannelAccess, Services, ServicesDep
 from sreditor.episode_operations import (
     count_episode_parts,
@@ -73,11 +74,13 @@ SHORT_SCRIPT_TAB = N_("Short script")
 MEDIA_TAB = N_("Media")
 THIRD_PARTY_TAB = N_("Third-party")
 CLASSIFICATION_TAB = N_("Classification")
+CLAIMS_TAB = N_("Claims")
 WAIVERS_TAB = N_("Waivers")
 SRSTUDIO_TAB = "srstudio"  # a product name, the same in every language
 EPISODE_TABS = (
     ("", DETAILS_TAB, "details", Permission.READ),
     ("/research", RESEARCH_TAB, "research", Permission.READ),
+    ("/claims", CLAIMS_TAB, "claims", Permission.READ),
     ("/screenplay", SCREENPLAY_TAB, "screenplay", Permission.READ),
     ("/short-script", SHORT_SCRIPT_TAB, "short-script", Permission.READ),
     ("/media", MEDIA_TAB, "media", Permission.READ),
@@ -109,6 +112,7 @@ def episode_frame(
         "episode_tabs": episode_tabs(access, number, translate),
         "tab_counts": {
             "research": counts.sources,
+            "claims": count_claims(app, access, number),
             "media": counts.media,
             "external-media": counts.uses,
             "waivers": counts.waivers,
@@ -222,6 +226,16 @@ def new_episode(
     return done(request, app, url, Flash.EPISODE_CREATED)
 
 
+def flash_after(
+    app: Services, access: ChannelAccess, number: int, reached: EpisodeStatus, usual: Flash
+) -> Flash:
+    """The note after a status change; moving to published repeats the claims warning, which
+    never blocks the move (rule project.claims)."""
+    if reached is EpisodeStatus.PUBLISHED and unchecked_claims(app, access, number).count:
+        return Flash.CLAIMS_UNCHECKED
+    return usual
+
+
 def found_episode(app: Services, access: ChannelAccess, number: int) -> RevisedEpisode:
     """The episode in the path; 404 when the channel has none with that number."""
     try:
@@ -248,6 +262,8 @@ def episode_page(
     context = {
         "episode": current.episode,
         "episode_revision": current.revision,
+        "unchecked_claims": unchecked_claims(app, access, shown.number).count,
+        "claims_link": episodes_url(access.channel.slug, shown.number) + "/claims",
         "values": shown.sent or current.episode,
         "errors": shown.outcome.errors,
         "status_options": episode_options(translator(request)),
@@ -304,7 +320,8 @@ def save_episode(
     if outcome is not None:
         shown = EpisodeView(number=number, outcome=outcome, sent=fields)
         return episode_page(request, app, access, shown)
-    return done(request, app, episodes_url(access.channel.slug, number), Flash.SAVED)
+    flash = flash_after(app, access, number, as_input(fields).status, Flash.SAVED)
+    return done(request, app, episodes_url(access.channel.slug, number), flash)
 
 
 @router.post("/app/channels/{slug}/episodes/{number}/delete")
@@ -343,7 +360,8 @@ def move_to_stage(
     found_episode(app, access, number)
     translate = translator(request)
     try:
-        move_episode(app, access, number, EpisodeStatus(fields.status))
+        reached = EpisodeStatus(fields.status)
+        move_episode(app, access, number, reached)
     except ValueError:
         outcome = Outcome.invalid({"form": translate(UNKNOWN_STAGE)})
         return list_page(request, app, access, ListView(outcome=outcome))
@@ -352,4 +370,5 @@ def move_to_stage(
         return list_page(request, app, access, ListView(outcome=outcome))
     except ProblemError as problem:
         return list_page(request, app, access, ListView(outcome=refused(problem, translate)))
-    return done(request, app, episodes_url(access.channel.slug), Flash.EPISODE_MOVED)
+    flash = flash_after(app, access, number, reached, Flash.EPISODE_MOVED)
+    return done(request, app, episodes_url(access.channel.slug), flash)
