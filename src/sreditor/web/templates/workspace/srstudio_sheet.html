@@ -15,7 +15,11 @@
 {{ ui.hidden("revision", stored.revision) }}
 {% call ui.panel(_("Identity"), id="identity") %}
   {% call ui.fields_row() %}
-    {{ ui.field("slug", _("Slug"), errors, value=slug_value, maxlength=80, hint=_("How srstudio names it: lowercase words joined by hyphens, such as rex or toon-office.")) }}
+    {% if stored.exported_at %}
+    {{ ui.field("slug", _("Slug"), errors, value=slug_value, readonly=true, hint=_("Fixed since the first srstudio export: srstudio finds it by this slug.")) }}
+    {% else %}
+    {{ ui.field("slug", _("Slug"), errors, value=slug_value, maxlength=80, hint=_("How srstudio names it: lowercase words joined by hyphens, such as rex or toon-office. It stays fixed after the first export.")) }}
+    {% endif %}
     {% if kind in ["character", "location"] %}{{ ui.select("world", _("World"), worlds, errors, value=sheet.world or "") }}{% endif %}
     {% if kind == "style" %}{{ ui.select("style", _("srstudio style"), styles, errors, value=sheet.style or "", hint=_("It fixes the frame size and frames per second.")) }}{% endif %}
   {% endcall %}

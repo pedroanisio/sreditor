@@ -30,6 +30,7 @@ from sreditor.srstudio import (
     SameCharacter,
     SheetInput,
     SheetMismatch,
+    SlugLocked,
     SlugTaken,
 )
 from sreditor.srstudio_export import SrstudioNotReady, srstudio_zip
@@ -81,7 +82,8 @@ def add_sheet_routes(kind: LibraryKind) -> None:
         summary=f"Save a {kind}'s srstudio sheet",
         description=f"Replace a {kind}'s srstudio slug and sheet ({SHEET_FIELDS[kind]}); the "
         f'sheet\'s kind must be "{kind}". Slugs are lowercase words joined by hyphens and unique '
-        "per channel and kind (409 when taken). Facts may only cite published episodes (422). "
+        "per channel and kind (409 when taken); once an srstudio export carried the slug, "
+        "exported_at is set and only the same slug is accepted (409 slug-locked). Facts may only cite published episodes (422). "
         'Needs content:write; send If-Match ("0" before the first save).',
     )
     def set_sheet(
@@ -119,7 +121,8 @@ def set_episode_slug(
     target: WriteTarget, data: EpisodeSlugInput, access: Access, app: ServicesDep
 ) -> JSONResponse:
     """Set the episode's srstudio slug (lowercase words joined by hyphens, unique in the channel;
-    409 when taken) and seed. Needs content:write; send If-Match ("0" before the first save)."""
+    409 when taken) and seed. Once an srstudio export carried the slug, exported_at is set and only
+    the same slug is accepted (409 slug-locked); the seed stays editable. Needs content:write; send If-Match ("0" before the first save)."""
     saved = srstudio.save_episode_slug(app, access, target.number, data, target.expected_revision)
     return tagged(saved, saved.revision)
 
@@ -233,6 +236,12 @@ def install_srstudio_error_handlers(app: FastAPI) -> None:
     async def slug_taken(request: Request, taken: SlugTaken) -> JSONResponse:
         return problem_response(
             request, status.HTTP_409_CONFLICT, str(taken), problem_type("slug-taken")
+        )
+
+    @app.exception_handler(SlugLocked)
+    async def slug_locked(request: Request, locked: SlugLocked) -> JSONResponse:
+        return problem_response(
+            request, status.HTTP_409_CONFLICT, str(locked), problem_type("slug-locked")
         )
 
     @app.exception_handler(RelationshipNotFound)

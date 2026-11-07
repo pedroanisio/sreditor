@@ -6,6 +6,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from sreditor.deps import Services
+from sreditor.library import LibraryKind
+from sreditor.srstudio import ExportedSheet
+from sreditor.srstudio_operations import all_entries
 from tests.conftest import RecordingMailer
 from tests.workspace_helpers import flash_after, join, member, new_channel, submit
 
@@ -166,3 +170,36 @@ def test_srstudio_sheet_save_by_viewer_is_forbidden(
 ) -> None:
     viewer = join(app, mailer, owner, "vi@example.com", "viewer")
     assert submit(viewer, rex, character_form()).status_code == 403
+
+
+def lock_sheets(app: FastAPI) -> None:
+    """Fix the characters' slugs as an srstudio export that carried them does."""
+    services: Services = app.state.services
+    entries = all_entries(services, "funny-memes", LibraryKind.CHARACTER)
+    sheets = services.srstudio.sheets(entries)
+    exported = [ExportedSheet(entry=entry, sheet=sheets[entry.id]) for entry in entries]
+    services.srstudio.mark_exported([], exported)
+
+
+def test_srstudio_sheet_after_export_shows_slug_fixed(
+    app: FastAPI, owner: TestClient, rex: str
+) -> None:
+    lock_sheets(app)
+    page = owner.get(rex).text
+    assert 'value="rex" required readonly' in page and "Fixed since the first" in page
+
+
+def test_srstudio_sheet_after_export_refuses_new_slug(
+    app: FastAPI, owner: TestClient, rex: str
+) -> None:
+    lock_sheets(app)
+    response = submit(owner, rex, character_form(revision="1", slug="rexy"))
+    assert response.status_code == 409 and "can no longer change" in response.text
+
+
+def test_srstudio_sheet_after_export_saves_other_fields(
+    app: FastAPI, owner: TestClient, rex: str
+) -> None:
+    lock_sheets(app)
+    page = flash_after(owner, submit(owner, rex, character_form(revision="1", look_palette="grey")))
+    assert "Changes saved." in page and "grey" in page

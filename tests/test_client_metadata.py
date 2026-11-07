@@ -230,6 +230,23 @@ def test_client_from_document_with_plain_http_redirect_is_refused() -> None:
         client_from(URL, document(redirect_uris=["http://evil.example/cb"]))
 
 
+def test_client_from_document_supporting_none_is_public_client() -> None:
+    body = document(
+        token_endpoint_auth_method="private_key_jwt",
+        token_endpoint_auth_methods_supported=["none", "private_key_jwt"],
+    )
+    assert client_from(URL, body).client_id == URL
+
+
+def test_client_from_document_requiring_private_key_jwt_is_refused() -> None:
+    body = document(
+        token_endpoint_auth_method="private_key_jwt",
+        token_endpoint_auth_methods_supported=["private_key_jwt"],
+    )
+    with pytest.raises(ClientDocumentError, match="not a valid"):
+        client_from(URL, body)
+
+
 def test_client_from_unreadable_document_is_refused() -> None:
     with pytest.raises(ClientDocumentError, match="not a valid"):
         client_from(URL, b"<html>")

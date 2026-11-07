@@ -7,7 +7,7 @@
 #}
 {% block body %}
 {% set path = request.url.path %}
-{% set place = "tokens" if path.startswith("/app/account/tokens") else ("account" if path.startswith("/app/account") else "channels") %}
+{% set place = "tokens" if path.startswith("/app/account/tokens") else ("account" if path.startswith("/app/account") else ("settings" if path.startswith("/app/admin") else "channels")) %}
 <div class="app">
   {% call ui.app_sidebar(static_url('icon.svg')) %}
     <div class="app-switcher">
@@ -22,11 +22,13 @@
     </div>
     {{ ui.search_trigger("/app/search" ~ ("?channel=" ~ channel.slug if channel else ""), _("Search…"), "Ctrl K") }}
     {% block sidebar_nav %}
-    {{ ui.sidenav([("", [
+    {% set workspace_links = [
       ("/app", _("Channels"), "channels"),
       ("/app/account", _("Account"), "account"),
       ("/app/account/tokens", _("API tokens"), "tokens"),
-    ])], place, _("Workspace")) }}
+    ] %}
+    {% if user.is_admin %}{% set workspace_links = workspace_links + [("/app/admin/render-workers", _("Render workers"), "settings")] %}{% endif %}
+    {{ ui.sidenav([("", workspace_links)], place, _("Workspace")) }}
     {% endblock %}
     <div class="app-user">
       {% call ui.menu(user.display_name, up=true, avatar=true, wide=true) %}

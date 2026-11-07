@@ -83,7 +83,7 @@
 {% if errors.get("form") %}{% call alert("error") %}{{ errors["form"] }}{% endcall %}{% endif %}
 {%- endmacro %}
 
-{% macro field(name, label, errors, type="text", value="", autocomplete="", hint="", minlength=none, state="", required=true, maxlength=none, id="", label_hidden=false, placeholder="") -%}
+{% macro field(name, label, errors, type="text", value="", autocomplete="", hint="", minlength=none, state="", required=true, maxlength=none, id="", label_hidden=false, placeholder="", readonly=false) -%}
 {% set error = errors.get(name) %}
 {% set field_id = id or name %}
 <div class="field{% if error %} invalid{% endif %}">
@@ -94,6 +94,7 @@
     {%- if minlength %} minlength="{{ minlength }}"{% endif %}
     {%- if maxlength %} maxlength="{{ maxlength }}"{% endif %}
     {%- if placeholder %} placeholder="{{ placeholder }}"{% endif %}
+    {%- if readonly %} readonly{% endif %}
     {%- if error %} aria-invalid="true" aria-describedby="{{ field_id }}-error"{% elif hint %} aria-describedby="{{ field_id }}-hint"{% endif %}>
   {% if error %}<p class="error" id="{{ field_id }}-error">{{ error }}</p>
   {% elif hint %}<p class="hint" id="{{ field_id }}-hint">{{ hint }}</p>{% endif %}

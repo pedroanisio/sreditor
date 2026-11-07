@@ -79,6 +79,9 @@ class Flash(StrEnum):
     VOICE_REUSED = "voice_reused"
     TIMINGS_APPLIED = "timings_applied"
     LINK_ADDED = "link_added"
+    RENDER_QUEUED = "render_queued"
+    RENDER_REUSED = "render_reused"
+    RENDER_CANCELED = "render_canceled"
 
 
 CHANGED_MEANWHILE = N_(
@@ -112,6 +115,11 @@ FLASH_TEXT: dict[Flash, str] = {
     Flash.VOICE_REUSED: N_("Nothing changed since the last take, so it was reused at no cost."),
     Flash.TIMINGS_APPLIED: N_("The blocks now use the times measured in the voice-over."),
     Flash.LINK_ADDED: N_("Link added."),
+    Flash.RENDER_QUEUED: N_("Render queued. This page shows its progress."),
+    Flash.RENDER_REUSED: N_(
+        "Nothing changed since an earlier render, so its video was reused at no cost."
+    ),
+    Flash.RENDER_CANCELED: N_("Render canceled."),
 }
 
 

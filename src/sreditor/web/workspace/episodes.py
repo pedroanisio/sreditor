@@ -74,6 +74,7 @@ MEDIA_TAB = N_("Media")
 THIRD_PARTY_TAB = N_("Third-party")
 CLASSIFICATION_TAB = N_("Classification")
 WAIVERS_TAB = N_("Waivers")
+RENDER_TAB = N_("Render")
 SRSTUDIO_TAB = "srstudio"  # a product name, the same in every language
 EPISODE_TABS = (
     ("", DETAILS_TAB, "details", Permission.READ),
@@ -85,6 +86,7 @@ EPISODE_TABS = (
     ("/classification", CLASSIFICATION_TAB, "classification", Permission.READ),
     ("/waivers", WAIVERS_TAB, "waivers", Permission.READ_WAIVERS),
     ("/srstudio", SRSTUDIO_TAB, "srstudio", Permission.WRITE_CHANNEL),
+    ("/render", RENDER_TAB, "render", Permission.READ),
 )
 
 

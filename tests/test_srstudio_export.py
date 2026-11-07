@@ -292,3 +292,60 @@ def test_direction_finds_stressed_words_and_pauses() -> None:
 
 def test_block_used_in_tests_is_valid() -> None:
     assert Block(start_s=0, end_s=1, function=BlockFunction.HOOK, speech="Oi.").speaker is None
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="needs ffmpeg to turn takes into WAV")
+def test_export_saves_and_fixes_proposed_episode_slug(
+    owner: TestClient, voiced: FakeTransport
+) -> None:
+    assert owner.get(ZIP).status_code == 200
+    stored = owner.get(f"{EPISODE}/srstudio").json()
+    assert stored["slug"] == "whose-milk" and stored["revision"] == 1 and stored["exported_at"]
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="needs ffmpeg to turn takes into WAV")
+def test_export_fixed_episode_slug_refuses_new_one(
+    owner: TestClient, voiced: FakeTransport
+) -> None:
+    owner.get(ZIP)
+    response = owner.put(f"{EPISODE}/srstudio", json={"slug": "milk-heist", "seed": 1})
+    assert response.status_code == 409 and response.json()["type"].endswith("slug-locked")
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="needs ffmpeg to turn takes into WAV")
+def test_export_fixed_episode_slug_still_saves_seed(
+    owner: TestClient, voiced: FakeTransport
+) -> None:
+    owner.get(ZIP)
+    response = owner.put(f"{EPISODE}/srstudio", json={"slug": "whose-milk", "seed": 7})
+    assert response.status_code == 200 and response.json()["seed"] == 7
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="needs ffmpeg to turn takes into WAV")
+def test_export_fixes_bible_character_slug(
+    owner: TestClient, rex: str, voiced: FakeTransport
+) -> None:
+    owner.get(ZIP)
+    sheet = owner.get(f"{CHANNEL}/characters/{rex}/srstudio").json()
+    response = owner.put(f"{CHANNEL}/characters/{rex}/srstudio", json={**sheet, "slug": "rexy"})
+    assert response.status_code == 409 and response.json()["type"].endswith("slug-locked")
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="needs ffmpeg to turn takes into WAV")
+def test_export_fixes_only_the_props_beats_use(
+    owner: TestClient,
+    rex: str,
+    toon_style: None,
+    voice: Callable[..., FakeTransport],
+    take_audio: bytes,
+) -> None:
+    laptop = str(created(owner, f"{CHANNEL}/props", {"name": "Laptop"})["id"])
+    papers = str(created(owner, f"{CHANNEL}/props", {"name": "Papers"})["id"])
+    body = script(rex)
+    body["blocks"][1]["beats"][1]["prop"] = "laptop"
+    saved(owner, f"{EPISODE}/short-script", body)
+    voice(spoken("Oi.", take_audio), spoken("[sighs] Tchau [pause] AGORA.", take_audio), ok(VOICES))
+    assert owner.post(f"{EPISODE}/voice-over-takes").status_code == 201
+    assert owner.get(ZIP).status_code == 200
+    assert owner.get(f"{CHANNEL}/props/{laptop}/srstudio").json()["exported_at"]
+    assert owner.get(f"{CHANNEL}/props/{papers}/srstudio").json()["exported_at"] is None

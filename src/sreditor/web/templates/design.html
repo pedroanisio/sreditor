@@ -32,6 +32,7 @@
   {{ ui.field(theme ~ "-hover", _("Hover"), {}, state="is-hover") }}
   {{ ui.field(theme ~ "-focus", _("Focus"), {}, state="is-focus") }}
   {{ ui.field(theme ~ "-invalid", _("Error"), {theme ~ "-invalid": _("This field is required.")}) }}
+  {{ ui.field(theme ~ "-readonly", _("Read only"), {}, value="toon-office", readonly=true, hint=_("Fixed since the first export.")) }}
   {% call ui.checkbox(theme ~ "-consent", {}) %}{{ _("I agree to the") }} <a href="/terms">{{ _("terms of service") }}</a>{% endcall %}
   {% call ui.checkbox(theme ~ "-checked", {}, checked=true) %}{{ _("I agree to the") }} <a href="/terms">{{ _("terms of service") }}</a>{% endcall %}
   {% call ui.checkbox(theme ~ "-unchecked", {theme ~ "-unchecked": _("Accept the terms of service and privacy policy to continue.")}) %}{{ _("I agree to the") }} <a href="/terms">{{ _("terms of service") }}</a>{% endcall %}

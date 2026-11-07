@@ -15,7 +15,7 @@ from sreditor.deps import ChannelAccess, Services, ServicesDep
 from sreditor.episode_texts import PartChanged
 from sreditor.i18n import N_, Translator
 from sreditor.members import Permission
-from sreditor.srstudio import MAX_SEED, EpisodeSlugInput, SlugTaken
+from sreditor.srstudio import MAX_SEED, EpisodeSlugInput, SlugLocked, SlugTaken
 from sreditor.srstudio_export import (
     NO_KIND,
     NO_STYLE,
@@ -47,6 +47,7 @@ SRSTUDIO_SUFFIX = "/srstudio"
 PAGE = "/app/channels/{slug}/episodes/{number}/srstudio"
 ZIP = "/channels/{slug}/episodes/{number}/srstudio.zip"
 SLUG_TAKEN = N_("Another episode of this channel already uses this slug.")
+SLUG_LOCKED = N_("srstudio already knows this episode by its slug, so it can no longer change.")
 SLUG_CHANGED = N_("Someone changed the slug or seed after you opened the page. Reload the page.")
 # Where each missing piece is fixed; anything about the script or its takes is fixed there.
 LIBRARY_FIXES = frozenset({NO_WORLD, NO_KIND, NOT_TOON, UNPUBLISHED})
@@ -108,7 +109,7 @@ def srstudio_page(
     context: dict[str, Any] = {
         "episode": current.episode,
         "stored": stored,
-        "slug_value": shown.sent.slug if shown.sent else stored.slug,
+        "slug_value": shown.sent.slug if shown.sent and not stored.exported_at else stored.slug,
         "seed_value": shown.sent.seed if shown.sent else str(stored.seed),
         "max_seed": MAX_SEED,
         "errors": shown.outcome.errors,
@@ -145,6 +146,8 @@ def slug_errors(
         return Outcome.invalid(field_errors(invalid, translate))
     except SlugTaken:
         return Outcome.conflict({"slug": translate(SLUG_TAKEN)})
+    except SlugLocked:
+        return Outcome.conflict({"slug": translate(SLUG_LOCKED)})
     except PartChanged:
         return Outcome.conflict({"form": translate(SLUG_CHANGED)})
     return None

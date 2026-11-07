@@ -22,7 +22,11 @@
   {% call ui.form(action, csrf_field, csrf_token) %}
     {{ ui.hidden("revision", stored.revision) }}
     {% call ui.fields_row() %}
-      {{ ui.field("slug", _("Slug"), errors, value=slug_value, maxlength=80, hint=_("How srstudio names the episode: lowercase words joined by hyphens.")) }}
+      {% if stored.exported_at %}
+      {{ ui.field("slug", _("Slug"), errors, value=slug_value, readonly=true, hint=_("Fixed since the first srstudio export: srstudio finds the episode by this slug.")) }}
+      {% else %}
+      {{ ui.field("slug", _("Slug"), errors, value=slug_value, maxlength=80, hint=_("How srstudio names the episode: lowercase words joined by hyphens. It stays fixed after the first export.")) }}
+      {% endif %}
       {{ ui.field("seed", _("Seed"), errors, type="number", value=seed_value, hint=_("The same seed draws the same frames when srstudio rebuilds the episode.")) }}
     {% endcall %}
     {% call ui.panel_actions() %}{{ ui.button(_("Save changes")) }}{% endcall %}

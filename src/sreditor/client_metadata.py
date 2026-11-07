@@ -21,9 +21,9 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
-from sreditor.oauth import ClientRegistration, ErrorCode, OAuthClient, OAuthError
+from sreditor.oauth import AUTH_METHOD, ClientRegistration, ErrorCode, OAuthClient, OAuthError
 
 HTTPS = "https"
 HTTPS_PORT = 443
@@ -145,10 +145,28 @@ def fetch(url: str, resolver: Resolver = resolve) -> FetchedDocument:
     )
 
 
+AUTH_METHODS_SUPPORTED = "token_endpoint_auth_methods_supported"
+AUTH_METHOD_FIELD = "token_endpoint_auth_method"
+
+
 class ClientDocument(ClientRegistration):
     """A metadata document: registration metadata plus the client_id it names itself by."""
 
     client_id: str
+
+    @model_validator(mode="before")
+    @classmethod
+    def public_when_supported(cls, data: object) -> object:
+        """Treat a client that also supports PKCE alone as public.
+
+        ChatGPT's document prefers private_key_jwt but lists "none" among the methods it
+        supports; sreditor advertises only "none", so such a client authenticates with PKCE.
+        """
+        if isinstance(data, dict):
+            supported = data.get(AUTH_METHODS_SUPPORTED)
+            if isinstance(supported, list) and AUTH_METHOD in supported:
+                return {**data, AUTH_METHOD_FIELD: AUTH_METHOD}
+        return data
 
 
 def client_from(url: str, body: bytes) -> OAuthClient:

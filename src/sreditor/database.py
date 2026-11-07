@@ -121,6 +121,7 @@ CREATE TABLE IF NOT EXISTS library_sheets (
     sheet TEXT NOT NULL,
     revision INTEGER NOT NULL,
     updated_at TEXT NOT NULL,
+    exported_at TEXT,
     UNIQUE (channel_slug, kind, slug)
 );
 CREATE TABLE IF NOT EXISTS library_relationships (
@@ -139,6 +140,7 @@ CREATE TABLE IF NOT EXISTS episode_slugs (
     seed INTEGER NOT NULL,
     revision INTEGER NOT NULL,
     updated_at TEXT NOT NULL,
+    exported_at TEXT,
     PRIMARY KEY (channel_slug, number),
     UNIQUE (channel_slug, slug),
     FOREIGN KEY (channel_slug, number) REFERENCES episodes (channel_slug, number) ON DELETE CASCADE
@@ -527,6 +529,14 @@ def parse(value: str | None) -> datetime | None:
     return datetime.fromisoformat(value) if value else None
 
 
+def add_column(connection: sqlite3.Connection, table: str, definition: str) -> None:
+    """Add a column, named first in `definition`, to a table that does not have it yet."""
+    name = definition.split()[0]
+    columns = {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}
+    if name not in columns:
+        connection.execute(f"ALTER TABLE {table} ADD COLUMN {definition}")
+
+
 def migrate(connection: sqlite3.Connection) -> None:
     """Bring databases created by earlier versions up to the current schema."""
     columns = {row["name"] for row in connection.execute("PRAGMA table_info(channels)")}
@@ -541,6 +551,9 @@ def migrate(connection: sqlite3.Connection) -> None:
     if "blocks" not in take_columns:
         # Takes from before each block was its own take have no block takes to export.
         connection.execute("ALTER TABLE voice_takes ADD COLUMN blocks TEXT")
+    # Slugs saved before srstudio exports fixed them (rule project.srstudio.slugs) stay editable.
+    for table in ("library_sheets", "episode_slugs"):
+        add_column(connection, table, "exported_at TEXT")
 
 
 def index_handles(connection: sqlite3.Connection) -> None:

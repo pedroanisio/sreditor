@@ -183,6 +183,8 @@ main {
   box-shadow: var(--ring) var(--color-focus);
 }
 .field.invalid .input { border-color: var(--color-danger); }
+/* A value that can no longer change, such as a slug fixed by its first export, reads as set, not as a box to type in. */
+.input[readonly], .input[readonly]:hover { background: var(--color-bg); border-color: var(--color-border); }
 .field.invalid .input:focus-visible { box-shadow: var(--ring) var(--color-danger); }
 .check {
   display: grid;

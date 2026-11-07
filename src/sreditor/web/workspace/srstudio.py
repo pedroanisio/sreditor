@@ -24,6 +24,7 @@ from sreditor.srstudio import (
     TEXT_LENGTH,
     EntrySheet,
     SheetInput,
+    SlugLocked,
     SlugTaken,
 )
 from sreditor.srstudio_operations import FactNotPublished, get_sheet, save_sheet
@@ -73,6 +74,7 @@ YES = "yes"
 # Choices left empty mean "not decided"; the sheet keeps null for them.
 OPTIONAL = frozenset({"world", "character_kind", "comic_role", "style"})
 SLUG_TAKEN = N_("Another entry of this kind already uses this slug.")
+SLUG_LOCKED = N_("srstudio already knows this entry by its slug, so it can no longer change.")
 NOT_PUBLISHED = N_("A fact can only cite a published episode.")
 SHEET_CHANGED = N_("Someone changed this sheet after you opened it. Reload the page to see it.")
 KIND_TITLES = {
@@ -245,7 +247,9 @@ def sheet_page(
         "entry": entry,
         "stored": stored,
         "sheet": shown_sheet(stored.sheet.model_dump(mode="json"), shown.sent),
-        "slug_value": (shown.sent or {}).get("slug", stored.slug),
+        "slug_value": stored.slug
+        if stored.exported_at
+        else (shown.sent or {}).get("slug", stored.slug),
         "kind": shown.kind.value,
         "kind_title": KIND_TITLES[shown.kind],
         "errors": shown.outcome.errors,
@@ -301,6 +305,8 @@ def save_errors(
         return Outcome.invalid(sheet_errors(invalid, translate))
     except SlugTaken:
         return Outcome.conflict({"slug": translate(SLUG_TAKEN)})
+    except SlugLocked:
+        return Outcome.conflict({"slug": translate(SLUG_LOCKED)})
     except FactNotPublished:
         return Outcome.invalid({"form": translate(NOT_PUBLISHED)})
     except (PartChanged, EntryNotFound):
