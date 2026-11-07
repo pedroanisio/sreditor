@@ -294,6 +294,36 @@ def test_mcp_update_episode_with_expected_revision_bumps_revision(mcp: TestClien
     assert tool(mcp, "update_episode", arguments)["structuredContent"]["revision"] == 2
 
 
+DELETE_PILOT = {"slug": "funny-memes", "number": 1, "expected_revision": 1}
+
+
+def test_mcp_delete_episode_returns_what_it_deleted(mcp: TestClient) -> None:
+    created_by_tool(mcp)
+    deleted = tool(mcp, "delete_episode", DELETE_PILOT)["structuredContent"]
+    assert deleted == {"slug": "funny-memes", "number": 1}
+
+
+def test_mcp_delete_episode_leaves_it_unreadable(mcp: TestClient) -> None:
+    created_by_tool(mcp)
+    tool(mcp, "delete_episode", DELETE_PILOT)
+    assert tool(mcp, "get_episode", {"slug": "funny-memes", "number": 1})["isError"]
+
+
+def test_mcp_delete_episode_without_revision_is_refused(mcp: TestClient) -> None:
+    created_by_tool(mcp)
+    result = tool(mcp, "delete_episode", {"slug": "funny-memes", "number": 1})
+    assert result["isError"]
+
+
+def test_mcp_delete_episode_with_token_lacking_channel_scope_names_it(
+    app: FastAPI, owner: TestClient, pilot: dict[str, Any]
+) -> None:
+    scopes = ["channels:read", "content:write"]
+    with agent(app, new_token(owner, scopes), PUBLIC_URL) as limited:
+        result = tool(limited, "delete_episode", DELETE_PILOT)
+    assert result["isError"] and "channels:write" in result["content"][0]["text"]
+
+
 @pytest.mark.parametrize(
     ("name", "arguments", "message"),
     [
@@ -309,6 +339,16 @@ def test_mcp_update_episode_with_expected_revision_bumps_revision(mcp: TestClien
                 "Episode funny-memes #1 changed; it is now at revision 1. Read it again, merge your "
                 "change and retry with expected_revision=1"
             ),
+        ),
+        (
+            "delete_episode",
+            {"slug": "funny-memes", "number": 1, "expected_revision": 9},
+            "Episode funny-memes #1 changed; it is now at revision 1.",
+        ),
+        (
+            "delete_episode",
+            {"slug": "funny-memes", "number": 5, "expected_revision": 1},
+            "Episode funny-memes #5 not found; call list_episodes",
         ),
     ],
 )

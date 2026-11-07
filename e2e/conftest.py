@@ -1,6 +1,9 @@
 """End-to-end fixtures: the app as built for Docker (rule ui.e2e.playwright), plus evidence.
 
-Run with `uv run pytest e2e --no-cov`. Each test gets a fresh container, so its database and
+They run only when Pedro asks, because a browser and a container per test overload a development
+machine: otherwise every test is skipped. SREDITOR_E2E=1 turns them on, which the CI e2e job does
+when started by hand (`SREDITOR_E2E=1 uv run pytest e2e --no-cov`).
+Each test gets a fresh container, so its database and
 rate limiter start empty. Screenshots go to e2e-evidence/ (git-ignored, rule ui.e2e.evidence);
 a failing test also leaves its Playwright trace and the container log there.
 """
@@ -150,6 +153,18 @@ def server(image: str, tmp_path: Path, request: pytest.FixtureRequest) -> Iterat
 
 
 FAILED = pytest.StashKey[bool]()
+ENABLE_VARIABLE = "SREDITOR_E2E"
+ENABLED_VALUE = "1"
+DISABLED_REASON = f"e2e tests run only when Pedro asks; {ENABLE_VARIABLE}={ENABLED_VALUE} runs them"
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Skip every e2e test unless they were asked for, so no container or browser starts."""
+    if os.environ.get(ENABLE_VARIABLE) == ENABLED_VALUE:
+        return
+    skip = pytest.mark.skip(reason=DISABLED_REASON)
+    for item in items:
+        item.add_marker(skip)
 
 
 @pytest.hookimpl(wrapper=True)

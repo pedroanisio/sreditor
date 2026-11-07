@@ -25,7 +25,7 @@ from tests.test_api import FUNNY_MEMES
 SLUG = "funny-memes"
 # A tool name starts with one of these verbs; other snake_case words (idempotency_key) are not tools.
 TOOL_VERBS = (
-    "add|apply|cancel|check|classify|compare|create|estimate|generate|get|import|invite|list|"
+    "add|apply|cancel|check|classify|compare|create|delete|estimate|generate|get|import|invite|list|"
     "put|record|remove|request|retire|save|set|unlink|update|use|write"
 )
 TOOL_NAME = re.compile(rf"\b(?:{TOOL_VERBS})(?:_[a-z]+)+\b")

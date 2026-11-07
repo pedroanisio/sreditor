@@ -6,6 +6,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Pedro starts the e2e job by hand ("Run workflow"); it never runs on its own.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -42,7 +44,9 @@ jobs:
 
   # Rules ui.e2e.playwright and ui.e2e.evidence: every flow runs in a real browser against the
   # Docker build, and the screenshots and failure traces are attached to the run.
+  # They run only when Pedro asks for them, never on a push or pull request.
   e2e:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -57,6 +61,8 @@ jobs:
       - name: Install Chromium for Playwright
         run: uv run playwright install --with-deps chromium
       - name: End-to-end tests against the Docker build
+        env:
+          SREDITOR_E2E: "1"
         run: uv run pytest e2e -p no:cacheprovider --no-cov
       - name: Attach the evidence
         if: always()

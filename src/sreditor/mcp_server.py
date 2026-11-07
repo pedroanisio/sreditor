@@ -113,7 +113,8 @@ INSTRUCTIONS = (
     "it with write_guideline and retire_guideline. get_brand and update_brand read and set "
     "its colors (with roles) and fonts. "
     "Episodes are numbered from 1: list_episodes, get_episode, create_episode and "
-    "update_episode (status idea, research, script, production, published). Research: "
+    "update_episode (status idea, research, script, production, published); "
+    "delete_episode removes one for good after get_episode gives its revision. Research: "
     "get_research shows an episode's notes, sources and its pitches' research; "
     "write_research_notes, add_source and remove_source change it. Pitches are story ideas "
     "with their own research: list_pitches, get_pitch, create_pitch, update_pitch, "
@@ -644,6 +645,15 @@ class Removed(BaseModel):
     id: UUID
 
 
+class DeletedEpisode(BaseModel):
+    """The episode delete_episode took away; its number is never given to another one."""
+
+    model_config = ConfigDict(frozen=True)
+
+    slug: str
+    number: int
+
+
 class EntryEdit(EntryInput):
     """A character or location to add, or, with its entry_id, to change."""
 
@@ -743,6 +753,24 @@ def add_episode_tools(server: MCPServer, services: Services) -> None:
                 services, access(context, slug), number, episode, expected_revision
             )
         )
+
+    @server.tool(annotations=tool_annotations("Delete an episode", Effect.REMOVE))
+    def delete_episode(
+        context: Context, slug: str, number: int, expected_revision: int
+    ) -> DeletedEpisode:
+        """Delete an episode and every part of it (research, screenplay, short script, media,
+        context); this cannot be undone and its number is never reused. Use it only when a
+        person asked for this episode to go; to stop work on it, update_episode is enough.
+        Call get_episode first and pass its `revision` as `expected_revision`, so an episode
+        someone changed in the meantime is never deleted unseen. Needs channels:write and the
+        owner or editor role. A whole channel can only be deleted on its pages, never here."""
+
+        def delete() -> DeletedEpisode:
+            channel = access(context, slug)
+            episode_operations.delete_episode(services, channel, number, expected_revision)
+            return DeletedEpisode(slug=slug, number=number)
+
+        return reported(delete)
 
 
 def add_research_tools(server: MCPServer, services: Services) -> None:
