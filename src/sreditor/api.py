@@ -14,6 +14,7 @@ from starlette.routing import Route
 from sreditor import (
     auth_routes,
     book_routes,
+    claim_routes,
     classification_routes,
     context_routes,
     delivery_routes,
@@ -42,6 +43,7 @@ from sreditor import (
 from sreditor.assets import AssetRejected, AssetStore, FileTooLarge
 from sreditor.block_takes import BlockTakeStore
 from sreditor.channels import BrandKit, Channel, Platform, PlatformAccount
+from sreditor.claims import ClaimStore
 from sreditor.classification import ClassificationStore
 from sreditor.context import ContextStore
 from sreditor.database import Clock, Database, utc_now
@@ -170,6 +172,7 @@ def create_app(
         deliveries=DeliveryStore(database),
         post_metrics=PostMetricsStore(database),
         file_links=FileLinkStore(database),
+        claims=ClaimStore(database),
         voice=build_voice(settings.voice),
     )
     mcp = mcp_server.build(services)
@@ -205,6 +208,7 @@ def create_app(
     render_routes.install_error_handlers(app)
     file_routes.install_error_handlers(app)
     pitch_routes.install_error_handlers(app)
+    claim_routes.install_error_handlers(app)
     context_routes.install_error_handlers(app)
     external_media_routes.install_error_handlers(app)
     short_script_routes.install_short_script_error_handlers(app)
@@ -218,6 +222,7 @@ def create_app(
     app.include_router(episode_routes.router)
     app.include_router(research_routes.router)
     app.include_router(pitch_routes.router)
+    app.include_router(claim_routes.router)
     app.include_router(context_routes.router)
     app.include_router(screenplay_routes.router)
     app.include_router(short_script_routes.router)

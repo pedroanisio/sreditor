@@ -681,7 +681,7 @@ DESIGN_COLORS = (
     "focus",
 )
 DESIGN_SPACING = tuple(range(1, 9))
-DESIGN_TONES = ("info", "success", "error")
+DESIGN_TONES = ("info", "success", "warning", "error")
 # (class mirroring the state, label) for each button state shown on /design.
 DESIGN_STATES = (
     ("", N_("Default")),

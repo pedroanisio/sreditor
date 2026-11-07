@@ -30,6 +30,7 @@ from sreditor import (
     media_operations,
     membership,
     operations,
+    pitch_operations,
     research_operations,
     screenplay_operations,
     srstudio_operations,
@@ -71,6 +72,7 @@ from sreditor.media import MediaFile, MediaNotFound
 from sreditor.media_operations import MediaChange, MediaQuery
 from sreditor.members import Invitation, Member, Permission
 from sreditor.pagination import DEFAULT_LIMIT, Page, ToolLimit, page_after
+from sreditor.pitch_operations import PitchResearch
 from sreditor.problems import ProblemError
 from sreditor.repository import AccountTaken, ChannelExists, ChannelNotFound, RevisionMismatch
 from sreditor.research import (
@@ -101,9 +103,11 @@ INSTRUCTIONS = (
     "Editorial guidelines, and produces their episodes. Start with list_channels, read a channel "
     "with get_channel, and read its Editorial with get_editorial before writing content for it. "
     "A channel's episodes are listed with list_episodes and numbered from 1; read an episode's "
-    "research with get_research before writing about it; an episode may also use one of the "
+    "research with get_research before writing about it; an episode may also use several of the "
     "channel's pitches (story ideas with their own research, list_pitches and get_pitch), set "
-    "with set_episode_pitch. Read its screenplay, in Fountain, with "
+    "with set_episode_pitches. Record each figure or fact an episode states, with the sources "
+    "that back it, using list_claims, add_claim and check_claim_source; claims without a "
+    "checked primary source only warn. Read its screenplay, in Fountain, with "
     "get_screenplay, which also shows which names the channel's library of characters and "
     "locations (list_library) still lacks. The library also holds visual styles; each episode "
     "picks one with set_episode_style, and get_visual_style and save_visual_style read and set "
@@ -354,6 +358,7 @@ def build(services: Services) -> MCPServer:
     """The MCP server with sreditor's tools, bound to the app's services."""
     # Imported here: pitch_tools builds on this module's helpers, so a top-level import
     # would be circular.
+    from sreditor.claims_tools import add_claim_tools
     from sreditor.classification_tools import add_classification_tools
     from sreditor.context_tools import add_context_tools
     from sreditor.delivery_tools import add_delivery_tools
@@ -371,6 +376,7 @@ def build(services: Services) -> MCPServer:
     add_episode_tools(server, services)
     add_research_tools(server, services)
     add_pitch_tools(server, services)
+    add_claim_tools(server, services)
     add_screenplay_tools(server, services)
     add_short_script_tools(server, services)
     add_library_tools(server, services)
@@ -560,12 +566,13 @@ class EntryEdit(EntryInput):
 
 
 class Research(BaseModel):
-    """An episode's research notes and a page of the sources it cites."""
+    """An episode's research notes, a page of its sources and each of its pitches' research."""
 
     model_config = ConfigDict(frozen=True)
 
     notes: ResearchNotes
     sources: Page[Source]
+    pitches: list[PitchResearch] = Field(default_factory=list)
 
 
 class ScreenplayWithCast(BaseModel):
@@ -665,15 +672,17 @@ def add_research_tools(server: MCPServer, services: Services) -> None:
         cursor: str | None = None,
         limit: ToolLimit = DEFAULT_LIMIT,
     ) -> Research:
-        """Read an episode's research notes and the sources it cites, before writing about it.
-        Notes at revision 0 were never written. Pass `sources.next_cursor` as `cursor` for more
-        sources."""
+        """Read an episode's research notes and the sources it cites, before writing about it,
+        and the notes and sources of each pitch it is built on (`pitches`, main one first, as
+        they are now). Notes at revision 0 were never written. Pass `sources.next_cursor` as
+        `cursor` for more sources."""
 
         def read() -> Research:
             channel = access(context, slug)
             notes = research_operations.get_notes(services, channel, number)
             sources = research_operations.list_sources(services, channel, number, cursor, limit)
-            return Research(notes=notes, sources=sources)
+            shown = pitch_operations.episode_pitch_research(services, channel, number)
+            return Research(notes=notes, sources=sources, pitches=shown)
 
         return reported(read)
 

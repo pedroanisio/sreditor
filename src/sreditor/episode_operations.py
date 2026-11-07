@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from fastapi import status
 
+from sreditor.claims import warning_text
 from sreditor.delivery import delivery_gaps
 from sreditor.deps import ChannelAccess, Services
 from sreditor.episodes import Episode, EpisodeInput, EpisodeStatus, PartCounts, RevisedEpisode
@@ -88,7 +89,11 @@ def replace_episode(
     data: EpisodeInput,
     expected_revision: int | None,
 ) -> RevisedEpisode:
-    """Replace an episode's title, summary and status."""
+    """Replace an episode's title, summary and status.
+
+    Moving to published is never refused for unchecked claims (rule project.claims); the result
+    carries a warning that names how many there are.
+    """
     access.require(Permission.WRITE_CONTENT)
     slug = access.channel.slug
     revised = gated(
@@ -99,9 +104,11 @@ def replace_episode(
     )
     if data.status is not EpisodeStatus.PUBLISHED:
         return revised
-    # Warn, never refuse: a delivery gap must not hold back a status (rule project.delivery).
+    # Warn, never refuse: neither a delivery gap nor an unchecked claim holds back a status
+    # (rules project.delivery and project.claims).
     gaps = delivery_gaps(app.deliveries, app.media, slug, number)
-    return revised.model_copy(update={"warnings": gaps})
+    warning = warning_text(app.claims.unchecked(slug, number).count)
+    return revised.model_copy(update={"warnings": gaps, "claims_warning": warning})
 
 
 def delete_episode(

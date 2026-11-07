@@ -1,7 +1,7 @@
 """MCP tools for a channel's pitches (pautas) and the pitch an episode uses (rule agentic.mcp).
 
 A few task-sized tools (agentic.mcp.tools.outcomes): find pitches, read one with its research,
-create or update one, write its notes, cite or drop a source, and point an episode at it.
+create or update one, write its notes, cite or drop a source, and point an episode at its pitches.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from uuid import UUID
 
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from sreditor import pitch_operations as pitches
 from sreditor.deps import ChannelAccess, Services, access_for
@@ -19,11 +19,14 @@ from sreditor.mcp_server import Effect, Removed, principal, reported, tool_annot
 from sreditor.pagination import DEFAULT_LIMIT, Page, ToolLimit
 from sreditor.pitch_operations import PitchChange, PitchQuery, PitchSourceChange
 from sreditor.pitches import (
+    MAX_EPISODE_PITCHES,
     EpisodePitch,
+    EpisodePitches,
     Pitch,
     PitchChoice,
     PitchInput,
     PitchInUse,
+    PitchList,
     PitchNotes,
     PitchNotesInput,
     PitchNotFound,
@@ -51,8 +54,8 @@ def pitch_error_message(error: Exception) -> str | None:
     if isinstance(error, PitchInUse):
         numbers = ", ".join(str(number) for number in error.episodes)
         return (
-            f"Pitch {error} is used by episodes {numbers}; call set_episode_pitch with "
-            "pitch_id null for each of them first"
+            f"Pitch {error} is used by episodes {numbers}; call set_episode_pitches without "
+            "this pitch for each of them first"
         )
     if isinstance(error, SourceNotFound):
         return f"Source {error} not found; call get_pitch for the pitch's source ids"
@@ -73,6 +76,17 @@ def pitch_reported[T](action: Callable[[], T]) -> T:
             raise ToolError(pitch_error_message(refusal) or str(refusal)) from refusal
 
     return reported(guarded)
+
+
+def pitch_list(pitch_ids: list[UUID]) -> PitchList:
+    """The list of pitches an agent sent, or a tool error saying what to change."""
+    try:
+        return PitchList(pitch_ids=pitch_ids)
+    except ValidationError as invalid:
+        raise ToolError(
+            f"pitch_ids is not valid ({invalid.errors()[0]['msg']}); send each pitch id once, "
+            f"at most {MAX_EPISODE_PITCHES} of them, from list_pitches"
+        ) from invalid
 
 
 def add_pitch_tools(server: MCPServer, services: Services) -> None:
@@ -169,13 +183,33 @@ def add_pitch_writes(server: MCPServer, services: Services) -> None:
         pitch_id: UUID | None,
         expected_revision: int | None = None,
     ) -> EpisodePitch:
-        """Point an episode at one of the channel's pitches (from list_pitches), or pass
-        pitch_id null for none. The episode then shows the pitch's notes and sources as they
-        are, never a copy; several episodes may share a pitch. Needs content:write."""
+        """Set an episode's pitches to this one pitch of the channel (from list_pitches), or
+        pass pitch_id null for none. It replaces any pitches the episode had; to build an
+        episode on several pitches, use set_episode_pitches instead. Needs content:write."""
         choice = PitchChoice(pitch_id=pitch_id)
         return pitch_reported(
             lambda: pitches.choose_episode_pitch(
                 services, access(context, slug), number, choice, expected_revision
+            )
+        )
+
+    @server.tool(annotations=tool_annotations("Set an episode's pitches", Effect.REPLACE))
+    def set_episode_pitches(
+        context: Context,
+        slug: str,
+        number: int,
+        pitch_ids: list[UUID],
+        expected_revision: int | None = None,
+    ) -> EpisodePitches:
+        """Set the pitches (from list_pitches) an episode is built on, in order: the first is
+        its main pitch, and an empty list clears them. This replaces the whole list, so send
+        every pitch you want to keep. The episode shows each pitch's notes and sources as they
+        are, never a copy. Pass the list's `revision` from an earlier call (0 when never set) as
+        `expected_revision`. Needs content:write."""
+        chosen = pitch_list(pitch_ids)
+        return pitch_reported(
+            lambda: pitches.set_episode_pitches(
+                services, access(context, slug), number, chosen, expected_revision
             )
         )
 

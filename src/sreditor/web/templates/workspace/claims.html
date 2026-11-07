@@ -1,0 +1,87 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% block page_title %}{{ _("Claims") }} · {{ episode.title }}{% endblock %}
+{% block page %}
+{% set may_write = can("write_content") %}
+{% set lead = _("The figures and facts the episode states, and the sources that back each one.") %}
+{% include "workspace/_episode_header.html" %}
+{{ ui.form_error(errors) }}
+{% if unchecked_count == 1 %}
+{% call ui.alert("warning") %}{{ _("1 claim has no checked primary source. This does not block the episode.") }}{% endcall %}
+{% elif unchecked_count %}
+{% call ui.alert("warning") %}{{ _("%(count)s claims have no checked primary source. This does not block the episode.", count=unchecked_count) }}{% endcall %}
+{% endif %}
+{% macro claim_form(claim, prefix) %}
+  {% set claim_key = claim.id | string if claim else "" %}
+  {% set is_sent = sent_claim is not none and edited_claim == claim_key %}
+  {% set values = sent_claim if is_sent else none %}
+  {% set form_errors = errors if is_sent else {} %}
+  {% set own_ids = claim.sources | map(attribute="source_id") | map("string") | list if claim else [] %}
+  {% set own_primary = claim.sources | selectattr("is_primary") | map(attribute="source_id") | map("string") | list if claim else [] %}
+  {% set picked = (values.source + values.primary) if values else own_ids %}
+  {% set primary = values.primary if values else own_primary %}
+  {% call ui.form(claims_link ~ ("/save" if claim else ""), csrf_field, csrf_token) %}
+    {% if claim %}{{ ui.hidden("claim_id", claim.id) }}{{ ui.hidden("revision", claim.revision) }}{% endif %}
+    {{ ui.textarea("quote", _("Quote"), form_errors, value=values.quote if values else (claim.quote if claim else ""), limit=quote_limit, rows=2, required=true, id=prefix ~ "-quote", hint=_("The sentence, as the episode says it.")) }}
+    {% call ui.fields_row() %}
+      {{ ui.select("place_kind", _("Where it appears"), place_options, {}, value=values.place_kind if values else (claim.place.kind.value if claim else "scene"), id=prefix ~ "-place-kind") }}
+      {{ ui.field("place_ref", _("Place"), form_errors, value=values.place_ref if values else (claim.place.ref if claim else ""), maxlength=place_limit, id=prefix ~ "-place", hint=_("The scene heading, the block's number in the short script (from 1), or a few words.")) }}
+    {% endcall %}
+    {% if source_options %}
+    {{ ui.choices("source", _("Backing sources"), source_options, form_errors, selected=picked, code_labels=false, id_prefix=prefix ~ "-source") }}
+    {{ ui.choices("primary", _("Primary sources"), source_options, {}, selected=primary, code_labels=false, id_prefix=prefix ~ "-primary") }}
+    {% else %}
+    <p class="muted">{{ _("Add sources to the episode or to one of its pitches first.") }}</p>
+    {% endif %}
+    {% call ui.panel_actions() %}{{ ui.button(_("Save claim") if claim else _("Add claim")) }}{% endcall %}
+  {% endcall %}
+{% endmacro %}
+{% call ui.panel(_("Claims"), id="claims") %}
+  {% if claims %}
+  {% call(claim) ui.items(claims, _("Claims")) %}
+    {% call ui.item_body() %}
+      <p><strong>{{ claim.quote }}</strong></p>
+      {{ ui.meta(_(place_labels[claim.place.kind.value]) ~ ": " ~ claim.place.ref) }}
+      {% if claim.id | string in unchecked_ids %}{{ ui.badge(_("No checked primary source"), "warning") }}{% else %}{{ ui.badge(_("Backed"), "success") }}{% endif %}
+      {% if claim.sources %}
+      <ul class="claim-sources" aria-label="{{ _('Backing sources') }}">
+        {% for source in claim.sources %}
+        <li>
+          <a href="{{ source.url }}" rel="noopener noreferrer" target="_blank">{{ source.title }}</a>
+          {{ ui.badge(_("Primary") if source.is_primary else _("Secondary"), "accent" if source.is_primary else "") }}
+          {% if source.is_checked %}
+          {{ ui.badge(_("Checked"), "success") }}
+          {{ ui.meta(_("by %(name)s on %(date)s", name=checkers[source.checked_by.id], date=_.day(source.checked_at.date()))) }}
+          {% endif %}
+          {% if may_write %}
+          {% call ui.form(claims_link ~ "/check", csrf_field, csrf_token) %}
+            {{ ui.hidden("claim_id", claim.id) }}{{ ui.hidden("revision", claim.revision) }}{{ ui.hidden("source_id", source.source_id) }}{{ ui.hidden("is_checked", "" if source.is_checked else "1") }}
+            {{ ui.button(_("Take the check back") if source.is_checked else _("Mark as checked"), variant="ghost", size="small") }}
+          {% endcall %}
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="muted">{{ _("No source backs this claim yet.") }}</p>
+      {% endif %}
+    {% endcall %}
+    {% if may_write %}
+    {% call ui.item_side() %}
+      {% call ui.more(_("Edit"), open=edited_claim == claim.id | string) %}{{ claim_form(claim, "claim-" ~ claim.id) }}{% endcall %}
+      {{ ui.confirm(_("Remove"), _("Remove this claim? Its sources stay."), claims_link ~ "/delete", csrf_field, csrf_token, _("Remove claim"), fields=[("claim_id", claim.id), ("revision", claim.revision)], target=claim.quote) }}
+    {% endcall %}
+    {% endif %}
+  {% endcall %}
+  {% if next_cursor %}{{ ui.pager(claims_link ~ "?cursor=" ~ next_cursor, _("More claims")) }}{% endif %}
+  {% else %}
+  <p class="muted">{{ _("No claims yet.") }}</p>
+  {% endif %}
+  {% if may_write %}{% call ui.panel_actions() %}{{ ui.dialog_button("new-claim", _("Add a claim"), plus=true) }}{% endcall %}{% endif %}
+{% endcall %}
+{% if may_write %}
+{% call ui.dialog("new-claim", _("Add a claim"), _("Close"), open=sent_claim is not none and not edited_claim) %}
+  {{ claim_form(none, "new-claim") }}
+{% endcall %}
+{% endif %}
+{% endblock %}

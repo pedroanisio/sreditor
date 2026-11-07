@@ -38,7 +38,7 @@
 {% macro icon(name) -%}
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
   {%- if name == "success" %}<path d="M20 6 9 17l-5-5"/>
-  {%- elif name == "error" %}<circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/>
+  {%- elif name == "error" or name == "warning" %}<circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/>
   {%- elif name == "todo" %}<circle cx="12" cy="12" r="9"/>
   {%- elif name == "done" %}<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>
   {%- elif name == "overview" %}<path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>
@@ -153,22 +153,24 @@
 </div>
 {%- endmacro %}
 
-{# Several checkboxes under one label; `options` are (value, label, hint) triples. #}
+{# Several checkboxes under one label; `options` are (value, label, hint) triples. Give an
+   `id_prefix` when the page has several groups of the same name, so their ids stay unique. #}
 {# Options are (value, label, hint). With code_labels the label is an identifier shown as code;
    without, the label is plain text and the hint can carry the identifier. #}
-{% macro choices(name, legend, options, errors, selected=[], code_labels=true) -%}
+{% macro choices(name, legend, options, errors, selected=[], code_labels=true, id_prefix="") -%}
 {% set error = errors.get(name) %}
-<fieldset class="choices"{% if error %} aria-invalid="true" aria-describedby="{{ name }}-error"{% endif %}>
+{% set base = id_prefix or name %}
+<fieldset class="choices"{% if error %} aria-invalid="true" aria-describedby="{{ base }}-error"{% endif %}>
   <legend>{{ legend }}</legend>
   {% for option_value, option_label, option_hint in options %}
   <div class="field check">
-    <input id="{{ name }}-{{ loop.index }}" name="{{ name }}" type="checkbox" value="{{ option_value }}"{% if option_value in selected %} checked{% endif %}
-      {%- if option_hint %} aria-describedby="{{ name }}-{{ loop.index }}-hint"{% endif %}>
-    <label for="{{ name }}-{{ loop.index }}">{% if code_labels %}<code>{{ option_label }}</code>{% else %}{{ option_label }}{% endif %}</label>
-    {% if option_hint %}<p class="hint" id="{{ name }}-{{ loop.index }}-hint">{{ option_hint }}</p>{% endif %}
+    <input id="{{ base }}-{{ loop.index }}" name="{{ name }}" type="checkbox" value="{{ option_value }}"{% if option_value in selected %} checked{% endif %}
+      {%- if option_hint %} aria-describedby="{{ base }}-{{ loop.index }}-hint"{% endif %}>
+    <label for="{{ base }}-{{ loop.index }}">{% if code_labels %}<code>{{ option_label }}</code>{% else %}{{ option_label }}{% endif %}</label>
+    {% if option_hint %}<p class="hint" id="{{ base }}-{{ loop.index }}-hint">{{ option_hint }}</p>{% endif %}
   </div>
   {% endfor %}
-  {% if error %}<p class="error" id="{{ name }}-error">{{ error }}</p>{% endif %}
+  {% if error %}<p class="error" id="{{ base }}-error">{{ error }}</p>{% endif %}
 </fieldset>
 {%- endmacro %}
 

@@ -8,7 +8,7 @@
   {% if export.episode.summary %}<p class="doc-lead">{{ export.episode.summary }}</p>{% endif %}
   <dl class="doc-facts">
     <dt>{{ _("Status") }}</dt><dd>{{ status }}</dd>
-    {% if export.pitch %}<dt>{{ _("Pitch") }}</dt><dd>{{ export.pitch.pitch.title }}</dd>{% endif %}
+    {% if export.pitches %}<dt>{{ _("Pitch") if export.pitches|length == 1 else _("Pitches") }}</dt><dd>{% for pitch_part in export.pitches %}{{ pitch_part.pitch.title }}{% if not loop.last %}, {% endif %}{% endfor %}</dd>{% endif %}
     {% if export.style %}<dt>{{ _("Visual style") }}</dt><dd>{{ export.style.name }}</dd>{% endif %}
     <dt>{{ _("Exported on") }}</dt><dd>{{ exported_on }}</dd>
   </dl>
@@ -23,12 +23,12 @@
   <h2>{{ _("Research") }}</h2>
   {% if export.research_notes %}<p class="doc-text">{{ export.research_notes }}</p>{% else %}<p class="doc-muted">{{ _("No research notes yet.") }}</p>{% endif %}
   {% if export.sources %}<h3>{{ _("Sources") }}</h3>{{ sources_table(export.sources) }}{% endif %}
-  {% if export.pitch %}
-  <h3>{{ _("Pitch") }}: {{ export.pitch.pitch.title }}</h3>
-  {% if export.pitch.pitch.summary %}<p class="doc-text">{{ export.pitch.pitch.summary }}</p>{% endif %}
-  {% if export.pitch.notes %}<p class="doc-text">{{ export.pitch.notes }}</p>{% endif %}
-  {% if export.pitch.sources %}{{ sources_table(export.pitch.sources) }}{% endif %}
-  {% endif %}
+  {% for pitch_part in export.pitches %}
+  <h3>{{ _("Pitch") }}: {{ pitch_part.pitch.title }}</h3>
+  {% if pitch_part.pitch.summary %}<p class="doc-text">{{ pitch_part.pitch.summary }}</p>{% endif %}
+  {% if pitch_part.notes %}<p class="doc-text">{{ pitch_part.notes }}</p>{% endif %}
+  {% if pitch_part.sources %}{{ sources_table(pitch_part.sources) }}{% endif %}
+  {% endfor %}
 
   <h2>{{ _("Screenplay") }}</h2>
   {% if export.screenplay.text %}<pre class="doc-script">{{ export.screenplay.text }}</pre>{% else %}<p class="doc-muted">{{ _("No screenplay yet.") }}</p>{% endif %}

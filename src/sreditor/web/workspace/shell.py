@@ -81,6 +81,9 @@ class Flash(StrEnum):
     LINK_ADDED = "link_added"
     PUBLISHED_INCOMPLETE = "published_incomplete"
     METRICS_RECORDED = "metrics_recorded"
+    CLAIM_ADDED = "claim_added"
+    CLAIMS_UNCHECKED = "claims_unchecked"
+    PUBLISHED_WITH_GAPS = "published_with_gaps"
 
 
 CHANGED_MEANWHILE = N_(
@@ -118,6 +121,13 @@ FLASH_TEXT: dict[Flash, str] = {
         "Episode saved as published, but its delivery package is incomplete. Open Delivery to see what is missing."
     ),
     Flash.METRICS_RECORDED: N_("Numbers recorded."),
+    Flash.CLAIM_ADDED: N_("Claim added."),
+    Flash.CLAIMS_UNCHECKED: N_(
+        "Changes saved, but some claims still have no checked primary source. See the Claims page."
+    ),
+    Flash.PUBLISHED_WITH_GAPS: N_(
+        "Episode saved as published, but its delivery package is incomplete and some claims still have no checked primary source. Open Delivery and Claims to see what is missing."
+    ),
 }
 
 

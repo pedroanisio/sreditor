@@ -140,9 +140,42 @@ def test_episode_choose_pitch_shows_its_research(owner: TestClient, pitch: str) 
     submit(owner, f"{pitch}/sources", STUDY)
     pitch_id = pitch.rsplit("/", 1)[1]
     page = flash_after(owner, submit(owner, EPISODE_PITCH, {"pitch_id": pitch_id, "revision": "0"}))
-    assert 'id="pitch-research-title"' in page
+    assert 'id="pitch-research-1-title"' in page
     assert "Shared lead" in page and "Mondays study" in page
     assert "#1" in owner.get(pitch).text
+
+
+def second_pitch(owner: TestClient) -> str:
+    """The id of a second pitch of the channel."""
+    created = submit(owner, PITCHES, {"title": "Second pitch", "summary": ""})
+    location: str = created.headers["location"]
+    owner.get(location)
+    return location.rsplit("/", 1)[1]
+
+
+def test_episode_choose_several_pitches_shows_each_ones_research_in_order(
+    owner: TestClient, pitch: str
+) -> None:
+    other = second_pitch(owner)
+    submit(owner, f"{PITCHES}/{other}/research", {"text": "Second lead"})
+    ids = [other, pitch.rsplit("/", 1)[1]]
+    page = flash_after(owner, submit(owner, EPISODE_PITCH, {"pitch_id": ids, "revision": "0"}))
+    assert page.index("pitch-research-1-title") < page.index("pitch-research-2-title")
+    assert "Second lead" in page and "Why Mondays hurt" in page
+
+
+def test_episode_choose_same_pitch_twice_shows_error(owner: TestClient, pitch: str) -> None:
+    pitch_id = pitch.rsplit("/", 1)[1]
+    response = submit(owner, EPISODE_PITCH, {"pitch_id": [pitch_id, pitch_id]})
+    assert response.status_code == 422 and 'id="pitch_id-error"' in response.text
+
+
+def test_research_page_offers_one_more_picker_than_the_chosen_pitches(
+    owner: TestClient, pitch: str
+) -> None:
+    submit(owner, EPISODE_PITCH, {"pitch_id": [pitch.rsplit("/", 1)[1]], "revision": "0"})
+    page = owner.get(RESEARCH).text
+    assert 'id="pitch_id_2"' in page and 'id="pitch_id_3"' not in page
 
 
 def test_episode_choose_unknown_pitch_shows_error(owner: TestClient) -> None:

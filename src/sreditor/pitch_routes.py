@@ -17,10 +17,12 @@ from sreditor.pagination import DEFAULT_LIMIT, Cursor, Limit, Page
 from sreditor.pitch_operations import PitchChange, PitchQuery, PitchSourceChange
 from sreditor.pitches import (
     EpisodePitch,
+    EpisodePitches,
     Pitch,
     PitchChoice,
     PitchInput,
     PitchInUse,
+    PitchList,
     PitchNotes,
     PitchNotesInput,
     PitchNotFound,
@@ -67,7 +69,9 @@ SourceTarget = Annotated[PitchSourceChange, Depends(source_change)]
 PitchListing = Annotated[PitchQuery, Depends(pitch_query)]
 
 
-def tagged[T: Pitch | PitchNotes | PitchSource | EpisodePitch](found: T, response: Response) -> T:
+def tagged[T: Pitch | PitchNotes | PitchSource | EpisodePitch | EpisodePitches](
+    found: T, response: Response
+) -> T:
     """The resource, with its revision as the response's ETag."""
     response.headers["ETag"] = etag(found.revision)
     return found
@@ -202,21 +206,46 @@ def remove_pitch_source(target: SourceTarget, access: Access, app: ServicesDep) 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/channels/{slug}/episodes/{number}/pitch", summary="Read an episode's pitch")
+@router.get("/channels/{slug}/episodes/{number}/pitches", summary="List an episode's pitches")
+def get_episode_pitches(
+    number: Number, access: Access, app: ServicesDep, response: Response
+) -> EpisodePitches:
+    """Which pitches an episode refers to, in order (`pitch_ids`, the first is the main one);
+    the list is empty when none. Their research is each pitch's own, read with get_pitch_notes
+    and list_pitch_sources, never a copy.
+    """
+    return tagged(pitches.get_episode_pitches(app, access, number), response)
+
+
+@router.put("/channels/{slug}/episodes/{number}/pitches", summary="Set an episode's pitches")
+def set_episode_pitches(
+    target: WriteTarget, data: PitchList, access: Access, app: ServicesDep, response: Response
+) -> EpisodePitches:
+    """Replace the pitches an episode is built on with `pitch_ids`, in order: the first is its
+    main pitch, and an empty list clears them. Each must be a pitch of the channel.
+
+    Several episodes may share a pitch. Needs content:write; send If-Match to be safe.
+    """
+    chosen = pitches.set_episode_pitches(app, access, target.number, data, target.expected_revision)
+    return tagged(chosen, response)
+
+
+@router.get("/channels/{slug}/episodes/{number}/pitch", summary="Read an episode's main pitch")
 def get_episode_pitch(
     number: Number, access: Access, app: ServicesDep, response: Response
 ) -> EpisodePitch:
-    """Which pitch an episode refers to; `pitch_id` is null when none. Its research is the
-    pitch's own, read with get_pitch_notes and list_pitch_sources, never a copy.
+    """Which pitch is the main one of an episode, the first of its pitches; `pitch_id` is null
+    when none. Prefer get_episode_pitches, which lists them all.
     """
     return tagged(pitches.get_episode_pitch(app, access, number), response)
 
 
-@router.put("/channels/{slug}/episodes/{number}/pitch", summary="Set an episode's pitch")
+@router.put("/channels/{slug}/episodes/{number}/pitch", summary="Set an episode's only pitch")
 def set_episode_pitch(
     target: WriteTarget, data: PitchChoice, access: Access, app: ServicesDep, response: Response
 ) -> EpisodePitch:
-    """Point an episode at one of the channel's pitches, or send `pitch_id: null` for none.
+    """Set an episode's pitches to this one pitch of the channel, or send `pitch_id: null` for
+    none. To use several pitches, call set_episode_pitches instead.
 
     Several episodes may share a pitch. Needs content:write; send If-Match to be safe.
     """

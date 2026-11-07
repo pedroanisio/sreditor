@@ -160,6 +160,7 @@ main {
 .status-icon.success { background: var(--color-success-soft); color: var(--color-success); }
 .status-icon.error { background: var(--color-danger-soft); color: var(--color-danger); }
 .status-icon.info { background: var(--color-accent-soft); color: var(--color-accent); }
+.status-icon.warning { background: var(--color-warning-soft); color: var(--color-warning); }
 
 /* Field */
 
@@ -214,6 +215,7 @@ p.error { color: var(--color-danger); }
 .alert.error { background: var(--color-danger-soft); color: var(--color-danger); }
 .alert.success { background: var(--color-success-soft); color: var(--color-success); }
 .alert.info { background: var(--color-accent-soft); color: var(--color-accent); }
+.alert.warning { background: var(--color-warning-soft); color: var(--color-warning); }
 
 /* Button: hover, focus-visible, pressed and loading states (rule ui.microinteractions). */
 

@@ -16,9 +16,10 @@ from sreditor.pagination import DEFAULT_LIMIT, MAX_LIMIT
 from sreditor.pitch_operations import (
     PitchQuery,
     episode_pitch_research,
-    get_episode_pitch,
+    get_episode_pitches,
     list_pitches,
 )
+from sreditor.pitches import MAX_EPISODE_PITCHES
 from sreditor.research import (
     CLAIM_LENGTH,
     NOTES_LENGTH,
@@ -93,12 +94,19 @@ def sources_url(slug: str, number: int) -> str:
     return episodes_url(slug, number) + SOURCES_SUFFIX
 
 
+def pitch_slots(chosen: list[UUID]) -> list[str]:
+    """The pickers to show: one per chosen pitch and one empty, to add another."""
+    shown = [str(pitch_id) for pitch_id in chosen]
+    return shown + [""] if len(shown) < MAX_EPISODE_PITCHES else shown
+
+
 def pitch_panel(app: Services, access: ChannelAccess, number: int) -> dict[str, Any]:
-    """The pitch the episode uses, its research as it is now, and the pitches to choose from."""
-    chosen = get_episode_pitch(app, access, number)
+    """The pitches the episode uses, their research as it is now, and the pitches to choose from."""
+    chosen = get_episode_pitches(app, access, number)
     query = PitchQuery(limit=MAX_LIMIT)
     return {
-        "episode_pitch": chosen,
+        "episode_pitches": chosen,
+        "pitch_slots": pitch_slots(chosen.pitch_ids),
         "pitch_research": episode_pitch_research(app, access, number),
         "pitch_choices": [
             (str(item.id), item.title) for item in list_pitches(app, access, query).items

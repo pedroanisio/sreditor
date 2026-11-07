@@ -78,6 +78,9 @@ class RevisedEpisode(BaseModel):
     episode: Episode
     revision: int
     warnings: list[DeliveryWarning] = Field(default_factory=list)
+    # Set when a write moves the episode to published and claims still lack a checked primary
+    # source: a heads-up that never blocks the change (rule project.claims).
+    claims_warning: str | None = None
 
 
 class EpisodeNotFound(LookupError):

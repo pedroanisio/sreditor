@@ -6,35 +6,38 @@
 {% set lead = _("What the episode is built on: notes, and the sources behind each claim.") %}
 {% include "workspace/_episode_header.html" %}
 {{ ui.form_error(errors) }}
-{% call ui.panel(_("Pitch"), id="pitch") %}
+{% call ui.panel(_("Pitches"), id="pitch") %}
   {% if may_write %}
   {% if pitch_choices or errors.pitch_id %}
   {% call ui.form(pitch_link, csrf_field, csrf_token) %}
-    {{ ui.hidden("revision", episode_pitch.revision) }}
-    {{ ui.select("pitch_id", _("Pitch this episode is built on"), [("", _("No pitch"))] + pitch_choices, errors, value=(episode_pitch.pitch_id or "") | string, hint=_("Its notes and sources show here as they are; editing them on the pitch changes them for every episode that uses it.")) }}
-    {% call ui.panel_actions() %}{{ ui.button(_("Save pitch")) }}{% endcall %}
+    {{ ui.hidden("revision", episode_pitches.revision) }}
+    {% for slot in pitch_slots %}
+    {{ ui.select("pitch_id", _("Main pitch") if loop.first else _("Pitch %(position)s", position=loop.index), [("", _("No pitch") if loop.first else _("No other pitch"))] + pitch_choices, errors if loop.first else {}, value=slot, id="pitch_id" if loop.first else "pitch_id_" ~ loop.index, hint=_("The first pitch is the main one. Notes and sources show here as they are; editing them on a pitch changes them for every episode that uses it.") if loop.first else "") }}
+    {% endfor %}
+    {% call ui.panel_actions() %}{{ ui.button(_("Save pitches")) }}{% endcall %}
   {% endcall %}
   {% else %}
   <p class="muted">{{ _("The channel has no pitches yet.") }} <a href="{{ pitches_link }}">{{ _("Add a pitch") }}</a></p>
   {% endif %}
   {% endif %}
-  {% if pitch_research %}
-  {% call ui.subsection(_("Pitch research"), "pitch-research") %}
-  <p><a href="{{ pitches_link }}/{{ pitch_research.pitch.id }}">{{ pitch_research.pitch.title }}</a></p>
+  {% for research in pitch_research %}
+  {% call ui.subsection(research.pitch.title, "pitch-research-" ~ loop.index) %}
+  <p><a href="{{ pitches_link }}/{{ research.pitch.id }}">{{ research.pitch.title }}</a></p>
   {{ ui.inherited(_("From the pitch: change these notes and sources on the pitch's page.")) }}
-  {% if pitch_research.notes.text %}{{ ui.text_block(pitch_research.notes.text) }}{% else %}<p class="muted">{{ _("The pitch has no notes yet.") }}</p>{% endif %}
-  {% if pitch_research.sources %}
-  {% call(source) ui.items(pitch_research.sources, _("Pitch sources")) %}
+  {% if research.notes.text %}{{ ui.text_block(research.notes.text) }}{% else %}<p class="muted">{{ _("The pitch has no notes yet.") }}</p>{% endif %}
+  {% if research.sources %}
+  {% call(source) ui.items(research.sources, _("Pitch sources")) %}
     {% call ui.item_body() %}
       <p><a href="{{ source.url }}" rel="noopener noreferrer" target="_blank">{{ source.title }}</a></p>
       {% if source.claim %}<p>{{ source.claim }}</p>{% endif %}
       {{ ui.meta(_("Read on %(date)s", date=_.day(source.accessed_on))) }}
     {% endcall %}
   {% endcall %}
-  {% if pitch_research.has_more_sources %}<p><a href="{{ pitches_link }}/{{ pitch_research.pitch.id }}#sources">{{ _("All the pitch's sources") }}</a></p>{% endif %}
+  {% if research.has_more_sources %}<p><a href="{{ pitches_link }}/{{ research.pitch.id }}#sources">{{ _("All the pitch's sources") }}</a></p>{% endif %}
   {% endif %}
   {% endcall %}
-  {% elif not may_write %}
+  {% endfor %}
+  {% if not pitch_research and not may_write %}
   <p class="muted">{{ _("This episode is not built on a pitch.") }}</p>
   {% endif %}
 {% endcall %}

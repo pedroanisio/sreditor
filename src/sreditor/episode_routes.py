@@ -17,6 +17,10 @@ from sreditor.pagination import DEFAULT_LIMIT, Cursor, Limit, Page
 
 router = APIRouter(tags=["episodes"])
 
+# RFC 9111 section 5.5 Warning with code 199, "miscellaneous warning": the change went through.
+WARNING_HEADER = "Warning"
+MISCELLANEOUS_WARNING = 199
+
 Number = Annotated[int, Path(ge=1, description="The episode's number within the channel.")]
 
 
@@ -39,8 +43,12 @@ WriteTarget = Annotated[EpisodeWrite, Depends(episode_write)]
 
 
 def with_etag(revised: RevisedEpisode, response: Response) -> Episode:
-    """The episode, with its revision as the response's ETag."""
+    """The episode, with its revision as the response's ETag and any warning as a Warning header."""
     response.headers["ETag"] = etag(revised.revision)
+    if revised.claims_warning:
+        response.headers[WARNING_HEADER] = (
+            f'{MISCELLANEOUS_WARNING} sreditor "{revised.claims_warning}"'
+        )
     return revised.episode
 
 

@@ -124,6 +124,16 @@ def test_export_episode_json_holds_every_part(filled: TestClient) -> None:
     assert found["third_party"][0]["item"]["creator"] == "NASA"
 
 
+def test_export_episode_json_lists_every_pitch_in_order(filled: TestClient) -> None:
+    second = written(filled.post(BASE + "/pitches", json={"title": "Second pitch"}))
+    first = filled.get(EPISODE + "/pitches").json()["pitch_ids"]
+    written(filled.put(EPISODE + "/pitches", json={"pitch_ids": [second["id"], *first]}))
+    found = filled.get(EPISODE_EXPORT, params={"format": "json"}).json()
+    titles = [part["pitch"]["title"] for part in found["pitches"]]
+    assert titles == ["Second pitch", "Why Mondays hurt"]
+    assert found["pitch"]["pitch"]["title"] == "Second pitch"
+
+
 def test_export_episode_json_never_mentions_waivers(filled: TestClient) -> None:
     assert "waiver" not in filled.get(EPISODE_EXPORT, params={"format": "json"}).text
 

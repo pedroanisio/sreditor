@@ -22,6 +22,7 @@ from sreditor.accounts import (
 from sreditor.assets import AssetStore
 from sreditor.block_takes import BlockTakeStore
 from sreditor.channels import Channel
+from sreditor.claims import ClaimStore
 from sreditor.classification import ClassificationStore
 from sreditor.context import ContextStore
 from sreditor.delivery import DeliveryStore
@@ -103,6 +104,7 @@ class Services:
     deliveries: DeliveryStore
     post_metrics: PostMetricsStore
     file_links: FileLinkStore
+    claims: ClaimStore
     voice: ElevenLabs | None = None  # None: SREDITOR_ELEVENLABS_API_KEY is not set
 
     def accounts(self, locale: str = BASE_LOCALE) -> Accounts:

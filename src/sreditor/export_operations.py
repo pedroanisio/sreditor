@@ -50,7 +50,7 @@ class ChannelSummary(BaseModel):
 
 
 class PitchPart(BaseModel):
-    """The pitch an episode refers to, with its own research, as it is."""
+    """A pitch an episode refers to, with its own research, as it is."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -79,7 +79,9 @@ class EpisodeExport(BaseModel):
     episode: Episode
     research_notes: str
     sources: list[Source]
+    # The main pitch, which is the first of `pitches`; kept so format 1 readers still find it.
     pitch: PitchPart | None
+    pitches: list[PitchPart]
     screenplay: Screenplay
     short_script: ShortScript | None
     classification: EpisodeClassification
@@ -128,11 +130,8 @@ def channel_summary(access: ChannelAccess) -> ChannelSummary:
     return ChannelSummary(slug=access.channel.slug, name=access.channel.name)
 
 
-def pitch_part(app: Services, access: ChannelAccess, number: int) -> PitchPart | None:
-    """The episode's pitch with its notes and sources, or None when it has none."""
-    pitch_id: UUID | None = pitch_operations.get_episode_pitch(app, access, number).pitch_id
-    if pitch_id is None:
-        return None
+def pitch_part(app: Services, access: ChannelAccess, pitch_id: UUID) -> PitchPart:
+    """One pitch with its notes and every source."""
     sources = every_item(
         lambda cursor: pitch_operations.list_sources(app, access, pitch_id, cursor, MAX_LIMIT)
     )
@@ -141,6 +140,12 @@ def pitch_part(app: Services, access: ChannelAccess, number: int) -> PitchPart |
         notes=pitch_operations.get_notes(app, access, pitch_id).text,
         sources=sources,
     )
+
+
+def pitch_parts(app: Services, access: ChannelAccess, number: int) -> list[PitchPart]:
+    """Every pitch of the episode with its notes and sources, main one first."""
+    chosen = pitch_operations.get_episode_pitches(app, access, number)
+    return [pitch_part(app, access, pitch_id) for pitch_id in chosen.pitch_ids]
 
 
 def third_party_uses(app: Services, access: ChannelAccess, number: int) -> list[ThirdPartyUse]:
@@ -167,13 +172,15 @@ def export_episode(app: Services, access: ChannelAccess, number: int) -> Episode
     sources = every_item(
         lambda cursor: research.list_sources(app, access, number, cursor, MAX_LIMIT)
     )
+    pitches = pitch_parts(app, access, number)
     return EpisodeExport(
         exported_at=datetime.now(UTC),
         channel=channel_summary(access),
         episode=episode_operations.get_episode(app, access, number).episode,
         research_notes=research.get_notes(app, access, number).text,
         sources=sources,
-        pitch=pitch_part(app, access, number),
+        pitch=pitches[0] if pitches else None,
+        pitches=pitches,
         screenplay=get_screenplay(app, access, number),
         short_script=written_short_script(app, access, number),
         classification=classifying.get_classification(app, access, number),
