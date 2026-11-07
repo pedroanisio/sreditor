@@ -7,15 +7,19 @@ create or update one, write its notes, cite or drop a source, and point an episo
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Annotated
 from uuid import UUID
 
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
+from mcp.types import CallToolResult
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from sreditor import pitch_operations as pitches
 from sreditor.deps import ChannelAccess, Services, access_for
-from sreditor.mcp_server import Effect, Removed, principal, reported, tool_annotations
+from sreditor.mcp_idempotency import IdempotencyKey, IdempotentCall, run_once
+from sreditor.mcp_principal import principal
+from sreditor.mcp_server import Effect, Removed, reported, tool_annotations
 from sreditor.pagination import DEFAULT_LIMIT, Page, ToolLimit
 from sreditor.pitch_operations import PitchChange, PitchQuery, PitchSourceChange
 from sreditor.pitches import (
@@ -153,11 +157,25 @@ def add_pitch_writes(server: MCPServer, services: Services) -> None:
         return channel_access(services, context, slug)
 
     @server.tool(annotations=tool_annotations("Create a pitch", Effect.CREATE))
-    def create_pitch(context: Context, slug: str, pitch: PitchInput) -> Pitch:
+    def create_pitch(
+        context: Context, slug: str, pitch: PitchInput, idempotency_key: IdempotencyKey = None
+    ) -> Annotated[CallToolResult, Pitch]:
         """Add a story idea to a channel: a title, a summary and a status (idea by default).
-        Needs content:write. Each call adds another pitch, so check list_pitches first; to
-        change one, use update_pitch."""
-        return pitch_reported(lambda: pitches.create_pitch(services, access(context, slug), pitch))
+        Needs content:write. Each call adds another pitch unless you pass an `idempotency_key`
+        (a retry with the same key and pitch returns the first one), so check list_pitches
+        first; to change one, use update_pitch."""
+        call = IdempotentCall(
+            operation=f"create_pitch/{slug}", arguments=pitch, key=idempotency_key
+        )
+        return pitch_reported(
+            lambda: run_once(
+                services,
+                context,
+                call,
+                lambda: pitches.create_pitch(services, access(context, slug), pitch),
+                Pitch,
+            )
+        )
 
     @server.tool(annotations=tool_annotations("Update a pitch", Effect.REPLACE))
     def update_pitch(
@@ -238,13 +256,27 @@ def add_pitch_research_tools(server: MCPServer, services: Services) -> None:
 
     @server.tool(annotations=tool_annotations("Cite a pitch source", Effect.CREATE))
     def add_pitch_source(
-        context: Context, slug: str, pitch_id: UUID, source: SourceInput
-    ) -> PitchSource:
+        context: Context,
+        slug: str,
+        pitch_id: UUID,
+        source: SourceInput,
+        idempotency_key: IdempotencyKey = None,
+    ) -> Annotated[CallToolResult, PitchSource]:
         """Cite a source for one claim of a pitch: its link, title and the claim it supports.
         Every episode that uses the pitch shows it. Needs content:write. `accessed_on`
-        defaults to today. Each call adds another source."""
+        defaults to today. Each call adds another source unless you pass an `idempotency_key`:
+        a retry with the same key and source returns the first one."""
+        call = IdempotentCall(
+            operation=f"add_pitch_source/{slug}/{pitch_id}", arguments=source, key=idempotency_key
+        )
         return pitch_reported(
-            lambda: pitches.add_source(services, access(context, slug), pitch_id, source)
+            lambda: run_once(
+                services,
+                context,
+                call,
+                lambda: pitches.add_source(services, access(context, slug), pitch_id, source),
+                PitchSource,
+            )
         )
 
     @server.tool(annotations=tool_annotations("Remove a pitch source", Effect.REMOVE))

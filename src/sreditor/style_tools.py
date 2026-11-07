@@ -16,7 +16,8 @@ from mcp.server.mcpserver.exceptions import ToolError
 from sreditor.deps import ChannelAccess, Services, access_for
 from sreditor.library import LibraryKind
 from sreditor.library_operations import EntryChange
-from sreditor.mcp_server import Effect, principal, reported, tool_annotations
+from sreditor.mcp_principal import principal
+from sreditor.mcp_server import Effect, reported, tool_annotations
 from sreditor.srstudio import SheetInput, Slug, SlugTaken, StyleSheet
 from sreditor.srstudio_operations import LibrarySheet, get_sheet, save_sheet
 

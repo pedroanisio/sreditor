@@ -8,10 +8,12 @@ Uploading a copy is a file transfer, so it stays on the API (upload_external_med
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Annotated
 from uuid import UUID
 
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
+from mcp.types import CallToolResult
 from pydantic import BaseModel, ConfigDict
 
 from sreditor import external_media_operations as external
@@ -29,6 +31,7 @@ from sreditor.external_media import (
     UseRefused,
 )
 from sreditor.external_media_operations import ItemChange, ItemQuery, UseChange, UseQuery
+from sreditor.mcp_idempotency import IdempotencyKey, IdempotentCall, run_once
 from sreditor.mcp_server import Effect, Removed, reported, tool_annotations
 from sreditor.pagination import DEFAULT_LIMIT, Page, ToolLimit
 from sreditor.pitch_tools import channel_access
@@ -106,14 +109,29 @@ def add_library_items(server: MCPServer, services: Services) -> None:
         )
 
     @server.tool(annotations=tool_annotations("Add third-party media", Effect.CREATE))
-    def add_external_media(context: Context, slug: str, item: ExternalMediaInput) -> ExternalMedia:
+    def add_external_media(
+        context: Context,
+        slug: str,
+        item: ExternalMediaInput,
+        idempotency_key: IdempotencyKey = None,
+    ) -> Annotated[CallToolResult, ExternalMedia]:
         """Add an item made by others to a channel's library, such as a NASA clip, a video
         the channel reacts to, a credited photo, a paper or a CC BY 3D model, texture or
         shader: its kind, title, the page where it
         lives, creator, rights and credit line. sreditor never downloads from the link. Each
-        call adds another item, so check list_external_media first. Needs content:write."""
+        call adds another item unless you pass an `idempotency_key` (a retry with the same key and
+        item returns the first one), so check list_external_media first. Needs content:write."""
+        call = IdempotentCall(
+            operation=f"add_external_media/{slug}", arguments=item, key=idempotency_key
+        )
         return external_reported(
-            lambda: external.create_item(services, access(context, slug), item)
+            lambda: run_once(
+                services,
+                context,
+                call,
+                lambda: external.create_item(services, access(context, slug), item),
+                ExternalMedia,
+            )
         )
 
     @server.tool(annotations=tool_annotations("Update third-party media", Effect.REPLACE))
@@ -141,13 +159,28 @@ def add_episode_uses(server: MCPServer, services: Services) -> None:
 
     @server.tool(annotations=tool_annotations("Use third-party media", Effect.CREATE))
     def use_external_media(
-        context: Context, slug: str, number: int, use: MediaUseInput
-    ) -> MediaUse:
+        context: Context,
+        slug: str,
+        number: int,
+        use: MediaUseInput,
+        idempotency_key: IdempotencyKey = None,
+    ) -> Annotated[CallToolResult, MediaUse]:
         """Record one use of a library item (from list_external_media) in an episode: a time
         range in seconds for video and audio, pages for documents and web pages, the purpose,
-        the scene and an optional credit. Each call adds another use. Needs content:write."""
+        the scene and an optional credit. Each call adds another use unless you pass an
+        `idempotency_key`: a retry with the same key and use returns the first one. Needs
+        content:write."""
+        call = IdempotentCall(
+            operation=f"use_external_media/{slug}/{number}", arguments=use, key=idempotency_key
+        )
         return external_reported(
-            lambda: external.add_use(services, access(context, slug), number, use)
+            lambda: run_once(
+                services,
+                context,
+                call,
+                lambda: external.add_use(services, access(context, slug), number, use),
+                MediaUse,
+            )
         )
 
     @server.tool(annotations=tool_annotations("Remove a third-party media use", Effect.REMOVE))

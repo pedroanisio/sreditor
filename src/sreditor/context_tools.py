@@ -31,7 +31,8 @@ from sreditor.context import (
 )
 from sreditor.context_operations import CatalogQuery, ContextChange, LinkQuery
 from sreditor.deps import ChannelAccess, Services, access_for
-from sreditor.mcp_server import Effect, Removed, principal, reported, tool_annotations
+from sreditor.mcp_principal import principal
+from sreditor.mcp_server import Effect, Removed, reported, tool_annotations
 from sreditor.pagination import DEFAULT_LIMIT, Page
 
 # How many links a single write may add, so one call stays small.

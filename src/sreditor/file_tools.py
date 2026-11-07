@@ -12,15 +12,14 @@ from typing import Annotated
 
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
-from pydantic import Field
+from mcp.types import CallToolResult
 
 from sreditor import file_operations as files
 from sreditor.deps import Services
 from sreditor.external_media_tools import external_reported
 from sreditor.file_operations import ExportCheck, FileOffer, FileTarget, UploadOffer, UploadRequest
-from sreditor.idempotency import Idempotency, request_hash
-from sreditor.idempotency_store import IdempotencyStore
-from sreditor.mcp_server import Effect, principal, tool_annotations
+from sreditor.mcp_idempotency import IdempotencyKey, IdempotentCall, run_once
+from sreditor.mcp_server import Effect, tool_annotations
 from sreditor.media_operations import RenderNotUploadable
 from sreditor.pitch_tools import channel_access
 from sreditor.render_tools import render_reported
@@ -67,8 +66,8 @@ def add_file_tools(server: MCPServer, services: Services) -> None:
         context: Context,
         slug: str,
         upload: UploadRequest,
-        idempotency_key: Annotated[str | None, Field(min_length=1, max_length=255)] = None,
-    ) -> UploadOffer:
+        idempotency_key: IdempotencyKey = None,
+    ) -> Annotated[CallToolResult, UploadOffer]:
         """Get a single-use link to upload a file into an episode as media, such as the finished
         MP4 or a voice-over take. `upload` gives the episode `number`, the `kind`, a `name` and
         an optional `note`. Your sandbox sends the file's bytes with `method` (PUT) to `url`,
@@ -79,15 +78,14 @@ def add_file_tools(server: MCPServer, services: Services) -> None:
         once and expires in 15 minutes. Needs content:write. Each call issues another link
         unless you pass an `idempotency_key`: a retry with the same key and arguments returns the
         first link."""
-        who = principal(context)
-        fingerprint = request_hash(
-            "MCP", f"create_upload_link/{slug}", upload.model_dump_json().encode()
-        )
-        once = Idempotency(
-            IdempotencyStore(services.users.database), who.user.id, idempotency_key, fingerprint
+        call = IdempotentCall(
+            operation=f"create_upload_link/{slug}", arguments=upload, key=idempotency_key
         )
         return file_reported(
-            lambda: once.once(
+            lambda: run_once(
+                services,
+                context,
+                call,
                 lambda: files.issue_upload(
                     services, channel_access(services, context, slug), upload
                 ),

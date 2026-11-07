@@ -49,7 +49,7 @@ from sreditor.settings import AppSettings
 from sreditor.short_script import ShortScriptStore
 from sreditor.srstudio import SrstudioStore
 from sreditor.store import Owner, StmtClient
-from sreditor.tokens import SCOPE_FOR, ApiToken, TokenStore, is_api_token
+from sreditor.tokens import SCOPE_FOR, ApiToken, Scope, TokenStore, is_api_token
 from sreditor.users import User, UserStore
 from sreditor.voice_generation import TakeStore
 from sreditor.waivers import WaiverStore
@@ -273,6 +273,24 @@ def rate_limit(request: Request, app: ServicesDep) -> None:
         )
 
 
+class ScopeMissing(HTTPException):
+    """403: the API token lacks a scope; the message stays the API's `detail`."""
+
+    def __init__(self, scope: Scope) -> None:
+        super().__init__(status.HTTP_403_FORBIDDEN, f"This token lacks the {scope} scope")
+        self.scope = scope
+
+
+class RoleMissing(HTTPException):
+    """403: the user's role on a channel does not grant a permission."""
+
+    def __init__(self, slug: str, role: Role | None, permission: Permission) -> None:
+        super().__init__(status.HTTP_403_FORBIDDEN, f"Your role cannot {permission.value}")
+        self.slug = slug
+        self.role = role
+        self.permission = permission
+
+
 @dataclass
 class ChannelAccess:
     """A person's access to one channel: their role, and the API token they act through, if any."""
@@ -290,10 +308,10 @@ class ChannelAccess:
     def require(self, permission: Permission) -> None:
         """Refuse with 403 unless the role, and an API token's scopes, allow the permission."""
         if not self.can(permission):
-            raise HTTPException(status.HTTP_403_FORBIDDEN, f"Your role cannot {permission.value}")
+            raise RoleMissing(self.channel.slug, self.role, permission)
         scope = SCOPE_FOR[permission]
         if self.token is not None and not self.token.allows(scope):
-            raise HTTPException(status.HTTP_403_FORBIDDEN, f"This token lacks the {scope} scope")
+            raise ScopeMissing(scope)
 
 
 def access_for(app: Services, slug: str, user: User, token: ApiToken | None) -> ChannelAccess:

@@ -403,7 +403,8 @@ def mcp(app: FastAPI, owner: TestClient) -> Iterator[TestClient]:
 
 
 def update_brand(mcp: TestClient, **arguments: Any) -> dict[str, Any]:
-    return tool(mcp, "update_brand", {"slug": "funny-memes", **arguments})
+    brand = {name: arguments.pop(name) for name in ("colors", "fonts") if name in arguments}
+    return tool(mcp, "update_brand", {"slug": "funny-memes", "brand": brand, **arguments})
 
 
 def test_mcp_update_channel_renames_the_channel(mcp: TestClient) -> None:

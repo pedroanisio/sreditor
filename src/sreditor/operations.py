@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict
 
 from sreditor.brand import BrandPatch, own_brand, with_brand, with_patch
 from sreditor.channels import BrandKit, Channel, ChannelRename, Platform, PlatformAccount
-from sreditor.deps import ChannelAccess, Services, author
+from sreditor.deps import ChannelAccess, ScopeMissing, Services, author
 from sreditor.editorial import Editorial, Guideline, GuidelineInput
 from sreditor.members import Permission
 from sreditor.pagination import Page, decode_cursor, page
@@ -143,7 +143,7 @@ def create_token(app: Services, user: User, data: TokenInput) -> NewToken:
 def require_scope(token: ApiToken | None, scope: Scope) -> None:
     """Refuse with 403 a token that lacks the scope; sessions are not narrowed by scopes."""
     if token is not None and not token.allows(scope):
-        raise ProblemError(status.HTTP_403_FORBIDDEN, f"This token lacks the {scope} scope")
+        raise ScopeMissing(scope)
 
 
 def list_channels(

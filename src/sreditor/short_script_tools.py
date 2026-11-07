@@ -8,16 +8,20 @@ measured.
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Annotated
 
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
+from mcp.types import CallToolResult
 from pydantic import BaseModel, ConfigDict
 
 from sreditor import short_script_operations as scripts
 from sreditor import voice_estimate
 from sreditor.deps import ChannelAccess, Services, access_for
 from sreditor.elevenlabs import ElevenLabsError, Voice
-from sreditor.mcp_server import Effect, principal, reported, tool_annotations
+from sreditor.mcp_idempotency import IdempotencyKey, IdempotentCall, run_once
+from sreditor.mcp_principal import principal
+from sreditor.mcp_server import Effect, reported, tool_annotations
 from sreditor.short_script import ShortScript, ShortScriptInput
 from sreditor.voice_estimate import VoiceEstimate
 from sreditor.voice_generation import Take, TakeNotFound
@@ -185,19 +189,30 @@ def add_voice_tools(server: MCPServer, services: Services) -> None:
         )
 
     @server.tool(annotations=tool_annotations("Generate a voice-over", Effect.CREATE))
-    def generate_voice_over(context: Context, slug: str, number: int) -> TakeResult:
+    def generate_voice_over(
+        context: Context, slug: str, number: int, idempotency_key: IdempotencyKey = None
+    ) -> Annotated[CallToolResult, TakeResult]:
         """Speak the saved short script with its ElevenLabs voice and add the audio to the
         episode's media as a voice_over file. Spends ElevenLabs credits, so call
         estimate_voice_over first and call this only after the script is final; the same
         speech, voice, model and language returns the earlier take (is_reused true) for free, and
         only the blocks the estimate counted as new spend credits. The result holds each block's
         take with its words timed from the take and from the joined voice-over. Needs an owner or
-        editor and a voice set in the script or as the channel's narrator voice."""
+        editor and a voice set in the script or as the channel's narrator voice. Pass an
+        `idempotency_key` to retry after a timeout without generating twice: the retry returns
+        the first result, marked replayed, even if the script changed since."""
+        call = IdempotentCall(operation=f"generate_voice_over/{slug}/{number}", key=idempotency_key)
         return voice_reported(
-            lambda: TakeResult(
-                take=scripts.generate_voice_over(
-                    services, channel_access(services, context, slug), number
-                )
+            lambda: run_once(
+                services,
+                context,
+                call,
+                lambda: TakeResult(
+                    take=scripts.generate_voice_over(
+                        services, channel_access(services, context, slug), number
+                    )
+                ),
+                TakeResult,
             )
         )
 

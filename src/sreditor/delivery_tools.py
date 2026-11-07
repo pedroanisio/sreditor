@@ -7,22 +7,21 @@ posts. Numbers are brought by the agent or person, never fetched from a platform
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from typing import Annotated
 
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
-from pydantic import BaseModel, ConfigDict, Field
+from mcp.types import CallToolResult
 
 from sreditor import delivery_operations as deliveries
 from sreditor import post_metrics_operations as metrics
 from sreditor.channels import Platform
 from sreditor.delivery import Delivery, DeliveryInput
 from sreditor.deps import ChannelAccess, Services, access_for
-from sreditor.idempotency import Idempotency, request_hash
-from sreditor.idempotency_store import IdempotencyStore
-from sreditor.mcp_server import Effect, principal, reported, tool_annotations
+from sreditor.mcp_idempotency import IdempotencyKey, IdempotentCall, run_once
+from sreditor.mcp_principal import principal
+from sreditor.mcp_server import Effect, reported, tool_annotations
 from sreditor.pagination import DEFAULT_LIMIT, Page, ToolLimit
 from sreditor.post_metrics import (
     Metric,
@@ -32,8 +31,6 @@ from sreditor.post_metrics import (
 )
 from sreditor.retention_csv import RetentionCsvError
 
-IdempotencyKey = Annotated[str | None, Field(min_length=1, max_length=255)]
-MCP_METHOD = "MCP"
 CSV_SHAPE = "Send two columns with a header, such as 'second,percent'."
 CUT_HINT = (
     " Add the cut to `cuts` in the same write_delivery call, or use a cut name from get_delivery."
@@ -104,35 +101,6 @@ class PlatformCsv(metrics.RetentionImport):
     platform: Platform
 
 
-class IdempotentCall(BaseModel):
-    """A call's name and arguments, which a retry with the same key must repeat exactly."""
-
-    model_config = ConfigDict(frozen=True)
-
-    operation: str
-    arguments: BaseModel
-    key: str | None = None
-
-    def with_key(self, key: str | None) -> IdempotentCall:
-        """The same call under the caller's idempotency key."""
-        return self.model_copy(update={"key": key})
-
-
-def run_once[T: BaseModel](
-    services: Services,
-    context: Context,
-    call: IdempotentCall,
-    produce: Callable[[], T],
-    model: type[T],
-) -> T:
-    """Run the call at most once per idempotency key (agentic.mcp.idempotency)."""
-    body = json.dumps(call.arguments.model_dump(mode="json"), sort_keys=True).encode()
-    fingerprint = request_hash(MCP_METHOD, call.operation, body)
-    store = IdempotencyStore(services.users.database)
-    once = Idempotency(store, principal(context).user.id, call.key, fingerprint)
-    return once.once(produce, model)
-
-
 def add_package_tools(server: MCPServer, services: Services) -> None:
     """Tools to read and write an episode's delivery package."""
 
@@ -181,7 +149,7 @@ def add_package_tools(server: MCPServer, services: Services) -> None:
         number: int,
         post: PlatformPost,
         idempotency_key: IdempotencyKey = None,
-    ) -> Delivery:
+    ) -> Annotated[CallToolResult, Delivery]:
         """Set the post on one platform account: which cut went there, its link and when it went
         live. Use it after publishing; it keeps the cuts and the other posts. The cut must
         already be in the package (write_delivery) and the channel must have an account on the
@@ -211,7 +179,7 @@ def add_metrics_tools(server: MCPServer, services: Services) -> None:
         number: int,
         snapshot: PlatformSnapshot,
         idempotency_key: IdempotencyKey = None,
-    ) -> Snapshot:
+    ) -> Annotated[CallToolResult, Snapshot]:
         """Enter a post's numbers for one day (captured_on, today when left out): views, reach,
         likes, comments, shares, saves, avg_watch_s and retention as {second, percent} points,
         for the post on `platform`. Every number is optional and non-negative; a second entry
@@ -242,7 +210,7 @@ def add_metrics_tools(server: MCPServer, services: Services) -> None:
         number: int,
         source: PlatformCsv,
         idempotency_key: IdempotencyKey = None,
-    ) -> Snapshot:
+    ) -> Annotated[CallToolResult, Snapshot]:
         """Import a platform's retention export, passed as CSV text in `csv`, into the snapshot
         of the post on `platform` for one day. It needs a header and two columns, the second and
         the percent still watching ('second,percent', or the names an Instagram or YouTube

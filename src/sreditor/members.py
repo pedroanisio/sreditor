@@ -64,6 +64,12 @@ def allows(role: Role | None, permission: Permission) -> bool:
     return role is not None and permission in PERMISSIONS[role]
 
 
+def minimum_role(permission: Permission) -> Role:
+    """The least powerful role that grants the permission."""
+    # Owners hold every permission, so the search always finds a role.
+    return next(role for role in reversed(Role) if permission in PERMISSIONS[role])
+
+
 class Member(BaseModel):
     """A user's membership of a channel."""
 

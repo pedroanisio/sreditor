@@ -9,36 +9,41 @@ from __future__ import annotations
 
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from sreditor import operations
 from sreditor.brand import BrandPatch
 from sreditor.channels import ChannelRename, Color, FontInput, FontRole, Platform
 from sreditor.deps import ChannelAccess, Services, access_for
-from sreditor.mcp_server import (
-    BrandView,
-    ChannelView,
-    Effect,
-    principal,
-    reported,
-    tool_annotations,
-)
+from sreditor.mcp_principal import principal
+from sreditor.mcp_server import BrandView, ChannelView, Effect, reported, tool_annotations
 
 # What pydantic puts before the message of a ValueError raised by one of our validators.
 VALUE_ERROR_PREFIX = "Value error, "
-NOTHING_TO_CHANGE = (
-    "Pass colors, fonts or both; call get_brand to see the colors and fonts the kit has now"
-)
+NOTHING_TO_CHANGE = "Pass colors, fonts or both in `brand`; call get_brand to see the colors and fonts the kit has now"
 
 
-def brand_patch(
-    colors: list[Color] | None, fonts: dict[FontRole, FontInput | None] | None
-) -> BrandPatch:
+class BrandChanges(BaseModel):
+    """The colors and fonts update_brand sets; what is left out stays as it is."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    colors: list[Color] | None = Field(
+        default=None,
+        description="The WHOLE palette, replacing the old one: name, #RRGGBB and role each.",
+    )
+    fonts: dict[FontRole, FontInput | None] | None = Field(
+        default=None,
+        description="Fonts by role (heading, body, caption); null removes a role's font.",
+    )
+
+
+def brand_patch(changes: BrandChanges) -> BrandPatch:
     """The patch the arguments describe, or a tool error naming what to fix."""
-    if colors is None and fonts is None:
+    if changes.colors is None and changes.fonts is None:
         raise ToolError(NOTHING_TO_CHANGE)
     try:
-        return BrandPatch(colors=colors, fonts=fonts)
+        return BrandPatch(colors=changes.colors, fonts=changes.fonts)
     except ValidationError as invalid:
         reasons = "; ".join(
             str(error["msg"]).removeprefix(VALUE_ERROR_PREFIX) for error in invalid.errors()
@@ -77,19 +82,16 @@ def add_brand_tools(server: MCPServer, services: Services) -> None:
         return reported(write)
 
     @server.tool(annotations=tool_annotations("Update brand colors and fonts", Effect.REPLACE))
-    # The tool's flat arguments are the schema an agent reads; grouping them in a model would
-    # nest them, so this one signature keeps six parameters, context included.
-    def update_brand(  # noqa: PLR0913
+    def update_brand(
         context: Context,
         slug: str,
+        brand: BrandChanges,
         platform: Platform | None = None,
-        colors: list[Color] | None = None,
-        fonts: dict[FontRole, FontInput | None] | None = None,
         expected_revision: int | None = None,
     ) -> BrandView:
-        """Set the brand's colors and fonts, as data. `colors` is the WHOLE palette, replacing
-        the old one: each is a name, a #RRGGBB hex and a role (primary, secondary, accent, text,
-        background); each role is used once, only accent may repeat. `fonts` sets the roles it
+        """Set the brand's colors and fonts, as data, inside `brand`. Its `colors` is the WHOLE
+        palette, replacing the old one: each is a name, a #RRGGBB hex and a role (primary, secondary, accent, text,
+        background); each role is used once, only accent may repeat. Its `fonts` sets the roles it
         names (heading, body, caption) with a family and a weight from 100 to 900, and removes a
         role whose value is null; roles it leaves out stay. What you leave out stays as it is.
         With `platform`, only that account's overrides change (it needs that account first,
@@ -100,7 +102,7 @@ def add_brand_tools(server: MCPServer, services: Services) -> None:
         channels:write scope."""
 
         def write() -> BrandView:
-            patch = brand_patch(colors, fonts)
+            patch = brand_patch(brand)
             done = operations.update_brand(
                 services, access(context, slug), platform, patch, expected_revision
             )

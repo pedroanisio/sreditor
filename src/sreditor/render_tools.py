@@ -15,7 +15,8 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from sreditor import render_operations as renders
 from sreditor.deps import ChannelAccess, Services, access_for
-from sreditor.mcp_server import Effect, principal, reported, tool_annotations
+from sreditor.mcp_principal import principal
+from sreditor.mcp_server import Effect, reported, tool_annotations
 from sreditor.pagination import DEFAULT_LIMIT, Page, ToolLimit
 from sreditor.render_operations import RenderRequest, RenderView
 from sreditor.renders import RenderFinished, RenderNotFound, RenderPreset
@@ -61,7 +62,8 @@ def add_render_tools(server: MCPServer, services: Services) -> None:
         id, status and place in the queue; a render takes minutes, so call get_render later to
         follow it. Use it once the short script, voice-over and visual style are final. The same
         episode content, preset and engine answers with the earlier render (is_reused true) and
-        costs nothing. `preset` is master (the delivery) or preview (quicker, lower quality).
+        costs nothing, so it is idempotent by design and takes no `idempotency_key`: calling it
+        again after a timeout never queues a second render. `preset` is master (the delivery) or preview (quicker, lower quality).
         Needs an owner or editor and, for a token, the render:write scope. Fails with the list
         of what srstudio still lacks when the episode is not ready."""
         request = RenderRequest(number=number, preset=preset)

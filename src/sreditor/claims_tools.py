@@ -14,7 +14,8 @@ from uuid import UUID
 
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
-from pydantic import BaseModel, ConfigDict, Field
+from mcp.types import CallToolResult
+from pydantic import BaseModel, ConfigDict
 
 from sreditor import claim_operations as claims
 from sreditor.claim_operations import ClaimChange, ClaimQuery, SourceCheck
@@ -28,13 +29,10 @@ from sreditor.claims import (
     SourceNotAvailable,
 )
 from sreditor.deps import ChannelAccess, Services
-from sreditor.idempotency import Idempotency, request_hash
-from sreditor.idempotency_store import IdempotencyStore
-from sreditor.mcp_server import Effect, Removed, principal, reported, tool_annotations
+from sreditor.mcp_idempotency import IdempotencyKey, IdempotentCall, run_once
+from sreditor.mcp_server import Effect, Removed, reported, tool_annotations
 from sreditor.pagination import DEFAULT_LIMIT, Page, ToolLimit
 from sreditor.pitch_tools import channel_access
-
-IdempotencyKey = Annotated[str | None, Field(min_length=1, max_length=255)]
 
 
 class ClaimsView(BaseModel):
@@ -151,7 +149,7 @@ def add_claim_writes(server: MCPServer, services: Services) -> None:
         number: int,
         claim: ClaimInput,
         idempotency_key: IdempotencyKey = None,
-    ) -> ClaimResult:
+    ) -> Annotated[CallToolResult, ClaimResult]:
         """Record a figure or fact an episode states: its quote, where it appears (a scene
         heading, a short-script block number, or free text) and the backing sources, by the ids
         get_research lists for the episode's sources and its pitches' sources, each marked
@@ -159,17 +157,16 @@ def add_claim_writes(server: MCPServer, services: Services) -> None:
         source. Needs content:write. Each call adds another claim unless you pass an
         `idempotency_key`, any unique string per intended claim: a retry with the same key and
         claim returns the claim the first call made."""
-        who = principal(context)
-        fingerprint = request_hash(
-            "MCP", f"add_claim/{slug}/{number}", claim.model_dump_json().encode()
-        )
-        once = Idempotency(
-            IdempotencyStore(services.users.database), who.user.id, idempotency_key, fingerprint
+        call = IdempotentCall(
+            operation=f"add_claim/{slug}/{number}", arguments=claim, key=idempotency_key
         )
 
-        def add() -> ClaimResult:
+        def add() -> CallToolResult:
             channel = access(context, slug)
-            return once.once(
+            return run_once(
+                services,
+                context,
+                call,
                 lambda: claim_result(
                     services, channel, claims.add_claim(services, channel, number, claim)
                 ),
