@@ -262,9 +262,8 @@ def test_file_link_waiver_id_is_not_found_as_media(
     mcp: TestClient, owner: TestClient, app_settings: AppSettings
 ) -> None:
     waiver = {
-        "signed_by": "Ana",
+        "signer": "Ana",
         "signed_on": "2026-01-02",
-        "kind": "image",
         "covers": "Her face",
     }
     sent = owner.post(
@@ -277,7 +276,7 @@ def test_file_link_waiver_id_is_not_found_as_media(
 
 def test_file_link_unknown_channel_is_not_found(mcp: TestClient) -> None:
     result = tool(mcp, "get_file_link", {"slug": "nope", "target": {"source": "brand_file"}})
-    assert "call list_channels" in error_text(result)
+    assert "list_channels shows" in error_text(result)
 
 
 def test_file_link_without_read_scope_is_refused(app: FastAPI, owner: TestClient) -> None:
@@ -407,6 +406,15 @@ def test_file_link_render_downloads_the_finished_video(
     target = {"source": "render", "number": 1, "render_id": str(finished_render(app))}
     response = visitor.get(file_link(mcp, target)["url"])
     assert response.content == sample.MP4 and response.headers["content-type"] == "video/mp4"
+
+
+def test_file_link_render_media_file_downloads_as_episode_media(
+    app: FastAPI, mcp: TestClient, visitor: TestClient
+) -> None:
+    render_id = finished_render(app)
+    video = services_of(app).renders.get(render_id).media_id
+    target = {"source": "episode_media", "number": 1, "media_id": str(video)}
+    assert visitor.get(file_link(mcp, target)["url"]).content == sample.MP4
 
 
 def test_file_link_render_not_done_says_to_wait(app: FastAPI, mcp: TestClient) -> None:

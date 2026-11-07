@@ -29,6 +29,7 @@ from sreditor.brand import file_in, referenced_assets
 from sreditor.channels import Asset, Platform
 from sreditor.deps import ChannelAccess, Services, access_for
 from sreditor.episode_operations import episode_access
+from sreditor.external_media import EXTENSIONS as COPY_EXTENSIONS
 from sreditor.file_links import FileLink, LinkGone, LinkKind, NewLink
 from sreditor.media import (
     EXTENSIONS,
@@ -319,7 +320,7 @@ def describe_external(app: Services, access: ChannelAccess, link: NewLink) -> Fi
         path=stored_path(app, stored),
         media_type=item.copy_file.media_type,
         size_bytes=item.copy_file.size_bytes,
-        filename=item.title + EXTENSIONS[item.copy_file.media_type],
+        filename=item.title + COPY_EXTENSIONS[item.copy_file.media_type],
         is_inline=item.copy_file.is_inline(),
     )
 
