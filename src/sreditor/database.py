@@ -544,6 +544,21 @@ CREATE TABLE IF NOT EXISTS post_snapshots (
 );
 CREATE INDEX IF NOT EXISTS post_snapshots_by_channel
     ON post_snapshots (channel_slug, number, platform, captured_on);
+CREATE TABLE IF NOT EXISTS file_links (
+    link_hash TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    token_id TEXT NOT NULL REFERENCES api_tokens (id) ON DELETE CASCADE,
+    channel_slug TEXT NOT NULL REFERENCES channels (slug) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    number INTEGER,
+    reference TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used_at TEXT
+);
+CREATE INDEX IF NOT EXISTS file_links_by_expiry ON file_links (expires_at);
 """
 
 Clock = Callable[[], datetime]

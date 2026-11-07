@@ -20,6 +20,7 @@ from sreditor import (
     episode_routes,
     export_routes,
     external_media_routes,
+    file_routes,
     library_routes,
     mcp_server,
     media_routes,
@@ -59,6 +60,7 @@ from sreditor.episode_texts import PartChanged
 from sreditor.episodes import EpisodeChanged, EpisodeNotFound, EpisodeStore
 from sreditor.etags import IfMatch, etag, expected_revision
 from sreditor.external_media import ExternalMediaStore
+from sreditor.file_links import FileLinkStore
 from sreditor.idempotency import IdempotencyDep
 from sreditor.library import EntryExists, EntryNotFound, LibraryStore, StyleNotInLibrary
 from sreditor.mail import BackgroundMailer, LogMailer, Mailer, Smtp2GoMailer
@@ -167,6 +169,7 @@ def create_app(
         render_parts=PartStore(settings.assets_dir, settings.max_media_bytes),
         deliveries=DeliveryStore(database),
         post_metrics=PostMetricsStore(database),
+        file_links=FileLinkStore(database),
         voice=build_voice(settings.voice),
     )
     mcp = mcp_server.build(services)
@@ -200,6 +203,7 @@ def create_app(
     install_media_error_handlers(app)
     srstudio_routes.install_srstudio_error_handlers(app)
     render_routes.install_error_handlers(app)
+    file_routes.install_error_handlers(app)
     pitch_routes.install_error_handlers(app)
     context_routes.install_error_handlers(app)
     external_media_routes.install_error_handlers(app)
@@ -229,6 +233,7 @@ def create_app(
     app.include_router(render_routes.worker_router)
     app.include_router(export_routes.router)
     app.include_router(book_routes.router)
+    app.include_router(file_routes.router)
     add_channel_routes(app)
     app.router.routes.append(Route(mcp_server.PATH, mcp_app, methods=["GET", "POST", "DELETE"]))
     workspace.mount(app)

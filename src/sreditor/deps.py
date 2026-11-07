@@ -29,6 +29,7 @@ from sreditor.editorial import EditorialService
 from sreditor.elevenlabs import ElevenLabs
 from sreditor.episodes import EpisodeStore
 from sreditor.external_media import ExternalMediaStore
+from sreditor.file_links import FileLinkStore
 from sreditor.i18n import BASE_LOCALE, Translator, negotiate
 from sreditor.library import LibraryStore
 from sreditor.mail import Mailer
@@ -101,6 +102,7 @@ class Services:
     render_parts: PartStore
     deliveries: DeliveryStore
     post_metrics: PostMetricsStore
+    file_links: FileLinkStore
     voice: ElevenLabs | None = None  # None: SREDITOR_ELEVENLABS_API_KEY is not set
 
     def accounts(self, locale: str = BASE_LOCALE) -> Accounts:

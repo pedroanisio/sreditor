@@ -1,0 +1,107 @@
+"""MCP tools that move files in and out through signed links (rule agentic.mcp.files).
+
+An agent in a sandbox, such as claude.ai's, cannot use the MCP connection's OAuth token to call
+the API, and a file never travels inside a tool result beyond 1 MB. So a tool answers with a
+single-use link, valid for 15 minutes, that the sandbox opens with a plain GET or PUT.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Annotated
+
+from mcp.server.mcpserver import Context, MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
+from pydantic import Field
+
+from sreditor import file_operations as files
+from sreditor.deps import Services
+from sreditor.external_media_tools import external_reported
+from sreditor.file_operations import ExportCheck, FileOffer, FileTarget, UploadOffer, UploadRequest
+from sreditor.idempotency import Idempotency, request_hash
+from sreditor.idempotency_store import IdempotencyStore
+from sreditor.mcp_server import Effect, principal, tool_annotations
+from sreditor.media_operations import RenderNotUploadable
+from sreditor.pitch_tools import channel_access
+from sreditor.render_tools import render_reported
+
+
+def file_reported[T](action: Callable[[], T]) -> T:
+    """Run a file tool's action, turning its refusals into tool errors that name the fix."""
+
+    def guarded() -> T:
+        try:
+            return action()
+        except RenderNotUploadable as refusal:
+            raise ToolError(
+                f"{refusal}. Use request_render, then get_file_link with source render"
+            ) from refusal
+
+    return render_reported(lambda: external_reported(guarded))
+
+
+def add_file_tools(server: MCPServer, services: Services) -> None:
+    """Register the file tools."""
+
+    @server.tool(annotations=tool_annotations("Get a download link for a file", Effect.CREATE))
+    def get_file_link(
+        context: Context, slug: str, target: FileTarget, inline: bool = False
+    ) -> FileOffer:
+        """Get a single-use link to download one file, which your sandbox then opens with a
+        plain GET and no credentials: the channel's logo, avatar or another brand file, an
+        episode's media file, a finished render's video, a third-party item's uploaded copy, or
+        an episode's srstudio export zip. Use it when you need a file's bytes; to see what
+        exists first, call get_channel, list_media, list_renders or list_external_media. The
+        link works once and expires in 15 minutes (`expires_at`); ask again after that. Pass
+        `inline` true to also get a file of 1 MB or less as `content_base64` and skip the
+        download. Needs channels:read, and for srstudio_export the right to change the channel
+        (channels:write). Waivers cannot be fetched this way."""
+        return file_reported(
+            lambda: files.issue_download(
+                services, channel_access(services, context, slug), target, inline
+            )
+        )
+
+    @server.tool(annotations=tool_annotations("Get an upload link for a media file", Effect.CREATE))
+    def create_upload_link(
+        context: Context,
+        slug: str,
+        upload: UploadRequest,
+        idempotency_key: Annotated[str | None, Field(min_length=1, max_length=255)] = None,
+    ) -> UploadOffer:
+        """Get a single-use link to upload a file into an episode as media, such as the finished
+        MP4 or a voice-over take. `upload` gives the episode `number`, the `kind`, a `name` and
+        an optional `note`. Your sandbox sends the file's bytes with `method` (PUT) to `url`,
+        with no credentials; the answer is the new media file. `kind` is voice_over,
+        sound_effect, score or visual_effect (a render is made with request_render, never
+        uploaded). The type is read from the file's content, and `accepted_types` and
+        `max_bytes` say what is allowed; a refused file leaves the link usable. The link works
+        once and expires in 15 minutes. Needs content:write. Each call issues another link
+        unless you pass an `idempotency_key`: a retry with the same key and arguments returns the
+        first link."""
+        who = principal(context)
+        fingerprint = request_hash(
+            "MCP", f"create_upload_link/{slug}", upload.model_dump_json().encode()
+        )
+        once = Idempotency(
+            IdempotencyStore(services.users.database), who.user.id, idempotency_key, fingerprint
+        )
+        return file_reported(
+            lambda: once.once(
+                lambda: files.issue_upload(
+                    services, channel_access(services, context, slug), upload
+                ),
+                UploadOffer,
+            )
+        )
+
+    @server.tool(annotations=tool_annotations("Check an srstudio export", Effect.READ))
+    def check_srstudio_export(context: Context, slug: str, number: int) -> ExportCheck:
+        """Check whether an episode can be exported for srstudio: `ready`, the `missing` pieces
+        in plain words (such as a voice-over take or a visual style), the episode's srstudio
+        `slug` and `seed` and, when ready, a download link `file_link` to the zip, built when
+        you open it. Use it before rendering locally with srstudio; fix each missing piece and
+        call it again. Needs an owner or editor and, for a token, the channels:write scope."""
+        return file_reported(
+            lambda: files.check_export(services, channel_access(services, context, slug), number)
+        )

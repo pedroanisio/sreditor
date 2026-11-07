@@ -128,7 +128,10 @@ INSTRUCTIONS = (
     "An episode's delivery package (cuts with final video, cover, caption, alt text and hashtags, "
     "and the post per platform account) is read with get_delivery and written with "
     "write_delivery or record_post; enter a post's numbers with record_post_metrics or "
-    "import_retention_csv and compare the channel's posts with compare_posts."
+    "import_retention_csv and compare the channel's posts with compare_posts. "
+    "Files move through single-use links valid for 15 minutes: get_file_link for a brand file, "
+    "media file, render, third-party copy or srstudio export, create_upload_link to attach a "
+    "media file, and check_srstudio_export to see what an srstudio export lacks."
 )
 
 # Domain errors an agent can act on, reported as tool errors with their message.
@@ -355,6 +358,7 @@ def build(services: Services) -> MCPServer:
     from sreditor.context_tools import add_context_tools
     from sreditor.delivery_tools import add_delivery_tools
     from sreditor.external_media_tools import add_external_media_tools
+    from sreditor.file_tools import add_file_tools
     from sreditor.pitch_tools import add_pitch_tools
     from sreditor.render_tools import add_render_tools
     from sreditor.short_script_tools import add_short_script_tools
@@ -375,6 +379,7 @@ def build(services: Services) -> MCPServer:
     add_media_tools(server, services)
     add_render_tools(server, services)
     add_delivery_tools(server, services)
+    add_file_tools(server, services)
     add_external_media_tools(server, services)
     add_classification_tools(server, services)
     add_context_tools(server, services)
