@@ -102,7 +102,7 @@ def cut_path(number: int, name: str) -> CutPath:
     return CutPath(number=number, name=name)
 
 
-class PostPath(BaseModel):
+class PostFormPath(BaseModel):
     """The episode and platform a form's address names."""
 
     model_config = ConfigDict(frozen=True)
@@ -111,14 +111,14 @@ class PostPath(BaseModel):
     platform: Platform
 
 
-def post_path(number: int, platform: str) -> PostPath:
+def post_path(number: int, platform: str) -> PostFormPath:
     """The episode and platform in the address."""
-    return PostPath(number=number, platform=platform_of(platform))
+    return PostFormPath(number=number, platform=platform_of(platform))
 
 
 # Path values in one parameter each, so handlers keep to five (code.functions.args).
 CutTarget = Annotated[CutPath, Depends(cut_path)]
-PostTarget = Annotated[PostPath, Depends(post_path)]
+PostTarget = Annotated[PostFormPath, Depends(post_path)]
 
 
 class DeliveryView(BaseModel):

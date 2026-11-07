@@ -101,7 +101,7 @@ class ClaimRemovalFields(SubmittedFields):
     revision: str = ""
 
 
-class ClaimsView(BaseModel):
+class ClaimsPageView(BaseModel):
     """The claims page, with the form that was sent, which claim it edited and its errors."""
 
     model_config = ConfigDict(frozen=True)
@@ -172,7 +172,7 @@ def checker_names(app: Services, found: list[Claim], translate: Translator) -> d
 
 
 def claims_context(
-    app: Services, access: ChannelAccess, shown: ClaimsView, translate: Translator
+    app: Services, access: ChannelAccess, shown: ClaimsPageView, translate: Translator
 ) -> dict[str, Any]:
     """The claims, the sources they may cite and who checked what."""
     query = ClaimQuery(number=shown.number, cursor=shown.cursor or None, limit=DEFAULT_LIMIT)
@@ -198,7 +198,7 @@ def claims_context(
 
 
 def claims_page(
-    request: Request, app: Services, access: ChannelAccess, shown: ClaimsView
+    request: Request, app: Services, access: ChannelAccess, shown: ClaimsPageView
 ) -> Response:
     """The episode's claims with the forms to add, change and check them."""
     current = found_episode(app, access, shown.number)
@@ -224,7 +224,7 @@ def claims(
     request: Request, app: ServicesDep, access: PageAccess, number: int, cursor: str = ""
 ) -> Response:
     """An episode's claims."""
-    return claims_page(request, app, access, ClaimsView(number=number, cursor=cursor))
+    return claims_page(request, app, access, ClaimsPageView(number=number, cursor=cursor))
 
 
 def refusal_outcome(refusal: Exception, translate: Translator) -> Outcome:
@@ -259,7 +259,7 @@ def new_claim(
     else:
         return done(request, app, claims_url(access.channel.slug, number), Flash.CLAIM_ADDED)
     return claims_page(
-        request, app, access, ClaimsView(number=number, outcome=outcome, sent=fields)
+        request, app, access, ClaimsPageView(number=number, outcome=outcome, sent=fields)
     )
 
 
@@ -298,7 +298,7 @@ def save_claim(
         outcome = refusal_outcome(refusal, translate)
     else:
         return done(request, app, claims_url(access.channel.slug, number), Flash.SAVED)
-    shown = ClaimsView(number=number, outcome=outcome, sent=fields, edited=fields.claim_id)
+    shown = ClaimsPageView(number=number, outcome=outcome, sent=fields, edited=fields.claim_id)
     return claims_page(request, app, access, shown)
 
 
@@ -325,7 +325,7 @@ def check_source(
         check_claim_source(app, access, check)
     except (ValueError, PartChanged, ClaimNotFound, BackingNotFound) as refusal:
         outcome = refusal_outcome(refusal, translator(request))
-        return claims_page(request, app, access, ClaimsView(number=number, outcome=outcome))
+        return claims_page(request, app, access, ClaimsPageView(number=number, outcome=outcome))
     return done(request, app, claims_url(access.channel.slug, number), Flash.SAVED)
 
 
@@ -349,5 +349,5 @@ def drop_claim(
         remove_claim(app, access, change)
     except (PartChanged, ClaimNotFound) as refusal:
         outcome = refusal_outcome(refusal, translator(request))
-        return claims_page(request, app, access, ClaimsView(number=number, outcome=outcome))
+        return claims_page(request, app, access, ClaimsPageView(number=number, outcome=outcome))
     return done(request, app, claims_url(access.channel.slug, number), Flash.REMOVED)

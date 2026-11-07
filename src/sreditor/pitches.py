@@ -19,17 +19,14 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, StringConstraints, f
 
 from sreditor.database import Database
 from sreditor.episode_texts import UNWRITTEN, PartChanged
+from sreditor.field_types import ChannelSlug, Title
 from sreditor.research import Notes, SourceInput, SourceNotFound
 
-TITLE_LENGTH = 200
 SUMMARY_LENGTH = 2000
 # The most pitches one episode may be built on.
 MAX_EPISODE_PITCHES = 10
 FIRST_POSITION = 0
 
-PitchTitle = Annotated[
-    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=TITLE_LENGTH)
-]
 PitchSummary = Annotated[str, StringConstraints(strip_whitespace=True, max_length=SUMMARY_LENGTH)]
 
 
@@ -47,7 +44,7 @@ class PitchInput(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    title: PitchTitle
+    title: Title
     summary: PitchSummary = ""
     status: PitchStatus = PitchStatus.IDEA
 
@@ -58,7 +55,7 @@ class Pitch(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     id: UUID
-    channel: str
+    channel: ChannelSlug
     title: str
     summary: str
     status: PitchStatus
@@ -131,7 +128,7 @@ class EpisodePitches(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    channel: str
+    channel: ChannelSlug
     number: int
     pitch_ids: list[UUID] = Field(default_factory=list)
     revision: int = UNWRITTEN
@@ -143,7 +140,7 @@ class EpisodePitch(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    channel: str
+    channel: ChannelSlug
     number: int
     pitch_id: UUID | None = None
     revision: int = UNWRITTEN

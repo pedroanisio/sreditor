@@ -125,7 +125,7 @@ def pair_errors(action: Callable[[], object], translate: Translator) -> Outcome 
     return None
 
 
-class ListView(BaseModel):
+class RelationshipListView(BaseModel):
     """The list page, with the add form that was sent and its errors."""
 
     model_config = ConfigDict(frozen=True)
@@ -159,7 +159,9 @@ def common_context(app: Services, access: ChannelAccess, translate: Translator) 
     }
 
 
-def list_page(request: Request, app: Services, access: ChannelAccess, shown: ListView) -> Response:
+def list_page(
+    request: Request, app: Services, access: ChannelAccess, shown: RelationshipListView
+) -> Response:
     """Every pair, each linking to its page, and for writers the dialog that adds one."""
     translate = translator(request)
     context = {
@@ -180,7 +182,7 @@ def list_page(request: Request, app: Services, access: ChannelAccess, shown: Lis
 @router.get(PAGE)
 def relationships(request: Request, app: ServicesDep, access: PageAccess) -> Response:
     """How the library's characters relate."""
-    return list_page(request, app, access, ListView())
+    return list_page(request, app, access, RelationshipListView())
 
 
 @router.post(PAGE)
@@ -201,7 +203,7 @@ async def create(request: Request, app: ServicesDep, access: PageAccess) -> Resp
         return done(
             request, app, relationships_url(access.channel.slug, created[0].id), Flash.LIBRARY_ADDED
         )
-    return list_page(request, app, access, ListView(outcome=outcome, sent=data))
+    return list_page(request, app, access, RelationshipListView(outcome=outcome, sent=data))
 
 
 class PairView(BaseModel):

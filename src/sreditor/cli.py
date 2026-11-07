@@ -112,7 +112,7 @@ def serve(args: argparse.Namespace, environ: Mapping[str, str]) -> int:
 
 def doctor(args: argparse.Namespace, environ: Mapping[str, str]) -> int:
     """Print one line per check; fail while something still needs fixing."""
-    from sreditor.doctor import DEFAULT_TOOLS, MARKS, DoctorOptions, Status, run
+    from sreditor.doctor import DEFAULT_TOOLS, MARKS, CheckStatus, DoctorOptions, run
 
     options = DoctorOptions(
         root=args.root.resolve(),
@@ -123,7 +123,7 @@ def doctor(args: argparse.Namespace, environ: Mapping[str, str]) -> int:
     findings = run(options, environ, DEFAULT_TOOLS)
     for finding in findings:
         print(f"{MARKS[finding.status]} {finding.name}: {finding.detail}")
-    pending = {Status.FIXABLE, Status.PROBLEM}
+    pending = {CheckStatus.FIXABLE, CheckStatus.PROBLEM}
     return EXIT_ERROR if any(finding.status in pending for finding in findings) else EXIT_OK
 
 

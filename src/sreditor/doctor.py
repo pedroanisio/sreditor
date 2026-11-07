@@ -62,7 +62,7 @@ class Environment(StrEnum):
     PRODUCTION = "production"
 
 
-class Status(StrEnum):
+class CheckStatus(StrEnum):
     """What a check found."""
 
     OK = "ok"
@@ -72,11 +72,11 @@ class Status(StrEnum):
 
 
 # How each status is shown on the terminal.
-MARKS: Mapping[Status, str] = {
-    Status.OK: "ok     ",
-    Status.FIXABLE: "fix    ",
-    Status.FIXED: "fixed  ",
-    Status.PROBLEM: "MISSING",
+MARKS: Mapping[CheckStatus, str] = {
+    CheckStatus.OK: "ok     ",
+    CheckStatus.FIXABLE: "fix    ",
+    CheckStatus.FIXED: "fixed  ",
+    CheckStatus.PROBLEM: "MISSING",
 }
 
 
@@ -86,7 +86,7 @@ class Finding(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     name: str
-    status: Status
+    status: CheckStatus
     detail: str
     updates: dict[str, str] = Field(default_factory=dict)
 
@@ -175,17 +175,17 @@ def with_values(text: str, updates: Mapping[str, str]) -> str:
 
 def fixable(name: str, detail: str, updates: Mapping[str, str]) -> Finding:
     """A finding --fix can resolve, with the values it would write."""
-    return Finding(name=name, status=Status.FIXABLE, detail=detail, updates=dict(updates))
+    return Finding(name=name, status=CheckStatus.FIXABLE, detail=detail, updates=dict(updates))
 
 
 def ok(name: str, detail: str) -> Finding:
     """A finding that needs nothing."""
-    return Finding(name=name, status=Status.OK, detail=detail)
+    return Finding(name=name, status=CheckStatus.OK, detail=detail)
 
 
 def problem(name: str, detail: str) -> Finding:
     """A finding only a person can resolve."""
-    return Finding(name=name, status=Status.PROBLEM, detail=detail)
+    return Finding(name=name, status=CheckStatus.PROBLEM, detail=detail)
 
 
 def check_environment(context: Context) -> Finding:
@@ -323,14 +323,14 @@ CHECKS: Sequence[Callable[[Context], Finding]] = (
 
 def settle(finding: Finding, values: Mapping[str, str], is_fixing: bool) -> Finding:
     """OK when the values already match, FIXED when --fix applies them."""
-    if finding.status is not Status.FIXABLE:
+    if finding.status is not CheckStatus.FIXABLE:
         return finding
     changed = {key: value for key, value in finding.updates.items() if values.get(key) != value}
     # A fix with values that are all in place already is not a fix; one without values
     # (an action such as creating the tunnel) stays pending.
     if finding.updates and not changed:
-        return finding.model_copy(update={"status": Status.OK, "updates": {}})
-    status = Status.FIXED if is_fixing else Status.FIXABLE
+        return finding.model_copy(update={"status": CheckStatus.OK, "updates": {}})
+    status = CheckStatus.FIXED if is_fixing else CheckStatus.FIXABLE
     return finding.model_copy(update={"status": status, "updates": changed})
 
 
@@ -343,7 +343,7 @@ def ensure_env_file(root: Path, is_fixing: bool) -> Finding:
         return fixable(ENV_FILE, f"would copy {ENV_EXAMPLE} to {ENV_FILE}", {})
     shutil.copyfile(root / ENV_EXAMPLE, env)
     os.chmod(env, PRIVATE_FILE_MODE)
-    return Finding(name=ENV_FILE, status=Status.FIXED, detail=f"copied {ENV_EXAMPLE}")
+    return Finding(name=ENV_FILE, status=CheckStatus.FIXED, detail=f"copied {ENV_EXAMPLE}")
 
 
 def run(options: DoctorOptions, environ: Mapping[str, str], tools: Tools) -> list[Finding]:

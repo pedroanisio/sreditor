@@ -12,6 +12,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict
 
 from sreditor.database import Database
+from sreditor.field_types import ChannelSlug
 
 # Enough titles for any channel set the switcher shows; the search reads no more than this.
 SCAN_LIMIT = 5000
@@ -31,7 +32,7 @@ class SearchHit(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     kind: HitKind
-    channel: str
+    channel: ChannelSlug
     key: str  # the episode's number or the pitch's id
     title: str
 

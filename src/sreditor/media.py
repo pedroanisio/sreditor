@@ -32,6 +32,7 @@ from sreditor.assets import (
 )
 from sreditor.database import Database
 from sreditor.episode_texts import PartChanged
+from sreditor.field_types import ChannelSlug, MediaType, Sha256
 
 NAME_LENGTH = 120
 NOTE_LENGTH = 2000
@@ -102,14 +103,14 @@ class MediaFile(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     id: UUID
-    channel: str
+    channel: ChannelSlug
     number: int
     kind: MediaKind
     name: str
     note: str
-    media_type: str
+    media_type: MediaType
     size_bytes: int
-    sha256: str
+    sha256: Sha256
     revision: int
     created_at: datetime
     updated_at: datetime
@@ -127,7 +128,7 @@ class NewMedia(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    channel: str
+    channel: ChannelSlug
     number: int
     kind: MediaKind
     data: MediaInput

@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, StringConstraints
 
 from sreditor.database import Database
 from sreditor.episode_texts import EpisodeTexts, PartChanged, TextKey, TextPart
+from sreditor.field_types import ChannelSlug
 
 NAME_LENGTH = 120
 DESCRIPTION_LENGTH = 2000
@@ -53,7 +54,7 @@ class LibraryEntry(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     id: UUID
-    channel: str
+    channel: ChannelSlug
     kind: LibraryKind
     name: str
     description: str
@@ -75,7 +76,7 @@ class EpisodeStyle(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    channel: str
+    channel: ChannelSlug
     number: int
     style: LibraryEntry | None
     revision: int

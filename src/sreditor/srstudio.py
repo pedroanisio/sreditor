@@ -27,6 +27,7 @@ from pydantic import (
 
 from sreditor.database import Database, parse
 from sreditor.episode_texts import PartChanged
+from sreditor.field_types import ChannelSlug, VoiceIdOrEmpty
 from sreditor.i18n import N_
 from sreditor.library import EpisodeStyle, LibraryEntry, LibraryKind
 from sreditor.srstudio_vocabulary import (
@@ -50,7 +51,6 @@ MAX_FACTS = 100
 MAX_ITEMS = 30
 MAX_SEED = 2**31 - 1
 COLOR_PATTERN = r"^#[0-9a-fA-F]{6}$"
-VOICE_ID_PATTERN = r"^[A-Za-z0-9]{0,40}$"
 DEFAULT_STABILITY = 0.5
 DEFAULT_SIMILARITY = 0.75
 FALLBACK_SLUG = "untitled"
@@ -110,7 +110,7 @@ class VoiceProfile(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    voice_id: Annotated[str, StringConstraints(pattern=VOICE_ID_PATTERN)] = ""
+    voice_id: VoiceIdOrEmpty = ""
     voice_name: Short = ""
     stability: Ratio = DEFAULT_STABILITY
     similarity_boost: Ratio = DEFAULT_SIMILARITY
@@ -190,7 +190,7 @@ class Palette(BaseModel):
     background: Color
 
 
-class FontSpec(BaseModel):
+class StyleFont(BaseModel):
     """One font role: the family and the weight (100 to 900) its text is set in."""
 
     model_config = ConfigDict(frozen=True)
@@ -209,9 +209,9 @@ class Fonts(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    heading: FontSpec | None = None
-    body: FontSpec | None = None
-    caption: FontSpec | None = None
+    heading: StyleFont | None = None
+    body: StyleFont | None = None
+    caption: StyleFont | None = None
 
 
 class CutRhythm(BaseModel):
@@ -329,7 +329,7 @@ class EpisodeSlug(EpisodeSlugInput):
     `exported_at` is when an srstudio zip first carried the slug; from then on it is fixed.
     """
 
-    channel: str
+    channel: ChannelSlug
     number: int
     revision: int
     updated_at: datetime | None = None
@@ -356,7 +356,7 @@ class Relationship(RelationshipInput):
     """A stored relationship, with the revision to send back when changing it."""
 
     id: UUID
-    channel: str
+    channel: ChannelSlug
     revision: int
 
 

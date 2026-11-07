@@ -112,7 +112,7 @@ class BlockKind(StrEnum):
     CENTERED = "centered"
 
 
-class Block(BaseModel):
+class ScreenplayBlock(BaseModel):
     """One block of the formatted screenplay: a heading, a paragraph of action, a cue, a line."""
 
     model_config = ConfigDict(frozen=True)
@@ -132,40 +132,44 @@ def paragraphs(text: str) -> list[list[str]]:
     return [paragraph for paragraph in found if paragraph]
 
 
-def single_line_block(line: str) -> Block | None:
+def single_line_block(line: str) -> ScreenplayBlock | None:
     """A transition or centered line standing alone, or None."""
     if line.startswith(FORCED_TRANSITION) and line.endswith(CENTERED_END):
-        return Block(kind=BlockKind.CENTERED, text=line[1:-1].strip())
+        return ScreenplayBlock(kind=BlockKind.CENTERED, text=line[1:-1].strip())
     if line.startswith(FORCED_TRANSITION):
-        return Block(kind=BlockKind.TRANSITION, text=line[1:].strip())
+        return ScreenplayBlock(kind=BlockKind.TRANSITION, text=line[1:].strip())
     if line == line.upper() and line.endswith(TRANSITION_END):
-        return Block(kind=BlockKind.TRANSITION, text=line)
+        return ScreenplayBlock(kind=BlockKind.TRANSITION, text=line)
     return None
 
 
-def dialogue_blocks(lines: list[str]) -> list[Block]:
+def dialogue_blocks(lines: list[str]) -> list[ScreenplayBlock]:
     """A cue and what follows it: the character, then parentheticals and lines of dialogue."""
-    blocks = [Block(kind=BlockKind.CHARACTER, text=lines[0].removeprefix(FORCED_CHARACTER))]
+    blocks = [
+        ScreenplayBlock(kind=BlockKind.CHARACTER, text=lines[0].removeprefix(FORCED_CHARACTER))
+    ]
     for line in lines[1:]:
         kind = BlockKind.PARENTHETICAL if PARENTHETICAL.match(line) else BlockKind.DIALOGUE
-        blocks.append(Block(kind=kind, text=line))
+        blocks.append(ScreenplayBlock(kind=kind, text=line))
     return blocks
 
 
-def paragraph_blocks(lines: list[str]) -> list[Block]:
+def paragraph_blocks(lines: list[str]) -> list[ScreenplayBlock]:
     """The blocks one paragraph of the screenplay formats as."""
     first = lines[0]
     if heading := scene_heading(first):
-        rest = [Block(kind=BlockKind.ACTION, text="\n".join(lines[1:]))] if lines[1:] else []
-        return [Block(kind=BlockKind.SCENE, text=heading), *rest]
+        rest = (
+            [ScreenplayBlock(kind=BlockKind.ACTION, text="\n".join(lines[1:]))] if lines[1:] else []
+        )
+        return [ScreenplayBlock(kind=BlockKind.SCENE, text=heading), *rest]
     if len(lines) == 1 and (alone := single_line_block(first)):
         return [alone]
     if len(lines) > 1 and character_name(first):
         return dialogue_blocks(lines)
     action = "\n".join(line.removeprefix(FORCED_ACTION) for line in lines)
-    return [Block(kind=BlockKind.ACTION, text=action)]
+    return [ScreenplayBlock(kind=BlockKind.ACTION, text=action)]
 
 
-def blocks(text: str) -> list[Block]:
+def blocks(text: str) -> list[ScreenplayBlock]:
     """The screenplay as blocks in order, for a preview formatted like a printed script."""
     return [block for paragraph in paragraphs(text) for block in paragraph_blocks(paragraph)]

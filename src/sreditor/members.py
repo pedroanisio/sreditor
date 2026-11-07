@@ -11,6 +11,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, EmailStr
 
 from sreditor.database import Database, parse, stamp
+from sreditor.field_types import ChannelSlug
 from sreditor.security import hash_token, new_token
 
 
@@ -89,7 +90,7 @@ class Invitation(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     id: UUID
-    channel: str
+    channel: ChannelSlug
     email: EmailStr
     role: Role
     invited_by: UUID

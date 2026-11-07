@@ -30,6 +30,7 @@ from sreditor.channels import Asset, Platform
 from sreditor.deps import ChannelAccess, Services, access_for
 from sreditor.episode_operations import episode_access
 from sreditor.external_media import EXTENSIONS as COPY_EXTENSIONS
+from sreditor.field_types import MediaType
 from sreditor.file_links import FileLink, LinkGone, LinkKind, NewLink
 from sreditor.media import (
     EXTENSIONS,
@@ -106,7 +107,7 @@ class FileOffer(BaseModel):
 
     url: str = Field(description="Open it once, with GET and no credentials, within 15 minutes.")
     expires_at: datetime
-    media_type: str
+    media_type: MediaType
     size_bytes: int | None = Field(
         description="Null for an srstudio export, which is built when the link is opened."
     )
@@ -140,25 +141,25 @@ class ExportCheck(BaseModel):
     file_link: FileOffer | None = None
 
 
-class FileFacts(BaseModel):
+class LinkedFile(BaseModel):
     """A file a link points at; `path` is None while an export is still to be built."""
 
     model_config = ConfigDict(frozen=True)
 
     path: Path | None
-    media_type: str
+    media_type: MediaType
     size_bytes: int | None
     filename: str
     is_inline: bool
 
 
-class Delivery(BaseModel):
+class FileDelivery(BaseModel):
     """A file ready to send; `cleanup` is a folder to remove once it was sent."""
 
     model_config = ConfigDict(frozen=True)
 
     path: Path
-    media_type: str
+    media_type: MediaType
     filename: str
     is_inline: bool
     cleanup: Path | None = None
@@ -277,7 +278,7 @@ def link_for(app: Services, access: ChannelAccess, target: FileTarget) -> NewLin
     return builders[target.source]()
 
 
-def describe_brand(app: Services, access: ChannelAccess, link: NewLink) -> FileFacts:
+def describe_brand(app: Services, access: ChannelAccess, link: NewLink) -> LinkedFile:
     """A brand file, only while the channel's kit or an account's kit still points to it."""
     access.require(Permission.READ)
     asset = next(
@@ -288,7 +289,7 @@ def describe_brand(app: Services, access: ChannelAccess, link: NewLink) -> FileF
             "That file is no longer in the brand kit; call get_channel for the current ones"
         )
     path = stored_path(app, asset)
-    return FileFacts(
+    return LinkedFile(
         path=path,
         media_type=asset.media_type,
         size_bytes=path.stat().st_size,
@@ -297,11 +298,11 @@ def describe_brand(app: Services, access: ChannelAccess, link: NewLink) -> FileF
     )
 
 
-def describe_media(app: Services, access: ChannelAccess, link: NewLink) -> FileFacts:
+def describe_media(app: Services, access: ChannelAccess, link: NewLink) -> LinkedFile:
     """An episode's media file."""
     number = needs(link.number, link.kind, "number")
     found = media_operations.get_media(app, access, number, UUID(link.reference))
-    return FileFacts(
+    return LinkedFile(
         path=stored_path(app, found.stored()),
         media_type=found.media_type,
         size_bytes=found.size_bytes,
@@ -310,13 +311,13 @@ def describe_media(app: Services, access: ChannelAccess, link: NewLink) -> FileF
     )
 
 
-def describe_external(app: Services, access: ChannelAccess, link: NewLink) -> FileFacts:
+def describe_external(app: Services, access: ChannelAccess, link: NewLink) -> LinkedFile:
     """A third-party item's uploaded copy."""
     item = external_media_operations.get_item(app, access, UUID(link.reference))
     stored = item.stored()
     if item.copy_file is None or stored is None:
         raise not_found(f"Item {item.id} has no uploaded copy; only its link is kept")
-    return FileFacts(
+    return LinkedFile(
         path=stored_path(app, stored),
         media_type=item.copy_file.media_type,
         size_bytes=item.copy_file.size_bytes,
@@ -325,11 +326,11 @@ def describe_external(app: Services, access: ChannelAccess, link: NewLink) -> Fi
     )
 
 
-def describe_export(app: Services, access: ChannelAccess, link: NewLink) -> FileFacts:
+def describe_export(app: Services, access: ChannelAccess, link: NewLink) -> LinkedFile:
     """The srstudio export zip; it does not exist until the link is opened."""
     number = needs(link.number, link.kind, "number")
     episode_access(app, access, number, Permission.WRITE_CHANNEL)
-    return FileFacts(
+    return LinkedFile(
         path=None,
         media_type=ZIP_MEDIA_TYPE,
         size_bytes=None,
@@ -338,9 +339,9 @@ def describe_export(app: Services, access: ChannelAccess, link: NewLink) -> File
     )
 
 
-def describe(app: Services, access: ChannelAccess, link: NewLink) -> FileFacts:
+def describe(app: Services, access: ChannelAccess, link: NewLink) -> LinkedFile:
     """The file a download link points at, checking the role and that it still exists."""
-    describers: dict[LinkKind, Callable[[Services, ChannelAccess, NewLink], FileFacts]] = {
+    describers: dict[LinkKind, Callable[[Services, ChannelAccess, NewLink], LinkedFile]] = {
         LinkKind.BRAND_FILE: describe_brand,
         LinkKind.MEDIA_FILE: describe_media,
         LinkKind.EXTERNAL_COPY: describe_external,
@@ -349,7 +350,7 @@ def describe(app: Services, access: ChannelAccess, link: NewLink) -> FileFacts:
     return describers[link.kind](app, access, link)
 
 
-def inline_content(facts: FileFacts) -> str | None:
+def inline_content(facts: LinkedFile) -> str | None:
     """The file as base64 when it is small enough to travel in a tool result."""
     if facts.path is None or facts.size_bytes is None or facts.size_bytes > INLINE_MAX_BYTES:
         return None
@@ -422,12 +423,12 @@ def issuer_access(app: Services, link: FileLink) -> ChannelAccess:
     return access_for(app, link.channel, user, token)
 
 
-def deliver(app: Services, link: FileLink) -> Delivery:
+def deliver(app: Services, link: FileLink) -> FileDelivery:
     """The file a claimed download link points at, built first when it is an srstudio export."""
     access = issuer_access(app, link)
     facts = describe(app, access, link)
     if facts.path is not None:
-        return Delivery(
+        return FileDelivery(
             path=facts.path,
             media_type=facts.media_type,
             filename=facts.filename,
@@ -440,7 +441,7 @@ def deliver(app: Services, link: FileLink) -> Delivery:
         # The folder holds converted WAVs; a refused export must not leave them behind.
         shutil.rmtree(folder, ignore_errors=True)
         raise
-    return Delivery(
+    return FileDelivery(
         path=archive,
         media_type=facts.media_type,
         filename=archive.name,
@@ -477,7 +478,7 @@ def claimed(app: Services, secret: str, is_upload: bool) -> Iterator[FileLink]:
         raise
 
 
-def redeem_download(app: Services, secret: str) -> Delivery:
+def redeem_download(app: Services, secret: str) -> FileDelivery:
     """Spend a download link and return its file."""
     with claimed(app, secret, is_upload=False) as link:
         return deliver(app, link)

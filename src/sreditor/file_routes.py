@@ -22,7 +22,7 @@ from sreditor import file_operations
 from sreditor.assets import BYTES_PER_MEGABYTE, CHUNK_BYTES, FileTooLarge
 from sreditor.deps import ServicesDep
 from sreditor.etags import etag
-from sreditor.file_links import LinkGone, LinkNotFound
+from sreditor.file_links import FileLinkNotFound, LinkGone
 from sreditor.file_operations import FILES_PATH
 from sreditor.media import MediaFile
 from sreditor.problems import problem_response, problem_type
@@ -120,8 +120,8 @@ async def send_file_by_link(link: str, request: Request, app: ServicesDep) -> JS
 def install_error_handlers(app: FastAPI) -> None:
     """A link that does not exist is 404; one used or expired is 410."""
 
-    @app.exception_handler(LinkNotFound)
-    async def link_not_found(request: Request, _: LinkNotFound) -> JSONResponse:
+    @app.exception_handler(FileLinkNotFound)
+    async def link_not_found(request: Request, _: FileLinkNotFound) -> JSONResponse:
         return problem_response(
             request,
             status.HTTP_404_NOT_FOUND,

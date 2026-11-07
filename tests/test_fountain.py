@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 
 from sreditor.fountain import (
-    Block,
     BlockKind,
+    ScreenplayBlock,
     blocks,
     character_name,
     outline,
@@ -122,11 +122,11 @@ def test_character_name_reads_cues_and_refuses_other_lines(line: str, name: str 
 def test_blocks_format_scene_action_and_dialogue() -> None:
     text = "INT. KITCHEN - DAY\nAna sits.\n\nANA\n(sighing)\nIs it Monday?\n"
     assert blocks(text) == [
-        Block(kind=BlockKind.SCENE, text="INT. KITCHEN - DAY"),
-        Block(kind=BlockKind.ACTION, text="Ana sits."),
-        Block(kind=BlockKind.CHARACTER, text="ANA"),
-        Block(kind=BlockKind.PARENTHETICAL, text="(sighing)"),
-        Block(kind=BlockKind.DIALOGUE, text="Is it Monday?"),
+        ScreenplayBlock(kind=BlockKind.SCENE, text="INT. KITCHEN - DAY"),
+        ScreenplayBlock(kind=BlockKind.ACTION, text="Ana sits."),
+        ScreenplayBlock(kind=BlockKind.CHARACTER, text="ANA"),
+        ScreenplayBlock(kind=BlockKind.PARENTHETICAL, text="(sighing)"),
+        ScreenplayBlock(kind=BlockKind.DIALOGUE, text="Is it Monday?"),
     ]
 
 
@@ -142,14 +142,16 @@ def test_blocks_format_scene_action_and_dialogue() -> None:
 )
 def test_blocks_single_line_takes_its_kind(line: str, kind: BlockKind, text: str) -> None:
     # A first line such as "CUT TO:" would read as a title page key, so action comes first.
-    assert blocks(f"Ana runs.\n\n{line}")[-1] == Block(kind=kind, text=text)
+    assert blocks(f"Ana runs.\n\n{line}")[-1] == ScreenplayBlock(kind=kind, text=text)
 
 
 def test_blocks_forced_character_drops_the_at_sign() -> None:
-    assert blocks("@McCLANE\nYippee.")[0] == Block(kind=BlockKind.CHARACTER, text="McCLANE")
+    assert blocks("@McCLANE\nYippee.")[0] == ScreenplayBlock(
+        kind=BlockKind.CHARACTER, text="McCLANE"
+    )
 
 
 def test_blocks_skip_title_page_and_blank_runs() -> None:
     assert blocks("Title: Pilot\n\n\n\nEXT. ROOF - NIGHT") == [
-        Block(kind=BlockKind.SCENE, text="EXT. ROOF - NIGHT")
+        ScreenplayBlock(kind=BlockKind.SCENE, text="EXT. ROOF - NIGHT")
     ]

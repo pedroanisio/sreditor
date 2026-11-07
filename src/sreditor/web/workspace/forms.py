@@ -13,7 +13,8 @@ import unicodedata
 from fastapi import UploadFile
 from pydantic import Field
 
-from sreditor.channels import SLUG_LENGTH, Platform
+from sreditor.channels import Platform
+from sreditor.field_types import SLUG_LENGTH
 from sreditor.tokens import DEFAULT_TTL_DAYS
 from sreditor.web.forms import SubmittedFields
 

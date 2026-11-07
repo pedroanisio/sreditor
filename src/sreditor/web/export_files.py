@@ -24,6 +24,7 @@ from weasyprint.urls import URLFetcher, URLFetcherResponse  # type: ignore[impor
 from sreditor.classification import Classification, Dimension, State
 from sreditor.export_formats import MEDIA_TYPES, ExportFormat
 from sreditor.export_operations import ChannelExport, EpisodeExport
+from sreditor.field_types import MediaType
 from sreditor.i18n import Translator
 from sreditor.web.classification_labels import DIMENSION_LABELS, STATE_LABELS, VALUE_LABELS
 from sreditor.web.labels import EPISODE_STATUS_LABELS
@@ -50,7 +51,7 @@ class ExportFile(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     content: bytes
-    media_type: str
+    media_type: MediaType
     filename: str
 
 

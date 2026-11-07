@@ -31,7 +31,7 @@ from sreditor.retention_csv import MAX_CSV_CHARS, PROBLEM_MESSAGES, RetentionCsv
 from sreditor.web.forms import field_errors
 from sreditor.web.labels import platform_name
 from sreditor.web.routes import rejected_form, translator
-from sreditor.web.workspace.delivery import PostPath, PostTarget, delivery_url
+from sreditor.web.workspace.delivery import PostFormPath, PostTarget, delivery_url
 from sreditor.web.workspace.episodes import episode_frame, found_episode, labels
 from sreditor.web.workspace.forms import RetentionFields, SnapshotFields
 from sreditor.web.workspace.shell import (
@@ -105,7 +105,7 @@ def csv_errors(refusal: RetentionCsvError, translate: Translator) -> dict[str, s
 
 
 def post_context(
-    app: Services, access: ChannelAccess, target: PostPath, cursor: str
+    app: Services, access: ChannelAccess, target: PostFormPath, cursor: str
 ) -> dict[str, Any]:
     """The post's snapshots, newest first, for the template."""
     try:
@@ -131,7 +131,7 @@ def post_metrics_page(
     request: Request,
     app: Services,
     access: ChannelAccess,
-    target: PostPath,
+    target: PostFormPath,
     state: MetricsPageState,
 ) -> Response:
     """A post's snapshots with the forms to add numbers or import a retention CSV."""

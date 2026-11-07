@@ -19,6 +19,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from sreditor.database import Database, parse, stamp
+from sreditor.field_types import ChannelSlug
 from sreditor.security import hash_token
 
 WORKER_TOKEN_PREFIX = "srw_"
@@ -83,7 +84,7 @@ class RenderJob(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     id: UUID
-    channel: str
+    channel: ChannelSlug
     number: int
     preset: RenderPreset
     status: RenderStatus
@@ -131,7 +132,7 @@ class NewJob(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    channel: str
+    channel: ChannelSlug
     number: int
     preset: RenderPreset
     export_sha256: str

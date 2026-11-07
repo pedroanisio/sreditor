@@ -39,6 +39,7 @@ from sreditor.export_operations import (
     export_episode,
 )
 from sreditor.external_media import EpisodeCredits, ExternalKind, ExternalMedia
+from sreditor.field_types import MediaType
 from sreditor.library import LibraryEntry, LibraryKind
 from sreditor.library_operations import Cast
 from sreditor.members import Permission
@@ -174,7 +175,7 @@ class BookImage(BaseModel):
     media_id: UUID
     title: str
     attribution: str
-    media_type: str
+    media_type: MediaType
     stored: StoredFile = Field(exclude=True)
 
 

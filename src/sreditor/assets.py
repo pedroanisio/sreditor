@@ -23,6 +23,7 @@ from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, ConfigDict
 
 from sreditor.channels import Asset, AssetKind
+from sreditor.field_types import MediaType, Sha256
 from sreditor.i18n import N_
 
 BYTES_PER_MEGABYTE = 1024 * 1024
@@ -71,7 +72,7 @@ class FileFormat(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    media_type: str
+    media_type: MediaType
     extension: str
     family: FileFamily
 
@@ -192,8 +193,8 @@ class StoredFile(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     path: str
-    media_type: str
-    sha256: str
+    media_type: MediaType
+    sha256: Sha256
     size_bytes: int
 
 
@@ -203,7 +204,7 @@ class FileFacts(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     format: FileFormat
-    sha256: str
+    sha256: Sha256
     width: int | None = None
     height: int | None = None
 

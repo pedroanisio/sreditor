@@ -18,6 +18,7 @@ from pydantic import (
     model_validator,
 )
 
+from sreditor.field_types import ChannelSlug, LanguageTag, MediaType, Sha256, VoiceId
 from sreditor.voice_tuning import VoiceTuning
 
 
@@ -41,19 +42,12 @@ class Status(StrEnum):
     ARCHIVED = "archived"
 
 
-SLUG_LENGTH = 64
 TEXT_LENGTH = 200
 ASSET_PATH_LENGTH = 512
 DEFAULT_LANGUAGE = "pt-BR"
-SLUG_PATTERN = r"^[a-z0-9]+(-[a-z0-9]+)*$"
-LANGUAGE_PATTERN = r"^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$"  # a BCP 47 tag such as pt-BR
 HEX_PATTERN = r"^#[0-9A-Fa-f]{6}$"
-SHA256_PATTERN = r"^[0-9a-f]{64}$"
-MEDIA_TYPE_PATTERN = r"^[a-z]+/[a-z0-9.+-]+$"
 RELATIVE_PATH_PATTERN = r"^[^/].*$"
-VOICE_ID_PATTERN = r"^[A-Za-z0-9]{1,64}$"
 
-Slug = Annotated[str, StringConstraints(pattern=SLUG_PATTERN, min_length=1, max_length=SLUG_LENGTH)]
 Text = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=TEXT_LENGTH)
 ]
@@ -98,8 +92,8 @@ class Asset(BaseModel):
             pattern=RELATIVE_PATH_PATTERN, min_length=1, max_length=ASSET_PATH_LENGTH
         ),
     ]
-    media_type: Annotated[str, StringConstraints(pattern=MEDIA_TYPE_PATTERN)]
-    sha256: Annotated[str, StringConstraints(pattern=SHA256_PATTERN)]
+    media_type: MediaType
+    sha256: Sha256
     width: PositiveInt | None = None
     height: PositiveInt | None = None
     duration_seconds: PositiveFloat | None = None
@@ -210,7 +204,7 @@ class NarratorVoice(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    voice_id: Annotated[str, StringConstraints(pattern=VOICE_ID_PATTERN, min_length=1)]
+    voice_id: VoiceId
     voice_name: Annotated[str, StringConstraints(strip_whitespace=True, max_length=TEXT_LENGTH)] = (
         ""
     )
@@ -296,9 +290,9 @@ class Channel(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    slug: Slug
+    slug: ChannelSlug
     name: Text
-    language: Annotated[str, StringConstraints(pattern=LANGUAGE_PATTERN)] = DEFAULT_LANGUAGE
+    language: LanguageTag = DEFAULT_LANGUAGE
     status: Status = Status.DRAFT
     brand: BrandKit = Field(default_factory=BrandKit)
     accounts: list[PlatformAccount] = Field(default_factory=list)

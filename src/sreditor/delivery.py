@@ -24,9 +24,10 @@ from pydantic import (
     model_validator,
 )
 
-from sreditor.channels import SLUG_PATTERN, Platform
+from sreditor.channels import Platform
 from sreditor.database import Database
 from sreditor.episode_texts import EpisodeTexts, PartChanged, TextKey, TextPart
+from sreditor.field_types import SLUG_PATTERN, ChannelSlug
 from sreditor.i18n import N_
 from sreditor.media import MediaStore
 
@@ -125,7 +126,7 @@ class DeliveryInput(BaseModel):
         return self
 
 
-class WarningKind(StrEnum):
+class DeliveryWarningKind(StrEnum):
     """What makes a delivery package incomplete without making it unusable."""
 
     NO_VIDEO = "no_video"
@@ -133,12 +134,12 @@ class WarningKind(StrEnum):
     NO_LINK = "no_link"
 
 
-WARNING_MESSAGES: dict[WarningKind, str] = {
-    WarningKind.NO_VIDEO: N_("The cut %(cut)s has no final video."),
-    WarningKind.VIDEO_REMOVED: N_(
+WARNING_MESSAGES: dict[DeliveryWarningKind, str] = {
+    DeliveryWarningKind.NO_VIDEO: N_("The cut %(cut)s has no final video."),
+    DeliveryWarningKind.VIDEO_REMOVED: N_(
         "The final video of the cut %(cut)s is no longer among the episode's media."
     ),
-    WarningKind.NO_LINK: N_("The post on %(platform)s has no link."),
+    DeliveryWarningKind.NO_LINK: N_("The post on %(platform)s has no link."),
 }
 
 
@@ -147,12 +148,12 @@ class DeliveryWarning(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    kind: WarningKind
+    kind: DeliveryWarningKind
     message: str
     values: dict[str, str] = Field(default_factory=dict)
 
 
-def warning(kind: WarningKind, **values: object) -> DeliveryWarning:
+def warning(kind: DeliveryWarningKind, **values: object) -> DeliveryWarning:
     """A warning with its English message filled in."""
     shown = {name: str(value) for name, value in values.items()}
     return DeliveryWarning(kind=kind, message=WARNING_MESSAGES[kind] % shown, values=shown)
@@ -163,11 +164,11 @@ def warnings_of(delivery: DeliveryInput, video_ids: set[UUID]) -> list[DeliveryW
     found: list[DeliveryWarning] = []
     for cut in delivery.cuts:
         if cut.video_id is None:
-            found.append(warning(WarningKind.NO_VIDEO, cut=cut.name))
+            found.append(warning(DeliveryWarningKind.NO_VIDEO, cut=cut.name))
         elif cut.video_id not in video_ids:
-            found.append(warning(WarningKind.VIDEO_REMOVED, cut=cut.name))
+            found.append(warning(DeliveryWarningKind.VIDEO_REMOVED, cut=cut.name))
     found.extend(
-        warning(WarningKind.NO_LINK, platform=post.platform.value)
+        warning(DeliveryWarningKind.NO_LINK, platform=post.platform.value)
         for post in delivery.posts
         if post.url is None
     )
@@ -177,7 +178,7 @@ def warnings_of(delivery: DeliveryInput, video_ids: set[UUID]) -> list[DeliveryW
 class Delivery(DeliveryInput):
     """An episode's delivery package with its revision and the warnings it raises."""
 
-    channel: str
+    channel: ChannelSlug
     number: int
     revision: int
     updated_at: datetime | None = None

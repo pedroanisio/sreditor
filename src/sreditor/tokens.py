@@ -16,8 +16,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from sreditor.channels import Slug
 from sreditor.database import Database, parse, stamp
+from sreditor.field_types import ChannelSlug
 from sreditor.members import Permission
 from sreditor.security import hash_token
 from sreditor.users import User, UserStatus, UserStore
@@ -98,7 +98,7 @@ class TokenInput(BaseModel):
     name: TokenName
     scopes: Annotated[list[Scope], Field(min_length=1)]
     expires_in_days: int = Field(default=DEFAULT_TTL_DAYS, ge=1, le=MAX_TTL_DAYS)
-    channels: list[Slug] | None = Field(
+    channels: list[ChannelSlug] | None = Field(
         default=None,
         min_length=1,
         description="Slugs of the only channels the token may act on; omit for all of yours.",

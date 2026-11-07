@@ -26,6 +26,7 @@ from sreditor.elevenlabs import (
     UNKNOWN_PLAN,
     Alignment,
 )
+from sreditor.field_types import ChannelSlug, LanguageTag, VoiceIdOrEmpty
 from sreditor.voice_markup import TtsModel
 from sreditor.voice_tuning import VoiceTuning
 
@@ -53,10 +54,10 @@ class BlockVoice(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    voice_id: str
+    voice_id: VoiceIdOrEmpty
     voice_name: str
     model: TtsModel
-    language: str
+    language: LanguageTag
     tuning: VoiceTuning | None = None
 
 
@@ -66,7 +67,7 @@ class VoiceLicense(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     provider: str
-    voice_id: str
+    voice_id: VoiceIdOrEmpty
     voice_name: str
     model: str
     # The account's ElevenLabs plan when the take was made, or "unknown".
@@ -143,7 +144,7 @@ class BlockTakeRecord(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    channel: str
+    channel: ChannelSlug
     number: int
     key: str
 

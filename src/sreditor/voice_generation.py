@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict
 
 from sreditor.block_takes import BlockTake
 from sreditor.database import Database
+from sreditor.field_types import ChannelSlug, LanguageTag, VoiceIdOrEmpty
 from sreditor.short_script import ShortScriptInput
 from sreditor.voice_markup import for_speech
 
@@ -52,8 +53,8 @@ class Take(BaseModel):
     media_id: UUID
     text: str
     model: str
-    voice_id: str
-    language: str
+    voice_id: VoiceIdOrEmpty
+    language: LanguageTag
     duration_s: float
     timings: list[BlockTiming | None] | None
     suggested: list[PlannedTime] | None
@@ -134,7 +135,7 @@ class TakeRecord(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    channel: str
+    channel: ChannelSlug
     number: int
     key: str
 

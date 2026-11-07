@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from sreditor.delivery import Cut, DeliveryInput, Post, WarningKind
+from sreditor.delivery import Cut, DeliveryInput, DeliveryWarningKind, Post
 from tests import media_samples as sample
 from tests.test_agentic import PUBLIC_URL, agent, block, new_token, tool
 from tests.test_api import FUNNY_MEMES
@@ -226,7 +226,7 @@ def test_delivery_get_warns_for_cut_without_video_and_post_without_link(owner: T
     owner.put(DELIVERY, json=package())
     owner.put(POST_ON_TIKTOK, json={"cut": "main"})
     kinds = {item["kind"] for item in owner.get(DELIVERY).json()["warnings"]}
-    assert kinds == {WarningKind.NO_VIDEO.value, WarningKind.NO_LINK.value}
+    assert kinds == {DeliveryWarningKind.NO_VIDEO.value, DeliveryWarningKind.NO_LINK.value}
 
 
 def test_delivery_get_complete_package_has_no_warnings(owner: TestClient, video: str) -> None:
@@ -239,7 +239,7 @@ def test_delivery_get_after_video_removed_warns_it_is_gone(owner: TestClient, vi
     owner.put(DELIVERY, json=package(video_id=video))
     assert owner.delete(f"{MEDIA}/{video}").status_code == 204
     kinds = [item["kind"] for item in owner.get(DELIVERY).json()["warnings"]]
-    assert kinds == [WarningKind.VIDEO_REMOVED.value]
+    assert kinds == [DeliveryWarningKind.VIDEO_REMOVED.value]
 
 
 def test_delivery_by_viewer_can_read_but_not_write(

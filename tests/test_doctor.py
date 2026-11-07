@@ -17,10 +17,10 @@ from pydantic import SecretStr
 from sreditor import cli
 from sreditor.cloudflare import Cloudflare, Transport
 from sreditor.doctor import (
+    CheckStatus,
     DoctorOptions,
     Environment,
     Finding,
-    Status,
     Tools,
     parse_env,
     probe,
@@ -86,7 +86,7 @@ def doctor(root: Path, **options: object) -> list[Finding]:
 
 def test_doctor_without_env_file_stops_after_reporting_it(root: Path) -> None:
     [only] = doctor(root)
-    assert (only.name, only.status) == (".env", Status.FIXABLE)
+    assert (only.name, only.status) == (".env", CheckStatus.FIXABLE)
 
 
 def test_doctor_fix_without_env_file_copies_example_privately(root: Path) -> None:
@@ -102,7 +102,7 @@ def test_doctor_without_fix_leaves_env_file_unchanged(root: Path) -> None:
 
 def test_doctor_owner_differing_from_store_is_fixable(root: Path) -> None:
     with_env(root, "SREDITOR_UID=0\n")
-    assert finding(doctor(root), "owner").status is Status.FIXABLE
+    assert finding(doctor(root), "owner").status is CheckStatus.FIXABLE
 
 
 def test_doctor_fix_sets_owner_to_store_owner(root: Path) -> None:
@@ -117,13 +117,13 @@ def test_doctor_without_store_reports_owner_problem(root: Path) -> None:
     with_env(root)
     (root / "store" / "rules.sqlite").unlink()
     (root / "store").rmdir()
-    assert finding(doctor(root), "owner").status is Status.PROBLEM
+    assert finding(doctor(root), "owner").status is CheckStatus.PROBLEM
 
 
 def test_doctor_without_rules_store_reports_problem(root: Path) -> None:
     with_env(root)
     (root / "store" / "rules.sqlite").unlink()
-    assert finding(doctor(root), "rules").status is Status.PROBLEM
+    assert finding(doctor(root), "rules").status is CheckStatus.PROBLEM
 
 
 def test_doctor_development_without_public_url_uses_localhost(root: Path) -> None:
@@ -135,24 +135,24 @@ def test_doctor_development_without_public_url_uses_localhost(root: Path) -> Non
 def test_doctor_production_without_https_reports_problem(root: Path) -> None:
     with_env(root)
     result = doctor(root, environment=Environment.PRODUCTION)
-    assert finding(result, "public URL").status is Status.PROBLEM
+    assert finding(result, "public URL").status is CheckStatus.PROBLEM
 
 
 def test_doctor_production_without_hostname_reports_tunnel_problem(root: Path) -> None:
     with_env(root)
     result = doctor(root, environment=Environment.PRODUCTION)
-    assert finding(result, "tunnel").status is Status.PROBLEM
+    assert finding(result, "tunnel").status is CheckStatus.PROBLEM
 
 
 def test_doctor_development_without_hostname_needs_no_tunnel(root: Path) -> None:
     with_env(root)
-    assert finding(doctor(root), "tunnel").status is Status.OK
+    assert finding(doctor(root), "tunnel").status is CheckStatus.OK
 
 
 def test_doctor_production_without_mail_key_reports_problem(root: Path) -> None:
     with_env(root)
     result = doctor(root, environment=Environment.PRODUCTION, hostname=HOSTNAME)
-    assert finding(result, "email").status is Status.PROBLEM
+    assert finding(result, "email").status is CheckStatus.PROBLEM
 
 
 def test_doctor_fix_in_production_turns_off_token_logging(root: Path) -> None:
@@ -174,13 +174,13 @@ def test_doctor_hostname_without_api_token_reports_tunnel_problem(root: Path) ->
 
 def test_doctor_with_tunnel_token_but_no_api_token_is_ok(root: Path) -> None:
     with_env(root, "CLOUDFLARE_TUNNEL_TOKEN=t\nCOMPOSE_PROFILES=tunnel\n")
-    assert finding(doctor(root, hostname=HOSTNAME), "tunnel").status is Status.OK
+    assert finding(doctor(root, hostname=HOSTNAME), "tunnel").status is CheckStatus.OK
 
 
 def test_doctor_with_api_token_without_fix_would_create_tunnel(root: Path) -> None:
     with_env(root)
     result = doctor(root, hostname=HOSTNAME, environ=API_TOKEN)
-    assert finding(result, "tunnel").status is Status.FIXABLE
+    assert finding(result, "tunnel").status is CheckStatus.FIXABLE
 
 
 def test_doctor_fix_with_api_token_writes_tunnel_settings(root: Path) -> None:
@@ -203,7 +203,7 @@ def test_doctor_second_fix_reports_everything_ok(root: Path) -> None:
     with_env(root)
     doctor(root, hostname=HOSTNAME, environ=API_TOKEN, is_fixing=True)
     again = doctor(root, environ=API_TOKEN, is_fixing=True)
-    assert {item.status for item in again} == {Status.OK}
+    assert {item.status for item in again} == {CheckStatus.OK}
 
 
 def test_doctor_cloudflare_refusal_reports_problem(root: Path) -> None:
@@ -220,7 +220,7 @@ def test_doctor_cloudflare_refusal_reports_problem(root: Path) -> None:
 
 def test_doctor_app_not_answering_reports_problem(root: Path) -> None:
     with_env(root)
-    assert finding(doctor(root, tools=tools(is_up=False)), "running").status is Status.PROBLEM
+    assert finding(doctor(root, tools=tools(is_up=False)), "running").status is CheckStatus.PROBLEM
 
 
 def test_parse_env_skips_comments_and_strips_quotes() -> None:

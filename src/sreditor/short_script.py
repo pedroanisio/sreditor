@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 
 from sreditor.database import Database
 from sreditor.episode_texts import EpisodeTexts, PartChanged, TextKey, TextPart
+from sreditor.field_types import ChannelSlug, LanguageTag, VoiceIdOrEmpty
 from sreditor.i18n import N_
 from sreditor.srstudio_vocabulary import (
     MIN_BEAT_STEP_SECONDS,
@@ -81,8 +82,6 @@ HOOK_SECONDS = 3
 WORDS_PER_SECOND = (2.3, 2.7)
 WORD_TOLERANCE = 0.15
 WORD = re.compile(r"\d+(?:[.,]\d+)*|[\w$]+")
-VOICE_ID_PATTERN = r"^[A-Za-z0-9]{0,64}$"
-LANGUAGE_PATTERN = r"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$"
 
 Speech = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=SPEECH_LENGTH)
@@ -215,8 +214,8 @@ class VoiceChoice(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     model: TtsModel = TtsModel.V3
-    voice_id: Annotated[str, StringConstraints(pattern=VOICE_ID_PATTERN)] = ""
-    language: Annotated[str, StringConstraints(pattern=LANGUAGE_PATTERN)] = DEFAULT_LANGUAGE
+    voice_id: VoiceIdOrEmpty = ""
+    language: LanguageTag = DEFAULT_LANGUAGE
 
 
 class ShortScriptInput(BaseModel):
@@ -294,7 +293,7 @@ def warning(kind: WarningKind, **values: object) -> ScriptWarning:
 class ShortScript(ShortScriptInput):
     """An episode's short script with its revision and the warnings it raises."""
 
-    channel: str
+    channel: ChannelSlug
     number: int
     revision: int
     updated_at: datetime | None = None

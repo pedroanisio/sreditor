@@ -180,7 +180,7 @@ class State(StrEnum):
     NOT_APPLICABLE = "not_applicable"
 
 
-class Role(StrEnum):
+class ValueRole(StrEnum):
     """How much a value defines the episode: editorially, not by screen time."""
 
     PRIMARY = "primary"
@@ -201,7 +201,7 @@ class ClassifiedValue(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     value: str = Field(description="A value from the dimension's vocabulary.")
-    role: Role = Role.PRIMARY
+    role: ValueRole = ValueRole.PRIMARY
     confidence: float | None = Field(default=None, ge=0, le=1)
 
 
@@ -243,7 +243,7 @@ class Classification(BaseModel):
     def values(self, dimension: Dimension) -> list[str]:
         """The values a present dimension holds, primary first."""
         found = self.of(dimension)
-        ordered = sorted(found.items, key=lambda item: item.role != Role.PRIMARY)
+        ordered = sorted(found.items, key=lambda item: item.role != ValueRole.PRIMARY)
         return [item.value for item in ordered] if found.state is State.PRESENT else []
 
     def primary(self, dimension: Dimension) -> str | None:
@@ -283,8 +283,11 @@ def dimension_refusals(
     roles = [item.role for item in found.items]
     values = [item.value for item in found.items]
     checks = (
-        (roles.count(Role.PRIMARY) != 1, N_("A present dimension needs exactly one primary value")),
-        (roles.count(Role.SECONDARY) > MAX_SECONDARY, N_("At most two secondary values")),
+        (
+            roles.count(ValueRole.PRIMARY) != 1,
+            N_("A present dimension needs exactly one primary value"),
+        ),
+        (roles.count(ValueRole.SECONDARY) > MAX_SECONDARY, N_("At most two secondary values")),
         (len(set(values)) != len(values), N_("A value appears twice")),
         (
             method is not Method.HUMAN and any(item.confidence is None for item in found.items),

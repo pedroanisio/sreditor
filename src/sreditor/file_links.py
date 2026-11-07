@@ -17,6 +17,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 from sreditor.database import Database, stamp
+from sreditor.field_types import ChannelSlug
 from sreditor.security import hash_token, new_token
 
 LINK_TTL = timedelta(minutes=15)
@@ -46,7 +47,7 @@ class NewLink(BaseModel):
 
     user_id: UUID
     token_id: UUID
-    channel: str
+    channel: ChannelSlug
     kind: LinkKind
     number: int | None = None
     # The brand file's path, the media id, the item id, or an upload's media kind.
@@ -71,7 +72,7 @@ class IssuedLink(BaseModel):
     link: FileLink
 
 
-class LinkNotFound(LookupError):
+class FileLinkNotFound(LookupError):
     """No such link was ever issued."""
 
 
@@ -130,7 +131,7 @@ class FileLinkStore:
         return IssuedLink(secret=secret, link=FileLink(**new.model_dump(), expires_at=expires_at))
 
     def claim(self, secret: str) -> FileLink:
-        """Mark a live link used and return it; LinkNotFound or LinkGone when it cannot be used.
+        """Mark a live link used and return it; FileLinkNotFound or LinkGone when it cannot be used.
 
         The update is atomic, so of two requests racing for one link only one wins.
         """
@@ -147,7 +148,7 @@ class FileLinkStore:
                 "SELECT 1 FROM file_links WHERE link_hash = ?", (hash_token(secret),)
             ).fetchone()
         if known is None:
-            raise LinkNotFound
+            raise FileLinkNotFound
         raise LinkGone
 
     def release(self, secret: str) -> None:

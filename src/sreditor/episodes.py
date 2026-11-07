@@ -15,14 +15,11 @@ from pydantic import BaseModel, ConfigDict, Field, PositiveInt, StringConstraint
 
 from sreditor.database import Database
 from sreditor.delivery import DeliveryWarning
+from sreditor.field_types import ChannelSlug, Title
 
-TITLE_LENGTH = 200
 SUMMARY_LENGTH = 2000
 FIRST_NUMBER = 1
 
-Title = Annotated[
-    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=TITLE_LENGTH)
-]
 Summary = Annotated[str, StringConstraints(strip_whitespace=True, max_length=SUMMARY_LENGTH)]
 
 
@@ -51,7 +48,7 @@ class Episode(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    channel: str
+    channel: ChannelSlug
     number: PositiveInt
     title: str
     summary: str

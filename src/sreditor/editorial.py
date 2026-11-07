@@ -14,6 +14,7 @@ from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from sreditor.channels import Channel, Platform
+from sreditor.field_types import ChannelSlug
 from sreditor.store import Owner, Statement, StmtClient
 
 CATEGORY_PREFIX = "editorial."
@@ -56,7 +57,7 @@ class Editorial(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    channel: str
+    channel: ChannelSlug
     platform: Platform | None
     purpose: Guideline | None = None
     voice: Guideline | None = None

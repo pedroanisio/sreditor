@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, HttpUrl, StringConstraints
 
 from sreditor.database import Database
 from sreditor.episode_texts import EpisodeTexts, PartChanged, TextKey, TextPart
+from sreditor.field_types import ChannelSlug
 
 NOTES_LENGTH = 20000
 SOURCE_TITLE_LENGTH = 200
@@ -40,7 +41,7 @@ class ResearchNotes(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    channel: str
+    channel: ChannelSlug
     number: int
     text: str
     revision: int
@@ -64,7 +65,7 @@ class Source(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     id: UUID
-    channel: str
+    channel: ChannelSlug
     number: int
     url: HttpUrl
     title: str

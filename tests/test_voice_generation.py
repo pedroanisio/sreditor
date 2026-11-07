@@ -54,7 +54,7 @@ def script(**voice: str) -> ShortScriptInput:
 
 def take(duration_s: float, words: list[WordTiming]) -> BlockTake:
     """A block take of this length with these words."""
-    stored = StoredFile(path="c/x.mp3", media_type="audio/mpeg", sha256="x", size_bytes=1)
+    stored = StoredFile(path="c/x.mp3", media_type="audio/mpeg", sha256="0" * 64, size_bytes=1)
     return BlockTake(
         key="k",
         text="t",

@@ -12,6 +12,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict
 
 from sreditor.database import Database
+from sreditor.field_types import ChannelSlug
 
 # The revision of a part nobody has written yet; If-Match with it means "only if still empty".
 UNWRITTEN = 0
@@ -44,7 +45,7 @@ class TextKey(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     part: TextPart
-    channel: str
+    channel: ChannelSlug
     number: int
 
 

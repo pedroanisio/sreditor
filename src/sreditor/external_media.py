@@ -45,8 +45,8 @@ from sreditor.assets import (
 )
 from sreditor.database import Database
 from sreditor.episode_texts import PartChanged
+from sreditor.field_types import ChannelSlug, MediaType, Sha256, Title
 
-TITLE_LENGTH = 200
 CREATOR_LENGTH = 200
 LICENSE_LENGTH = 120
 CREDIT_LENGTH = 500
@@ -54,9 +54,6 @@ NOTE_LENGTH = 2000
 PAGES_LENGTH = 40
 SCENE_LENGTH = 200
 
-Title = Annotated[
-    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=TITLE_LENGTH)
-]
 Creator = Annotated[str, StringConstraints(strip_whitespace=True, max_length=CREATOR_LENGTH)]
 LicenseName = Annotated[str, StringConstraints(strip_whitespace=True, max_length=LICENSE_LENGTH)]
 Credit = Annotated[str, StringConstraints(strip_whitespace=True, max_length=CREDIT_LENGTH)]
@@ -181,9 +178,9 @@ class MediaCopy(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    media_type: str
+    media_type: MediaType
     size_bytes: int
-    sha256: str
+    sha256: Sha256
 
     def is_inline(self) -> bool:
         """Whether the copy plays in the page rather than downloads."""
@@ -200,7 +197,7 @@ class ExternalMedia(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     id: UUID
-    channel: str
+    channel: ChannelSlug
     kind: ExternalKind
     title: str
     url: HttpUrl
@@ -260,7 +257,7 @@ class MediaUse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     id: UUID
-    channel: str
+    channel: ChannelSlug
     number: int
     media_id: UUID
     purpose: UsePurpose

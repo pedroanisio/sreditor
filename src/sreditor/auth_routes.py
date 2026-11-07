@@ -21,13 +21,12 @@ from sreditor.deps import (
     session_token,
     start_session,
 )
+from sreditor.field_types import EmailToken
 from sreditor.members import Role
 from sreditor.operations import require_scope
 from sreditor.profile import PasswordChange, WrongCurrentPassword
 from sreditor.tokens import ApiToken, Scope
 from sreditor.users import DisplayName, Password, User
-
-Token = Annotated[str, Field(min_length=1, max_length=256)]
 
 router = APIRouter(tags=["auth"])
 limited = [Depends(rate_limit)]
@@ -53,12 +52,12 @@ class LoginInput(BaseModel):
     password: Annotated[str, Field(max_length=256)]
 
 
-class TokenInput(BaseModel):
+class EmailTokenInput(BaseModel):
     """A one-time token from an email link."""
 
     model_config = FROZEN
 
-    token: Token
+    token: EmailToken
 
 
 class EmailInput(BaseModel):
@@ -74,7 +73,7 @@ class ResetInput(BaseModel):
 
     model_config = FROZEN
 
-    token: Token
+    token: EmailToken
     password: Password
 
 
@@ -135,7 +134,7 @@ def register(data: RegisterInput, accounts: AccountsDep) -> Accepted:
 
 
 @router.post("/auth/verify", dependencies=limited, summary="Verify an email address")
-def verify(data: TokenInput, accounts: AccountsDep) -> User:
+def verify(data: EmailTokenInput, accounts: AccountsDep) -> User:
     """Verify an email address with the token from the verification email."""
     try:
         return accounts.verify_email(data.token)

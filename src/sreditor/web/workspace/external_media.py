@@ -21,7 +21,6 @@ from sreditor.external_media import (
     NOTE_LENGTH,
     PAGES_LENGTH,
     SCENE_LENGTH,
-    TITLE_LENGTH,
     ExternalKind,
     ExternalMedia,
     ExternalMediaInput,
@@ -55,6 +54,7 @@ from sreditor.external_media_operations import (
     replace_item,
 )
 from sreditor.external_media_routes import copy_file
+from sreditor.field_types import TITLE_LENGTH
 from sreditor.i18n import N_, Translator
 from sreditor.members import Permission
 from sreditor.pagination import DEFAULT_LIMIT, MAX_LIMIT
@@ -330,7 +330,7 @@ def item_errors(action: Callable[[], object], translate: Translator) -> Outcome 
 # Library
 
 
-class LibraryView(BaseModel):
+class ExternalMediaView(BaseModel):
     """The library page, with the add form as it was sent."""
 
     model_config = ConfigDict(frozen=True)
@@ -342,7 +342,7 @@ class LibraryView(BaseModel):
 
 
 def library_page(
-    request: Request, app: Services, access: ChannelAccess, shown: LibraryView
+    request: Request, app: Services, access: ChannelAccess, shown: ExternalMediaView
 ) -> Response:
     """The channel's items, one kind or all, and the dialog to add one."""
     translate = translator(request)
@@ -376,7 +376,7 @@ def library(
     request: Request, app: ServicesDep, access: PageAccess, kind: str = "", cursor: str = ""
 ) -> Response:
     """The channel's third-party media."""
-    return library_page(request, app, access, LibraryView(kind=kind, cursor=cursor))
+    return library_page(request, app, access, ExternalMediaView(kind=kind, cursor=cursor))
 
 
 @router.post(LIBRARY)
@@ -395,7 +395,7 @@ def add_item(
     outcome = item_errors(create, translator(request))
     if outcome is None:
         return done(request, app, item_url(access.channel.slug, created[0].id), Flash.ITEM_ADDED)
-    return library_page(request, app, access, LibraryView(outcome=outcome, sent=fields))
+    return library_page(request, app, access, ExternalMediaView(outcome=outcome, sent=fields))
 
 
 # One item

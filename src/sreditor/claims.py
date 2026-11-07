@@ -28,6 +28,7 @@ from pydantic import (
 
 from sreditor.database import Database
 from sreditor.episode_texts import PartChanged
+from sreditor.field_types import ChannelSlug
 from sreditor.store import Owner
 
 QUOTE_LENGTH = 1000
@@ -134,7 +135,7 @@ class Claim(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     id: UUID
-    channel: str
+    channel: ChannelSlug
     number: int
     quote: str
     place: ClaimPlace

@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict
 
 from sreditor import membership
 from sreditor.accounts import AccountError
-from sreditor.auth_routes import TokenInput
+from sreditor.auth_routes import EmailTokenInput
 from sreditor.deps import (
     Access,
     AccountsDep,
@@ -20,6 +20,7 @@ from sreditor.deps import (
     refused,
 )
 from sreditor.etags import ANY_REVISION, WEAK_PREFIX, IfMatch
+from sreditor.field_types import ChannelSlug
 from sreditor.idempotency import IdempotencyDep
 from sreditor.members import Invitation, Member, Role
 from sreditor.membership import (
@@ -48,7 +49,7 @@ class ChannelRole(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    channel: str
+    channel: ChannelSlug
     role: Role
 
 
@@ -131,7 +132,9 @@ def invite(
 @router.post(
     "/invitations/accept", dependencies=[Depends(rate_limit)], summary="Accept an invitation"
 )
-def accept_invitation(data: TokenInput, user: SessionUser, accounts: AccountsDep) -> ChannelRole:
+def accept_invitation(
+    data: EmailTokenInput, user: SessionUser, accounts: AccountsDep
+) -> ChannelRole:
     """Join a channel with the token from an invitation email. Needs a signed-in session.
 
     Joining a channel is the person's own decision, so an API token cannot accept for them.

@@ -16,6 +16,7 @@ from sreditor.block_takes import BlockTakeRecord
 from sreditor.deps import ChannelAccess, Services
 from sreditor.elevenlabs import CREDITS_PER_CHARACTER, MODEL_IDS
 from sreditor.episode_operations import episode_access
+from sreditor.field_types import VoiceIdOrEmpty
 from sreditor.library import LibraryKind
 from sreditor.members import Permission
 from sreditor.short_script import Block, ShortScriptInput
@@ -40,7 +41,7 @@ class BlockEstimate(BaseModel):
     block_number: int
     # "narrator" or the name of the library character who speaks.
     speaker: str
-    voice_id: str
+    voice_id: VoiceIdOrEmpty
     voice_name: str
     # The characters of the speech without voice tags.
     characters: int

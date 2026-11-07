@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sreditor.channels import Platform
 from sreditor.database import Database
 from sreditor.delivery import DeliveryInput, Post
+from sreditor.field_types import ChannelSlug
 
 MAX_COUNT = 10**12
 MAX_PERCENT = 1000.0  # a platform may report above 100 when viewers rewatch
@@ -95,7 +96,7 @@ class Snapshot(Numbers):
     """A stored snapshot: one post's numbers on one day."""
 
     id: UUID
-    channel: str
+    channel: ChannelSlug
     number: int
     platform: Platform
     captured_on: date
@@ -109,7 +110,7 @@ class PostRef(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    channel: str
+    channel: ChannelSlug
     number: int
     platform: Platform
 

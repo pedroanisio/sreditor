@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict
 
 from sreditor.block_takes import BlockTake
 from sreditor.elevenlabs import MODEL_IDS
+from sreditor.field_types import Sha256
 from sreditor.short_script import Beat, Block
 from sreditor.srstudio_vocabulary import AUDIO_TAGS
 from sreditor.voice_markup import (
@@ -51,7 +52,7 @@ class WavTake(BaseModel):
     name: str
     path: Path
     duration_s: float
-    sha256: str
+    sha256: Sha256
 
 
 class TimedBlock(BaseModel):

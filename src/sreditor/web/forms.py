@@ -10,8 +10,9 @@ from urllib.parse import urlsplit
 from fastapi import Request, Response
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, ValidationError, field_validator
 
-from sreditor.channels import HEX_PATTERN, LANGUAGE_PATTERN, SLUG_PATTERN
+from sreditor.channels import HEX_PATTERN
 from sreditor.delivery import HASHTAG_PATTERN
+from sreditor.field_types import LANGUAGE_PATTERN, SLUG_PATTERN, EmailToken
 from sreditor.i18n import N_, Translator
 from sreditor.security import new_token
 from sreditor.users import DisplayName, Password
@@ -24,7 +25,6 @@ AFTER_SIGN_IN = "/app"
 # Field name -> message shown next to that field; the key "form" holds a message for the whole form.
 FieldErrors = dict[str, str]
 
-Token = Annotated[str, Field(min_length=1, max_length=256)]
 # Where a token sits in an email link, old (?token=, /invitations/<token>) or new (#token=).
 TOKEN_IN_LINK = re.compile(r"(?:token=|/invitations/)([\w-]+)")
 
@@ -95,7 +95,7 @@ class ResetForm(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    token: Token
+    token: EmailToken
     password: Password
 
 

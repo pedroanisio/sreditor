@@ -162,7 +162,7 @@ class RemoveLinkFields(SubmittedFields):
     link_id: str = ""
 
 
-class ContextView(BaseModel):
+class ItemContextView(BaseModel):
     """The context page of one item, with the form that was sent and its errors."""
 
     model_config = ConfigDict(frozen=True)
@@ -198,7 +198,7 @@ def target_options(
 
 
 def page_context(
-    app: Services, access: ChannelAccess, item: LinkedItem, shown: ContextView
+    app: Services, access: ChannelAccess, item: LinkedItem, shown: ItemContextView
 ) -> dict[str, Any]:
     """The item's answers, links and mentions, for its page."""
     reference = ItemRef(kind=item.kind, id=item.id)
@@ -241,7 +241,7 @@ def page_context(
 
 
 def context_page(
-    request: Request, app: Services, access: ChannelAccess, shown: ContextView
+    request: Request, app: Services, access: ChannelAccess, shown: ItemContextView
 ) -> Response:
     """An item's context, links and mentions, with the forms to change them."""
     item = found_item(app, access, shown.kind, shown.item_id)
@@ -270,7 +270,7 @@ def item_context(
 
     ?links_cursor= and ?mentions_cursor= page the two lists.
     """
-    shown = ContextView(
+    shown = ItemContextView(
         kind=kind,
         item_id=item_id,
         links_cursor=request.query_params.get("links_cursor", ""),
@@ -313,7 +313,7 @@ def save_context(
         outcome = Outcome.conflict({"form": translate(CONTEXT_CHANGED)})
     else:
         return done(request, app, context_url(access.channel.slug, item), Flash.SAVED)
-    shown = ContextView(kind=kind, item_id=item_id, outcome=outcome, answers=fields)
+    shown = ItemContextView(kind=kind, item_id=item_id, outcome=outcome, answers=fields)
     return context_page(request, app, access, shown)
 
 
@@ -362,7 +362,7 @@ def new_link(
         add_link(app, access, ItemRef(kind=item.kind, id=item.id), link_input(fields))
     except (ValidationError, SelfLink, LinkExists, ItemNotFound) as refused:
         outcome = Outcome.invalid(link_errors(refused, translator(request)))
-        shown = ContextView(kind=kind, item_id=item_id, outcome=outcome, link=fields)
+        shown = ItemContextView(kind=kind, item_id=item_id, outcome=outcome, link=fields)
         return context_page(request, app, access, shown)
     return done(request, app, context_url(access.channel.slug, item), Flash.LINK_ADDED)
 
@@ -386,6 +386,6 @@ def drop_link(
     except (ValueError, LinkNotFound):
         outcome = Outcome.conflict({"form": translator(request)(LINK_GONE)})
         return context_page(
-            request, app, access, ContextView(kind=kind, item_id=item_id, outcome=outcome)
+            request, app, access, ItemContextView(kind=kind, item_id=item_id, outcome=outcome)
         )
     return done(request, app, context_url(access.channel.slug, item), Flash.REMOVED)

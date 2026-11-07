@@ -7,8 +7,8 @@ import pytest
 from sreditor.post_metrics import MAX_RETENTION_POINTS, RetentionPoint
 from sreditor.retention_csv import (
     MAX_CSV_CHARS,
-    ProblemKind,
     RetentionCsvError,
+    RetentionProblemKind,
     parse_retention_csv,
 )
 
@@ -17,7 +17,7 @@ def points(text: str) -> list[tuple[float, float]]:
     return [(point.second, point.percent) for point in parse_retention_csv(text)]
 
 
-def problem_of(text: str) -> ProblemKind:
+def problem_of(text: str) -> RetentionProblemKind:
     with pytest.raises(RetentionCsvError) as refused:
         parse_retention_csv(text)
     return refused.value.problems[0].kind
@@ -33,7 +33,7 @@ def test_parse_returns_retention_point_models() -> None:
 
 def test_parse_two_percent_columns_is_refused_as_bad_header() -> None:
     text = "Video position (%),Absolute audience retention (%)\n"
-    assert problem_of(text + "0,100") is ProblemKind.HEADER
+    assert problem_of(text + "0,100") is RetentionProblemKind.HEADER
 
 
 def test_parse_instagram_style_header_with_time_and_retention() -> None:
@@ -61,42 +61,42 @@ def test_parse_unordered_rows_are_sorted_by_second() -> None:
 
 
 def test_parse_empty_text_is_refused() -> None:
-    assert problem_of("  \n") is ProblemKind.EMPTY
+    assert problem_of("  \n") is RetentionProblemKind.EMPTY
 
 
 def test_parse_header_only_is_refused_as_no_rows() -> None:
-    assert problem_of("second,percent\n") is ProblemKind.ROWS
+    assert problem_of("second,percent\n") is RetentionProblemKind.ROWS
 
 
 def test_parse_three_columns_is_refused_as_bad_header() -> None:
-    assert problem_of("second,percent,views\n0,100,5") is ProblemKind.HEADER
+    assert problem_of("second,percent,views\n0,100,5") is RetentionProblemKind.HEADER
 
 
 def test_parse_header_without_percent_is_refused() -> None:
-    assert problem_of("second,likes\n0,5") is ProblemKind.HEADER
+    assert problem_of("second,likes\n0,5") is RetentionProblemKind.HEADER
 
 
 def test_parse_non_numeric_cell_names_the_row_and_field() -> None:
     with pytest.raises(RetentionCsvError) as refused:
         parse_retention_csv("second,percent\n0,100\n1,lots\n")
     found = refused.value.problems[0]
-    assert (found.row, found.field, found.kind) == (3, "percent", ProblemKind.NOT_A_NUMBER)
+    assert (found.row, found.field, found.kind) == (3, "percent", RetentionProblemKind.NOT_A_NUMBER)
 
 
 def test_parse_missing_cell_is_not_a_number() -> None:
-    assert problem_of("second,percent\n0\n") is ProblemKind.NOT_A_NUMBER
+    assert problem_of("second,percent\n0\n") is RetentionProblemKind.NOT_A_NUMBER
 
 
 def test_parse_negative_second_is_out_of_range() -> None:
-    assert problem_of("second,percent\n-1,100\n") is ProblemKind.OUT_OF_RANGE
+    assert problem_of("second,percent\n-1,100\n") is RetentionProblemKind.OUT_OF_RANGE
 
 
 def test_parse_percent_over_limit_is_out_of_range() -> None:
-    assert problem_of("second,percent\n0,100000\n") is ProblemKind.OUT_OF_RANGE
+    assert problem_of("second,percent\n0,100000\n") is RetentionProblemKind.OUT_OF_RANGE
 
 
 def test_parse_repeated_second_is_refused() -> None:
-    assert problem_of("second,percent\n1,100\n1,90\n") is ProblemKind.REPEATED
+    assert problem_of("second,percent\n1,100\n1,90\n") is RetentionProblemKind.REPEATED
 
 
 def test_parse_lists_every_bad_row_up_to_the_report_limit() -> None:
@@ -107,12 +107,14 @@ def test_parse_lists_every_bad_row_up_to_the_report_limit() -> None:
 
 
 def test_parse_text_over_size_limit_is_refused() -> None:
-    assert problem_of("second,percent\n" + "0,1\n" * MAX_CSV_CHARS) is ProblemKind.TOO_LARGE
+    assert (
+        problem_of("second,percent\n" + "0,1\n" * MAX_CSV_CHARS) is RetentionProblemKind.TOO_LARGE
+    )
 
 
 def test_parse_more_rows_than_the_limit_is_refused() -> None:
     rows = "\n".join(f"{index},1" for index in range(MAX_RETENTION_POINTS + 1))
-    assert problem_of("second,percent\n" + rows) is ProblemKind.ROWS
+    assert problem_of("second,percent\n" + rows) is RetentionProblemKind.ROWS
 
 
 def test_problem_message_is_english_with_row_and_field_filled_in() -> None:

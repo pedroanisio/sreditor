@@ -22,7 +22,6 @@ from sreditor.episode_operations import (
 )
 from sreditor.episodes import (
     SUMMARY_LENGTH,
-    TITLE_LENGTH,
     Episode,
     EpisodeChanged,
     EpisodeInput,
@@ -30,6 +29,7 @@ from sreditor.episodes import (
     EpisodeStatus,
     RevisedEpisode,
 )
+from sreditor.field_types import TITLE_LENGTH
 from sreditor.i18n import N_, Translator
 from sreditor.members import Permission
 from sreditor.pagination import DEFAULT_LIMIT, MAX_LIMIT
@@ -146,7 +146,7 @@ class ListMode(StrEnum):
 BoardColumn = tuple[str, str, list[Episode]]
 
 
-class ListView(BaseModel):
+class EpisodeListView(BaseModel):
     """The episode list, with the new-episode form as it was sent."""
 
     model_config = ConfigDict(frozen=True)
@@ -165,7 +165,9 @@ def board_columns(episodes: list[Episode], translate: Translator) -> list[BoardC
     ]
 
 
-def list_page(request: Request, app: Services, access: ChannelAccess, shown: ListView) -> Response:
+def list_page(
+    request: Request, app: Services, access: ChannelAccess, shown: EpisodeListView
+) -> Response:
     """The channel's episodes on a board or in a list and, for writers, the form to add one."""
     is_board = shown.mode is ListMode.BOARD
     limit = MAX_LIMIT if is_board else DEFAULT_LIMIT
@@ -198,7 +200,7 @@ def episodes(
     view: ListMode = ListMode.BOARD,
 ) -> Response:
     """The channel's episodes, on a board by stage or in a list by number."""
-    return list_page(request, app, access, ListView(cursor=cursor, mode=view))
+    return list_page(request, app, access, EpisodeListView(cursor=cursor, mode=view))
 
 
 def as_input(fields: EpisodeFields) -> EpisodeInput:
@@ -225,7 +227,7 @@ def new_episode(
         created = create_episode(app, access, as_input(fields))
     except ValidationError as invalid:
         outcome = Outcome.invalid(field_errors(invalid, translate))
-        return list_page(request, app, access, ListView(outcome=outcome, sent=fields))
+        return list_page(request, app, access, EpisodeListView(outcome=outcome, sent=fields))
     url = episodes_url(access.channel.slug, created.episode.number)
     return done(request, app, url, Flash.EPISODE_CREATED)
 
@@ -368,11 +370,11 @@ def move_to_stage(
         moved = move_episode(app, access, number, EpisodeStatus(fields.status))
     except ValueError:
         outcome = Outcome.invalid({"form": translate(UNKNOWN_STAGE)})
-        return list_page(request, app, access, ListView(outcome=outcome))
+        return list_page(request, app, access, EpisodeListView(outcome=outcome))
     except EpisodeChanged:
         outcome = Outcome.conflict({"form": translate(EPISODE_CHANGED)})
-        return list_page(request, app, access, ListView(outcome=outcome))
+        return list_page(request, app, access, EpisodeListView(outcome=outcome))
     except ProblemError as problem:
-        return list_page(request, app, access, ListView(outcome=refused(problem, translate)))
+        return list_page(request, app, access, EpisodeListView(outcome=refused(problem, translate)))
     flash = flash_after(moved, Flash.EPISODE_MOVED)
     return done(request, app, episodes_url(access.channel.slug), flash)

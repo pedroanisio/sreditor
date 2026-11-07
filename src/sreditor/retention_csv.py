@@ -41,7 +41,7 @@ HEADER_ROW = 1
 FIRST_BODY_ROW = 2
 
 
-class ProblemKind(StrEnum):
+class RetentionProblemKind(StrEnum):
     """What can be wrong with a retention CSV."""
 
     HEADER = "header"
@@ -53,17 +53,17 @@ class ProblemKind(StrEnum):
     REPEATED = "repeated"
 
 
-PROBLEM_MESSAGES: dict[ProblemKind, str] = {
-    ProblemKind.HEADER: N_(
+PROBLEM_MESSAGES: dict[RetentionProblemKind, str] = {
+    RetentionProblemKind.HEADER: N_(
         "The first row must name two columns: the second and the percent still watching, such as"
         " second,percent."
     ),
-    ProblemKind.EMPTY: N_("The CSV is empty."),
-    ProblemKind.TOO_LARGE: N_("The CSV is larger than %(limit)s characters."),
-    ProblemKind.ROWS: N_("The CSV needs between 1 and %(limit)s rows below its header."),
-    ProblemKind.NOT_A_NUMBER: N_("Row %(row)s: %(field)s must be a number."),
-    ProblemKind.OUT_OF_RANGE: N_("Row %(row)s: %(field)s is out of range."),
-    ProblemKind.REPEATED: N_("Each second may appear only once."),
+    RetentionProblemKind.EMPTY: N_("The CSV is empty."),
+    RetentionProblemKind.TOO_LARGE: N_("The CSV is larger than %(limit)s characters."),
+    RetentionProblemKind.ROWS: N_("The CSV needs between 1 and %(limit)s rows below its header."),
+    RetentionProblemKind.NOT_A_NUMBER: N_("Row %(row)s: %(field)s must be a number."),
+    RetentionProblemKind.OUT_OF_RANGE: N_("Row %(row)s: %(field)s is out of range."),
+    RetentionProblemKind.REPEATED: N_("Each second may appear only once."),
 }
 
 
@@ -72,7 +72,7 @@ class CsvProblem(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    kind: ProblemKind
+    kind: RetentionProblemKind
     row: int
     field: str
     message: str
@@ -80,7 +80,7 @@ class CsvProblem(BaseModel):
 
 
 def problem(
-    kind: ProblemKind, row: int = 0, field: str = FILE_FIELD, **values: object
+    kind: RetentionProblemKind, row: int = 0, field: str = FILE_FIELD, **values: object
 ) -> CsvProblem:
     """A problem with its English message filled in."""
     shown = {"row": str(row), "field": field, **{name: str(item) for name, item in values.items()}}
@@ -98,7 +98,7 @@ class RetentionCsvError(ValueError):
 
 
 def refused(
-    kind: ProblemKind, row: int = 0, field: str = FILE_FIELD, **values: object
+    kind: RetentionProblemKind, row: int = 0, field: str = FILE_FIELD, **values: object
 ) -> RetentionCsvError:
     """The error for one problem."""
     return RetentionCsvError([problem(kind, row, field, **values)])
@@ -122,7 +122,7 @@ def column_roles(header: list[str]) -> tuple[int, int]:
     ]
     is_pair = len(names) == len((SECOND_FIELD, PERCENT_FIELD))
     if not is_pair or len(seconds) != 1 or len(percents) != 1 or seconds == percents:
-        raise refused(ProblemKind.HEADER, HEADER_ROW, "header")
+        raise refused(RetentionProblemKind.HEADER, HEADER_ROW, "header")
     return seconds[0], percents[0]
 
 
@@ -147,7 +147,7 @@ def read_cell(
     try:
         return convert(cells[position])
     except (ValueError, IndexError) as unreadable:
-        raise refused(ProblemKind.NOT_A_NUMBER, row, field) from unreadable
+        raise refused(RetentionProblemKind.NOT_A_NUMBER, row, field) from unreadable
 
 
 def point_of(cells: list[str], roles: tuple[int, int], row: int) -> RetentionPoint:
@@ -158,7 +158,7 @@ def point_of(cells: list[str], roles: tuple[int, int], row: int) -> RetentionPoi
         return RetentionPoint(second=second, percent=percent)
     except ValidationError as invalid:
         raise refused(
-            ProblemKind.OUT_OF_RANGE, row, str(invalid.errors()[0]["loc"][0])
+            RetentionProblemKind.OUT_OF_RANGE, row, str(invalid.errors()[0]["loc"][0])
         ) from invalid
 
 
@@ -166,7 +166,7 @@ def csv_rows(text: str) -> list[list[str]]:
     """The non-empty rows of the CSV, split on the delimiter its header uses."""
     lines = [line for line in text.lstrip(BYTE_ORDER_MARK).splitlines() if line.strip()]
     if not lines:
-        raise refused(ProblemKind.EMPTY)
+        raise refused(RetentionProblemKind.EMPTY)
     uses_semicolon = SEMICOLON in lines[0] and COMMA not in lines[0]
     return list(csv.reader(lines, delimiter=SEMICOLON if uses_semicolon else COMMA))
 
@@ -188,13 +188,13 @@ def points_of(body: list[list[str]], roles: tuple[int, int]) -> list[RetentionPo
 def parse_retention_csv(text: str) -> list[RetentionPoint]:
     """Retention per second from a two-column CSV with a header; RetentionCsvError otherwise."""
     if len(text) > MAX_CSV_CHARS:
-        raise refused(ProblemKind.TOO_LARGE, limit=MAX_CSV_CHARS)
+        raise refused(RetentionProblemKind.TOO_LARGE, limit=MAX_CSV_CHARS)
     rows = csv_rows(text)
     roles = column_roles(rows[0])
     if not rows[1:] or len(rows) - 1 > MAX_RETENTION_POINTS:
-        raise refused(ProblemKind.ROWS, limit=MAX_RETENTION_POINTS)
+        raise refused(RetentionProblemKind.ROWS, limit=MAX_RETENTION_POINTS)
     points = points_of(rows[1:], roles)
     try:
         return in_order(points)
     except ValueError as repeated:
-        raise refused(ProblemKind.REPEATED, field=SECOND_FIELD) from repeated
+        raise refused(RetentionProblemKind.REPEATED, field=SECOND_FIELD) from repeated

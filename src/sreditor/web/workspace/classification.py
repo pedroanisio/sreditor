@@ -139,7 +139,7 @@ def saved_group(
 # The episode tab
 
 
-class EpisodeView(BaseModel):
+class ClassificationView(BaseModel):
     """The classification tab, with the group being edited as sent when it failed."""
 
     model_config = ConfigDict(frozen=True)
@@ -151,7 +151,7 @@ class EpisodeView(BaseModel):
 
 
 def episode_page(
-    request: Request, app: Services, access: ChannelAccess, shown: EpisodeView
+    request: Request, app: Services, access: ChannelAccess, shown: ClassificationView
 ) -> Response:
     """The episode's classification as tags by group, next to what the channel declares."""
     translate = translator(request)
@@ -189,7 +189,7 @@ def episode_classification(
     request: Request, app: ServicesDep, access: PageAccess, number: int
 ) -> Response:
     """An episode's editorial classification."""
-    return episode_page(request, app, access, EpisodeView(number=number))
+    return episode_page(request, app, access, ClassificationView(number=number))
 
 
 @router.post(EPISODE_PAGE)
@@ -209,7 +209,9 @@ async def save_episode_classification(
     saved = saved_group(form, before, write, translator(request))
     if saved.outcome is None:
         return done(request, app, classification_url(access.channel.slug, number), Flash.SAVED)
-    shown = EpisodeView(number=number, outcome=saved.outcome, editing=saved.group, sent=saved.sent)
+    shown = ClassificationView(
+        number=number, outcome=saved.outcome, editing=saved.group, sent=saved.sent
+    )
     return episode_page(request, app, access, shown)
 
 
@@ -229,7 +231,7 @@ async def confirm_episode_classification(
     )
     if outcome is None:
         return done(request, app, classification_url(access.channel.slug, number), Flash.SAVED)
-    return episode_page(request, app, access, EpisodeView(number=number, outcome=outcome))
+    return episode_page(request, app, access, ClassificationView(number=number, outcome=outcome))
 
 
 # The channel's profile

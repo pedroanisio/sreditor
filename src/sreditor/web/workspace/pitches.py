@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sreditor.book_operations import PITCH_BOOK
 from sreditor.deps import ChannelAccess, Services, ServicesDep
 from sreditor.episode_texts import PartChanged
+from sreditor.field_types import TITLE_LENGTH
 from sreditor.i18n import N_, Translator
 from sreditor.members import Permission
 from sreditor.pagination import DEFAULT_LIMIT
@@ -33,7 +34,6 @@ from sreditor.pitch_operations import (
 )
 from sreditor.pitches import (
     SUMMARY_LENGTH,
-    TITLE_LENGTH,
     Pitch,
     PitchInput,
     PitchInUse,
@@ -158,7 +158,7 @@ def found_pitch(app: Services, access: ChannelAccess, pitch_id: str) -> Pitch:
         raise PageNotFound(pitch_id) from missing
 
 
-class ListView(BaseModel):
+class PitchListView(BaseModel):
     """The pitch list, with its status filter and the new-pitch form as it was sent."""
 
     model_config = ConfigDict(frozen=True)
@@ -177,7 +177,9 @@ def chosen_status(value: str) -> PitchStatus | None:
         return None
 
 
-def list_page(request: Request, app: Services, access: ChannelAccess, shown: ListView) -> Response:
+def list_page(
+    request: Request, app: Services, access: ChannelAccess, shown: PitchListView
+) -> Response:
     """The channel's pitches and, for those who may write, the form to add one."""
     status = chosen_status(shown.status)
     query = PitchQuery(status=status, cursor=shown.cursor or None, limit=DEFAULT_LIMIT)
@@ -211,7 +213,7 @@ def pitches(
     request: Request, app: ServicesDep, access: PageAccess, status: str = "", cursor: str = ""
 ) -> Response:
     """The channel's pitches, oldest first, optionally of one status."""
-    return list_page(request, app, access, ListView(status=status, cursor=cursor))
+    return list_page(request, app, access, PitchListView(status=status, cursor=cursor))
 
 
 @router.post("/app/channels/{slug}/pitches")
@@ -229,7 +231,7 @@ def new_pitch(
         created = create_pitch(app, access, as_input(fields))
     except ValidationError as invalid:
         outcome = Outcome.invalid(field_errors(invalid, translator(request)))
-        return list_page(request, app, access, ListView(outcome=outcome, sent=fields))
+        return list_page(request, app, access, PitchListView(outcome=outcome, sent=fields))
     return done(request, app, pitches_url(access.channel.slug, created.id), Flash.PITCH_CREATED)
 
 

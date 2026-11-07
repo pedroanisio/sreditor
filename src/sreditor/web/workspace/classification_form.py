@@ -27,8 +27,8 @@ from sreditor.classification import (
     Dimension,
     Method,
     Refusal,
-    Role,
     State,
+    ValueRole,
 )
 from sreditor.i18n import N_, Translator
 from sreditor.web.classification_labels import DIMENSION_LABELS, STATE_LABELS, VALUE_LABELS
@@ -134,8 +134,8 @@ def dimension_from_form(
     if len(others) > MAX_SECONDARY:
         refusal = Refusal(field=f"dimensions.{dimension.value}", message=TOO_MANY_SECONDARY)
         raise ClassificationRefused([refusal])
-    chosen = [(main, Role.PRIMARY)] if has_main else []
-    chosen += [(value, Role.SECONDARY) for value in others]
+    chosen = [(main, ValueRole.PRIMARY)] if has_main else []
+    chosen += [(value, ValueRole.SECONDARY) for value in others]
     items = [
         {"value": value, "role": role, "confidence": kept.get(value)} for value, role in chosen
     ]
@@ -183,9 +183,12 @@ def dimension_tags(data: Classification, dimension: Dimension, translate: Transl
         return []
     if found.state is not State.PRESENT:
         return [(translate(STATE_LABELS[found.state]), SECONDARY_TAG)]
-    ordered = sorted(found.items, key=lambda item: item.role is not Role.PRIMARY)
+    ordered = sorted(found.items, key=lambda item: item.role is not ValueRole.PRIMARY)
     return [
-        (value_label(item, translate), PRIMARY_TAG if item.role is Role.PRIMARY else SECONDARY_TAG)
+        (
+            value_label(item, translate),
+            PRIMARY_TAG if item.role is ValueRole.PRIMARY else SECONDARY_TAG,
+        )
         for item in ordered
     ]
 

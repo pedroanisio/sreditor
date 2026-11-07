@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, StringConstraints
 
 from sreditor.database import Database
 from sreditor.episode_texts import EpisodeTexts, PartChanged, TextKey, TextPart
+from sreditor.field_types import ChannelSlug
 from sreditor.fountain import outline
 
 # About 150 pages of screenplay; far more than a social media episode needs.
@@ -30,7 +31,7 @@ class Screenplay(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    channel: str
+    channel: ChannelSlug
     number: int
     text: str
     scenes: list[str]

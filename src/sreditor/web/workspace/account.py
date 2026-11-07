@@ -51,7 +51,7 @@ DAYS = N_("%(count)s days")
 NO_STORE = {"Cache-Control": "no-store"}
 
 
-class NameCheck(BaseModel):
+class DisplayNameCheck(BaseModel):
     """A display name, validated as the account stores it."""
 
     model_config = ConfigDict(frozen=True)
@@ -85,7 +85,7 @@ def save_profile(
     if rejected := rejected_form(request, app, fields.csrf_token):
         return rejected
     try:
-        checked = NameCheck(display_name=fields.display_name)
+        checked = DisplayNameCheck(display_name=fields.display_name)
     except ValidationError as invalid:
         outcome = Outcome.invalid(field_errors(invalid, translator(request)))
         return account_page(request, app, user, outcome)
