@@ -89,9 +89,11 @@ def add_brand_tools(server: MCPServer, services: Services) -> None:
         platform: Platform | None = None,
         expected_revision: int | None = None,
     ) -> BrandView:
-        """Set the brand's colors and fonts, as data, inside `brand`. Its `colors` is the WHOLE
-        palette, replacing the old one: each is a name, a #RRGGBB hex and a role (primary, secondary, accent, text,
-        background); each role is used once, only accent may repeat. Its `fonts` sets the roles it
+        """Set the brand's colors and fonts, as data, inside `brand`.
+
+        `colors` is the WHOLE palette, replacing the old one: each is a name, a #RRGGBB hex and
+        a role (primary, secondary, accent, text, background); each role is used once, only
+        accent may repeat. `fonts` sets the roles it
         names (heading, body, caption) with a family and a weight from 100 to 900, and removes a
         role whose value is null; roles it leaves out stay. What you leave out stays as it is.
         With `platform`, only that account's overrides change (it needs that account first,

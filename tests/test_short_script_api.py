@@ -275,6 +275,19 @@ def test_mcp_generate_voice_over_returns_take(
     assert result["structuredContent"]["take"]["duration_s"] == BOTH_TAKES_SECONDS
 
 
+def test_mcp_generate_voice_over_replay_is_marked_and_spends_nothing_more(
+    mcp: TestClient, written: TestClient, voice: Callable[..., FakeTransport]
+) -> None:
+    transport = voice(*BLOCK_ANSWERS, ok(VOICES))
+    arguments = {"slug": "funny-memes", "number": 1, "idempotency_key": "speak-1"}
+    first = tool(mcp, "generate_voice_over", arguments)
+    calls = len(transport.sent)
+    again = tool(mcp, "generate_voice_over", arguments)
+    assert first["_meta"] == {"sreditor/replayed": False}
+    assert again["_meta"] == {"sreditor/replayed": True}
+    assert len(transport.sent) == calls
+
+
 def test_mcp_generate_voice_over_off_names_the_setting(
     mcp: TestClient, written: TestClient
 ) -> None:
