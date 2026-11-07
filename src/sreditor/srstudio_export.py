@@ -2,7 +2,8 @@
 
 Owners and editors export. The zip holds timeline.json and a WAV per take (audio/), the channel bible
 (bible/cast.json, bible/relationships.json), the beats (assets/poses.json, assets/events.json) when
-the episode's style draws them, and episode.json with its slug, seed and frame. Every piece is
+the episode's style draws them, style.json with the visual style as data (rule project.visual-style)
+and episode.json with its slug, seed and frame. Every piece is
 checked first; when one is missing the export lists them all and writes nothing, so srstudio never
 receives a broken file. Exports only read: no waivers, no video, only the takes' audio (project.export).
 """
@@ -223,13 +224,27 @@ def bible_source(app: Services, channel: str, library: Library) -> BibleSource:
     )
 
 
-def episode_style(app: Services, channel: str, number: int) -> Style | None:
-    """The srstudio style of the episode's visual style, if it picked one that has it."""
+def episode_style_sheet(app: Services, channel: str, number: int) -> tuple[str, StyleSheet] | None:
+    """The slug and sheet of the visual style the episode picked, if it picked one with a sheet."""
     picked = app.library.episode_style(channel, number).style
     if picked is None:
         return None
-    sheet = app.srstudio.sheet(picked).sheet
-    return sheet.style if isinstance(sheet, StyleSheet) else None
+    stored = app.srstudio.sheet(picked)
+    return (stored.slug, stored.sheet) if isinstance(stored.sheet, StyleSheet) else None
+
+
+def style_document(slug: str, sheet: StyleSheet) -> dict[str, Any]:
+    """style.json: the visual style as data, so every episode of the channel looks alike.
+
+    Unset parts are null, so srstudio can tell "no rule" from a missing file.
+    """
+    return {
+        "slug": slug,
+        "style": sheet.style.value if sheet.style else None,
+        **sheet.model_dump(
+            mode="json", include={"palette", "fonts", "cut_rhythm", "min_text_px", "safe_zone"}
+        ),
+    }
 
 
 def toon_cast(script: ShortScript, library: Library) -> tuple[dict[str, str], list[Missing]]:
@@ -323,6 +338,7 @@ class Checked(BaseModel):
     gathered: Gathered
     library: Library
     style: Style | None
+    style_file: dict[str, Any] | None
     has_beats: bool
     missing: list[Missing]
 
@@ -331,12 +347,18 @@ def checked(app: Services, channel: str, number: int) -> Checked:
     """Read the script, takes, library and style, and list what srstudio would lack."""
     gathered = gather_takes(app, app.short_scripts.short_script(channel, number))
     library = channel_library(app, channel)
-    style = episode_style(app, channel, number)
+    stored_style = episode_style_sheet(app, channel, number)
+    style = stored_style[1].style if stored_style else None
     beat_gaps, has_beats = beat_documents(gathered.script, style, library)
     missing = [*gathered.missing, *library_gaps(app, channel, library), *beat_gaps]
     missing += [] if style else [Missing(message=NO_STYLE)]
     return Checked(
-        gathered=gathered, library=library, style=style, has_beats=has_beats, missing=missing
+        gathered=gathered,
+        library=library,
+        style=style,
+        style_file=style_document(*stored_style) if stored_style else None,
+        has_beats=has_beats,
+        missing=missing,
     )
 
 
@@ -366,6 +388,8 @@ def bundle(app: Services, access: ChannelAccess, number: int, folder: Path) -> B
         "bible/cast.json": cast_document(source),
         "bible/relationships.json": relationships_document(source),
     }
+    if found.style_file is not None:
+        documents["style.json"] = found.style_file
     if has_beats:
         cast = toon_cast(gathered.script, library)[0]
         documents["assets/poses.json"] = poses_document(timed, cast, timeline["duration"])

@@ -21,6 +21,9 @@ from sreditor.library import EntryNotFound, LibraryEntry, LibraryKind
 from sreditor.library_operations import EntryChange, get_entry
 from sreditor.members import Permission
 from sreditor.srstudio import (
+    FONT_WEIGHT_STEP,
+    MAX_FONT_WEIGHT,
+    MIN_FONT_WEIGHT,
     TEXT_LENGTH,
     EntrySheet,
     SheetInput,
@@ -55,6 +58,11 @@ router = APIRouter()
 SHEET_SUFFIX = "/srstudio"
 # Fields that hold one section of the nested sheet, by the prefix their form names share.
 SECTIONS = ("look", "voice", "who", "comic", "palette")
+# A visual style's data sections, named as the sheet names them; their form fields start with it
+# (fonts_heading_family, cut_rhythm_shortest_shot_s, safe_zone_top).
+STYLE_SECTIONS = ("fonts", "cut_rhythm", "safe_zone")
+FONT_ROLES = ("heading", "body", "caption")
+FONT_FIELDS = ("family", "weight")
 # Repeated rows: the list they fill and the fields of each row.
 FACT_COLUMNS = ("fact", "field", "episode", "kind", "quote")
 # Selects always carry a value, so only these columns tell a filled row from the blank one.
@@ -71,7 +79,7 @@ NEVER_FIELD = "never"
 SPEAKER_BOOST = "voice_use_speaker_boost"
 YES = "yes"
 # Choices left empty mean "not decided"; the sheet keeps null for them.
-OPTIONAL = frozenset({"world", "character_kind", "comic_role", "style"})
+OPTIONAL = frozenset({"world", "character_kind", "comic_role", "style", "min_text_px"})
 SLUG_TAKEN = N_("Another entry of this kind already uses this slug.")
 NOT_PUBLISHED = N_("A fact can only cite a published episode.")
 SHEET_CHANGED = N_("Someone changed this sheet after you opened it. Reload the page to see it.")
@@ -125,6 +133,37 @@ def section_value(name: str, value: str) -> tuple[str, str, Any]:
     return section, field, value
 
 
+def style_section_of(name: str) -> str | None:
+    """The style data section a form field belongs to, such as safe_zone for safe_zone_top."""
+    return next((key for key in STYLE_SECTIONS if name.startswith(f"{key}_")), None)
+
+
+def filled_values(section: dict[str, Any]) -> dict[str, Any]:
+    """A section's fields someone filled in, so a half-filled section reports what is missing."""
+    return {field: value for field, value in section.items() if str(value).strip()}
+
+
+def font_roles(section: dict[str, Any]) -> dict[str, dict[str, Any] | None]:
+    """The fonts section as the sheet nests it: each role with its family and weight, or none."""
+    roles: dict[str, dict[str, Any] | None] = {}
+    for role in FONT_ROLES:
+        fields = {field: section.get(f"{role}_{field}", "") for field in FONT_FIELDS}
+        roles[role] = filled_values(fields) or None
+    return roles
+
+
+def style_sections(data: dict[str, Any]) -> None:
+    """Nest the flat style data fields as the sheet keeps them; an empty section becomes null."""
+    for key in STYLE_SECTIONS:
+        if key not in data:
+            continue
+        if key == "fonts":
+            roles = font_roles(data[key])
+            data[key] = roles if any(roles.values()) else None
+        else:
+            data[key] = filled_values(data[key]) or None
+
+
 def is_filled(row: dict[str, str]) -> bool:
     """Whether someone wrote in a row, rather than leaving the blank row that adds one."""
     return any(text.strip() for column, text in row.items() if column not in CHOSEN_COLUMNS)
@@ -155,6 +194,8 @@ def sheet_data(kind: LibraryKind, form: FormData) -> dict[str, Any]:
             continue
         if name == NEVER_FIELD:
             data[name] = [line.strip() for line in value.splitlines() if line.strip()]
+        elif style_key := style_section_of(name):
+            data.setdefault(style_key, {})[name.removeprefix(f"{style_key}_")] = value
         elif prefix in SECTIONS:
             section, field, typed = section_value(name, value)
             data.setdefault(section, {})[field] = typed
@@ -164,6 +205,7 @@ def sheet_data(kind: LibraryKind, form: FormData) -> dict[str, Any]:
         data["comic"]["role"] = None
     if "palette" in data and not any(data["palette"].values()):
         data["palette"] = None
+    style_sections(data)
     data.update(row_lists(kind, form))
     return data
 
@@ -206,6 +248,11 @@ def option_lists(translate: Translator) -> dict[str, list[tuple[str, str]]]:
         "roles": undecided
         + [(role.value, translate(label)) for role, label in ROLE_LABELS.items()],
         "styles": undecided + [(style.value, style.value.capitalize()) for style in Style],
+        "weights": undecided
+        + [
+            (str(weight), str(weight))
+            for weight in range(MIN_FONT_WEIGHT, MAX_FONT_WEIGHT + 1, FONT_WEIGHT_STEP)
+        ],
         "fact_fields": [(field.value, field.value) for field in FactField],
         "fact_kinds": [(kind.value, translate(label)) for kind, label in FACT_KIND_LABELS.items()],
         "booleans": [(YES, translate(N_("Yes"))), ("no", translate(N_("No")))],
@@ -226,7 +273,11 @@ def shown_sheet(stored: dict[str, Any], sent: dict[str, Any] | None) -> dict[str
     """The sheet to show: what was sent over what is stored, so a section the form left out still renders."""
     shown = dict(stored)
     for key, value in (sent or {}).items():
-        is_section = isinstance(value, dict) and isinstance(shown.get(key), dict)
+        is_section = (
+            isinstance(value, dict)
+            and isinstance(shown.get(key), dict)
+            and key not in STYLE_SECTIONS
+        )
         shown[key] = {**shown[key], **value} if is_section else value
     return shown
 

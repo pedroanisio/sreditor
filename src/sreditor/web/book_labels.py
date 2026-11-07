@@ -31,3 +31,8 @@ PAIR_LABELS: dict[PairStatus, str] = {
     PairStatus.CANON: N_("Canon"),
     PairStatus.PROPOSAL: N_("Proposal"),
 }
+FONT_ROLE_LABELS: dict[str, str] = {
+    "heading": N_("Heading"),
+    "body": N_("Body"),
+    "caption": N_("Caption"),
+}

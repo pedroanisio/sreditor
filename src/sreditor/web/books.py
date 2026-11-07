@@ -41,7 +41,12 @@ from sreditor.export_formats import MEDIA_TYPES, ExportFormat
 from sreditor.i18n import N_, Translator
 from sreditor.library import LibraryKind
 from sreditor.srstudio import CharacterSheet, PlaceSheet, PropSheet, StyleSheet
-from sreditor.web.book_labels import BOOK_LABELS, PAIR_LABELS, SECTION_LABELS
+from sreditor.web.book_labels import (
+    BOOK_LABELS,
+    FONT_ROLE_LABELS,
+    PAIR_LABELS,
+    SECTION_LABELS,
+)
 from sreditor.web.classification_labels import DIMENSION_LABELS
 from sreditor.web.export_files import (
     FILE_SCHEME,
@@ -143,6 +148,37 @@ def character_pairs(sheet: CharacterSheet, translate: Translator) -> list[tuple[
     ]
 
 
+def style_pairs(sheet: StyleSheet, translate: Translator) -> list[tuple[str, str]]:
+    """A visual style's data that is filled in: palette, fonts, cut rhythm, smallest text, safe zone."""
+    pairs: list[tuple[str, str]] = []
+    if sheet.palette is not None:
+        palette = sheet.palette
+        colors = [palette.ink, palette.white, palette.shade, palette.background]
+        pairs.append((translate("Palette"), JOIN.join(colors)))
+    if sheet.fonts is not None:
+        fonts = [
+            f"{translate(FONT_ROLE_LABELS[role])}: {font.family} {font.weight}"
+            for role, font in sheet.fonts
+            if font is not None
+        ]
+        pairs.append((translate("Fonts"), "\n".join(fonts)))
+    if sheet.cut_rhythm is not None:
+        rhythm = sheet.cut_rhythm
+        shots = translate(
+            "Shortest shot %(shortest)s s, average %(average)s s",
+            shortest=f"{rhythm.shortest_shot_s:g}",
+            average=f"{rhythm.average_shot_s:g}",
+        )
+        pairs.append((translate("Cut rhythm"), shots))
+    if sheet.min_text_px is not None:
+        pairs.append((translate("Smallest text"), f"{sheet.min_text_px} px"))
+    if sheet.safe_zone is not None:
+        zone = sheet.safe_zone
+        edges = [zone.top, zone.right, zone.bottom, zone.left]
+        pairs.append((translate("Safe zone"), " / ".join(f"{edge:g}%" for edge in edges)))
+    return pairs
+
+
 def sheet_pairs(part: EntryBookPart, translate: Translator) -> list[tuple[str, str]]:
     """A library entry's srstudio facts that are filled in, as (label, value)."""
     sheet = part.sheet.sheet
@@ -156,10 +192,7 @@ def sheet_pairs(part: EntryBookPart, translate: Translator) -> list[tuple[str, s
         ]
     elif isinstance(sheet, StyleSheet):
         pairs += [(translate("Renders with"), sheet.style.value if sheet.style else "")]
-        if sheet.palette is not None:
-            palette = sheet.palette
-            colors = [palette.ink, palette.white, palette.shade, palette.background]
-            pairs.append((translate("Palette"), JOIN.join(colors)))
+        pairs += style_pairs(sheet, translate)
     elif isinstance(sheet, PropSheet):
         pairs.append((translate("Rig"), sheet.rig))
     return [(label, value) for label, value in pairs if value]

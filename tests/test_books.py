@@ -165,6 +165,44 @@ def test_library_book_pdf_draws_logo_and_picture(library: TestClient) -> None:
     assert content.count(IMAGE_OBJECT) >= 2
 
 
+def test_library_book_xlsx_lists_the_style_data(library: TestClient) -> None:
+    style = library.get(BASE + "/styles").json()["items"][0]
+    sheet = {
+        "kind": "style",
+        "style": "toon",
+        "fonts": {"heading": {"family": "Inter", "weight": 700}},
+        "cut_rhythm": {"shortest_shot_s": 0.4, "average_shot_s": 1.5},
+        "min_text_px": 48,
+        "safe_zone": {"top": 10, "right": 5, "bottom": 20, "left": 5},
+    }
+    written(
+        library.put(f"{BASE}/styles/{style['id']}/srstudio", json={"slug": "flat", "sheet": sheet})
+    )
+    text = sheet_text(book(library, LIBRARY_BOOK, format="xlsx"))
+    assert "Heading: Inter 700" in text and "Shortest shot 0.4 s, average 1.5 s" in text
+    assert "48 px" in text and "10% / 5% / 20% / 5%" in text
+
+
+def test_library_book_xlsx_in_portuguese_translates_the_style_labels(library: TestClient) -> None:
+    style = library.get(BASE + "/styles").json()["items"][0]
+    sheet = {"kind": "style", "cut_rhythm": {"shortest_shot_s": 1, "average_shot_s": 2}}
+    written(
+        library.put(f"{BASE}/styles/{style['id']}/srstudio", json={"slug": "flat", "sheet": sheet})
+    )
+    text = sheet_text(book(library, LIBRARY_BOOK, format="xlsx", lang="pt-BR"))
+    assert "Ritmo de corte" in text and "Plano mais curto 1 s, médio 2 s" in text
+
+
+def test_library_book_json_holds_the_style_data(library: TestClient) -> None:
+    style = library.get(BASE + "/styles").json()["items"][0]
+    sheet = {"kind": "style", "min_text_px": 36}
+    written(
+        library.put(f"{BASE}/styles/{style['id']}/srstudio", json={"slug": "flat", "sheet": sheet})
+    )
+    parts = book(library, LIBRARY_BOOK, section="styles")["parts"]
+    assert parts[0]["sheet"]["sheet"]["min_text_px"] == 36
+
+
 def test_library_book_xlsx_has_a_sheet_per_kind(library: TestClient) -> None:
     names = sheet_names(book(library, LIBRARY_BOOK, format="xlsx"))
     for name in ("Characters", "Places", "Visual styles", "Props", "Relationships"):

@@ -42,6 +42,36 @@
     {% endfor %}
   {% endcall %}
 {% endcall %}
+{% call ui.panel(_("Fonts"), id="fonts") %}
+  <p class="muted">{{ _("The font and weight of each kind of text. Leave a role empty to use srstudio's own font.") }}</p>
+  {% set fonts = sheet.fonts or {} %}
+  {% for role, role_label in [("heading", _("Heading")), ("body", _("Body")), ("caption", _("Caption"))] %}
+  {% set font = fonts.get(role) or {} %}
+  {% call ui.fields_row() %}
+    {{ ui.field("fonts_" ~ role ~ "_family", role_label, errors, value=font.get("family", ""), required=false, maxlength=100, hint=_("Font family, such as Inter.")) }}
+    {{ ui.select("fonts_" ~ role ~ "_weight", _("Weight"), weights, errors, value=font.get("weight", "") | string) }}
+  {% endcall %}
+  {% endfor %}
+{% endcall %}
+{% call ui.panel(_("Cut rhythm"), id="rhythm") %}
+  <p class="muted">{{ _("How fast the style cuts. Fill both or neither; the shortest shot cannot be longer than the average.") }}</p>
+  {% set rhythm = sheet.cut_rhythm or {} %}
+  {% call ui.fields_row() %}
+    {{ ui.field("cut_rhythm_shortest_shot_s", _("Shortest shot (s)"), errors, type="number", value=rhythm.get("shortest_shot_s", ""), required=false, hint="0.4") }}
+    {{ ui.field("cut_rhythm_average_shot_s", _("Average shot (s)"), {"cut_rhythm_average_shot_s": errors.get("cut_rhythm_average_shot_s") or errors.get("cut_rhythm")}, type="number", value=rhythm.get("average_shot_s", ""), required=false, hint="1.5") }}
+  {% endcall %}
+{% endcall %}
+{% call ui.panel(_("Text size and safe zone"), id="safe-zone") %}
+  {{ ui.field("min_text_px", _("Smallest text (px)"), errors, type="number", value=sheet.min_text_px or "", required=false, hint=_("In pixels at the frame's height.")) }}
+  <p class="muted">{{ _("Margin kept clear of text on each edge, as a percent of the frame (0 to 50). Fill all four or none.") }}</p>
+  {% set zone = sheet.safe_zone or {} %}
+  {% call ui.fields_row() %}
+    {% for edge, edge_label in [("top", _("Top")), ("right", _("Right")), ("bottom", _("Bottom")), ("left", _("Left"))] %}
+    {% set edge_errors = {"safe_zone_" ~ edge: errors.get("safe_zone_" ~ edge) or (errors.get("safe_zone") if loop.first else none)} %}
+    {{ ui.field("safe_zone_" ~ edge, edge_label, edge_errors, type="number", value=zone.get(edge, ""), required=false, hint="%") }}
+    {% endfor %}
+  {% endcall %}
+{% endcall %}
 {% endif %}
 {% if kind == "character" %}
 {% call ui.panel(_("Look"), id="look") %}

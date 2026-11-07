@@ -9,13 +9,15 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 
 from sreditor import library_operations as library
+from sreditor import srstudio_operations as srstudio
 from sreditor.deps import Access, ServicesDep
 from sreditor.episode_routes import Number, WriteTarget
 from sreditor.etags import IfMatch, etag, expected_revision
 from sreditor.idempotency import IdempotencyDep
-from sreditor.library import EntryInput, EpisodeStyle, LibraryEntry, LibraryKind, StyleChoice
+from sreditor.library import EntryInput, LibraryEntry, LibraryKind, StyleChoice
 from sreditor.library_operations import Cast, EntryChange
 from sreditor.pagination import DEFAULT_LIMIT, Cursor, Limit, Page
+from sreditor.srstudio import EpisodeStyleDetail
 
 router = APIRouter(tags=["library"])
 
@@ -46,7 +48,8 @@ KINDS = (
         kind=LibraryKind.STYLE,
         plural="styles",
         example="Warm documentary: handheld, natural light",
-        usage="Each episode picks one with set_episode_style.",
+        usage="Each episode picks one with set_episode_style; set_style_sheet saves its palette, "
+        "fonts, cut rhythm, smallest text and safe zone.",
     ),
     KindNames(
         kind=LibraryKind.PROP,
@@ -163,19 +166,21 @@ def get_episode_cast(number: Number, access: Access, app: ServicesDep) -> Cast:
 
 @router.get(
     "/channels/{slug}/episodes/{number}/style",
-    response_model=EpisodeStyle,
+    response_model=EpisodeStyleDetail,
     summary="Read an episode's visual style",
 )
 def get_episode_style(number: Number, access: Access, app: ServicesDep) -> JSONResponse:
     """Read the visual style an episode picked from the channel's library; style is null when
-    it picked none or the style was removed. Its ETag is the revision to send as If-Match."""
-    chosen = library.get_episode_style(app, access, number)
+    it picked none or the style was removed. `sheet` holds the structured style: srstudio
+    style, palette, fonts, cut rhythm, smallest text and safe zone. Its ETag is the revision
+    to send as If-Match."""
+    chosen = srstudio.get_episode_style_detail(app, access, number)
     return JSONResponse(chosen.model_dump(mode="json"), headers={"ETag": etag(chosen.revision)})
 
 
 @router.put(
     "/channels/{slug}/episodes/{number}/style",
-    response_model=EpisodeStyle,
+    response_model=EpisodeStyleDetail,
     summary="Set an episode's visual style",
 )
 def set_episode_style(
@@ -184,7 +189,7 @@ def set_episode_style(
     """Pick an episode's visual style by its id from list_styles, or null for none. An id that
     is not one of this channel's styles is refused with 422. Needs content:write; send
     If-Match ("0" before the first pick) so a change you have not seen is never overwritten."""
-    chosen = library.choose_episode_style(
+    chosen = srstudio.choose_episode_style_detail(
         app, access, target.number, choice, target.expected_revision
     )
     return JSONResponse(chosen.model_dump(mode="json"), headers={"ETag": etag(chosen.revision)})

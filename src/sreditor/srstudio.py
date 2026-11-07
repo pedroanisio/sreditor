@@ -15,11 +15,20 @@ from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, PositiveInt, StringConstraints, TypeAdapter
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PositiveInt,
+    StringConstraints,
+    TypeAdapter,
+    model_validator,
+)
 
 from sreditor.database import Database
 from sreditor.episode_texts import PartChanged
-from sreditor.library import LibraryEntry, LibraryKind
+from sreditor.i18n import N_
+from sreditor.library import EpisodeStyle, LibraryEntry, LibraryKind
 from sreditor.srstudio_vocabulary import (
     MAX_SPEED,
     MIN_SPEED,
@@ -45,6 +54,14 @@ VOICE_ID_PATTERN = r"^[A-Za-z0-9]{0,40}$"
 DEFAULT_STABILITY = 0.5
 DEFAULT_SIMILARITY = 0.75
 FALLBACK_SLUG = "untitled"
+FONT_FAMILY_LENGTH = 100
+MIN_FONT_WEIGHT = 100
+MAX_FONT_WEIGHT = 900
+FONT_WEIGHT_STEP = 100
+MAX_TEXT_PX = 2160
+MAX_SAFE_ZONE_PERCENT = 50
+MAX_SHOT_SECONDS = 600
+FULL_FRAME_PERCENT = 100
 
 Text = Annotated[str, StringConstraints(strip_whitespace=True, max_length=TEXT_LENGTH)]
 Said = Annotated[
@@ -173,14 +190,82 @@ class Palette(BaseModel):
     background: Color
 
 
+class FontSpec(BaseModel):
+    """One font role: the family and the weight (100 to 900) its text is set in."""
+
+    model_config = ConfigDict(frozen=True)
+
+    family: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=FONT_FAMILY_LENGTH)
+    ]
+    weight: Annotated[
+        int,
+        Field(ge=MIN_FONT_WEIGHT, le=MAX_FONT_WEIGHT, multiple_of=FONT_WEIGHT_STEP),
+    ]
+
+
+class Fonts(BaseModel):
+    """A style's fonts by role; a role left out uses srstudio's own font."""
+
+    model_config = ConfigDict(frozen=True)
+
+    heading: FontSpec | None = None
+    body: FontSpec | None = None
+    caption: FontSpec | None = None
+
+
+class CutRhythm(BaseModel):
+    """How fast a style cuts: the shortest shot and the average shot, in seconds."""
+
+    model_config = ConfigDict(frozen=True)
+
+    shortest_shot_s: Annotated[float, Field(gt=0, le=MAX_SHOT_SECONDS)]
+    average_shot_s: Annotated[float, Field(gt=0, le=MAX_SHOT_SECONDS)]
+
+    @model_validator(mode="after")
+    def shortest_is_not_longer_than_average(self) -> CutRhythm:
+        """The shortest shot cannot outlast the average one."""
+        if self.shortest_shot_s > self.average_shot_s:
+            raise ValueError(N_("The shortest shot cannot be longer than the average shot."))
+        return self
+
+
+Percent = Annotated[float, Field(ge=0, le=MAX_SAFE_ZONE_PERCENT)]
+
+
+class SafeZone(BaseModel):
+    """The margin kept clear of text on each edge, as a percent of the frame (0 to 50)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    top: Percent
+    right: Percent
+    bottom: Percent
+    left: Percent
+
+    @model_validator(mode="after")
+    def margins_leave_room(self) -> SafeZone:
+        """Opposite margins must leave part of the frame for text."""
+        if (
+            self.top + self.bottom >= FULL_FRAME_PERCENT
+            or self.left + self.right >= FULL_FRAME_PERCENT
+        ):
+            raise ValueError(N_("Opposite margins must leave part of the frame free."))
+        return self
+
+
 class StyleSheet(BaseModel):
-    """The srstudio style a visual style renders with (rule project.visual-style)."""
+    """A visual style as data srstudio reuses, so every episode looks alike (rule project.visual-style)."""
 
     model_config = ConfigDict(frozen=True)
 
     kind: Literal[LibraryKind.STYLE] = LibraryKind.STYLE
     style: Style | None = None
     palette: Palette | None = None
+    fonts: Fonts | None = None
+    cut_rhythm: CutRhythm | None = None
+    min_text_px: Annotated[int, Field(gt=0, le=MAX_TEXT_PX)] | None = None
+    safe_zone: SafeZone | None = None
 
 
 class PropSheet(BaseModel):
@@ -217,6 +302,12 @@ class EntrySheet(SheetInput):
     entry_id: UUID
     revision: int
     updated_at: datetime | None = None
+
+
+class EpisodeStyleDetail(EpisodeStyle):
+    """An episode's visual style with its structured sheet; the sheet is null when it picked none."""
+
+    sheet: EntrySheet | None = None
 
 
 class EpisodeSlugInput(BaseModel):

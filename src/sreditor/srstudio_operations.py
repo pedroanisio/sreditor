@@ -14,8 +14,8 @@ from pydantic import BaseModel, ConfigDict
 from sreditor.deps import ChannelAccess, Services
 from sreditor.episode_operations import episode_access
 from sreditor.episodes import EpisodeStatus
-from sreditor.library import EntryNotFound, LibraryEntry, LibraryKind
-from sreditor.library_operations import EntryChange
+from sreditor.library import EntryNotFound, EpisodeStyle, LibraryEntry, LibraryKind, StyleChoice
+from sreditor.library_operations import EntryChange, choose_episode_style, get_episode_style
 from sreditor.members import Permission
 from sreditor.operations import gated
 from sreditor.pagination import MAX_LIMIT
@@ -25,6 +25,7 @@ from sreditor.srstudio import (
     EntrySheet,
     EpisodeSlug,
     EpisodeSlugInput,
+    EpisodeStyleDetail,
     Fact,
     PlaceSheet,
     Relationship,
@@ -189,6 +190,31 @@ def save_sheet(
         f"{change.kind}{SHEET_WRITE}",
         lambda: app.srstudio.save_sheet(entry, data, change.expected_revision),
     )
+
+
+def with_sheet(app: Services, chosen: EpisodeStyle) -> EpisodeStyleDetail:
+    """The episode's picked style together with its structured sheet (rule project.visual-style)."""
+    sheet = app.srstudio.sheet(chosen.style) if chosen.style is not None else None
+    return EpisodeStyleDetail(**dict(chosen), sheet=sheet)
+
+
+def get_episode_style_detail(
+    app: Services, access: ChannelAccess, number: int
+) -> EpisodeStyleDetail:
+    """The visual style an episode picked, with its palette, fonts, cut rhythm and safe zone."""
+    return with_sheet(app, get_episode_style(app, access, number))
+
+
+def choose_episode_style_detail(
+    app: Services,
+    access: ChannelAccess,
+    number: int,
+    choice: StyleChoice,
+    expected_revision: int | None,
+) -> EpisodeStyleDetail:
+    """Pick the episode's visual style, or none, and answer with its structured sheet."""
+    chosen = choose_episode_style(app, access, number, choice, expected_revision)
+    return with_sheet(app, chosen)
 
 
 def get_episode_slug(app: Services, access: ChannelAccess, number: int) -> EpisodeSlug:

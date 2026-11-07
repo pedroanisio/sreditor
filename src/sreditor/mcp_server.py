@@ -32,6 +32,7 @@ from sreditor import (
     operations,
     research_operations,
     screenplay_operations,
+    srstudio_operations,
     waiver_operations,
 )
 from sreditor.accounts import AccountError
@@ -60,7 +61,6 @@ from sreditor.library import (
     EntryExists,
     EntryInput,
     EntryNotFound,
-    EpisodeStyle,
     LibraryEntry,
     LibraryKind,
     StyleChoice,
@@ -82,6 +82,7 @@ from sreditor.research import (
 )
 from sreditor.research_operations import SourceChange
 from sreditor.screenplay import Screenplay, ScreenplayInput
+from sreditor.srstudio import EpisodeStyleDetail
 from sreditor.srstudio_operations import NotInLibrary
 from sreditor.store import StoreError
 from sreditor.tokens import ApiToken, is_api_token
@@ -105,7 +106,8 @@ INSTRUCTIONS = (
     "with set_episode_pitch. Read its screenplay, in Fountain, with "
     "get_screenplay, which also shows which names the channel's library of characters and "
     "locations (list_library) still lacks. The library also holds visual styles; each episode "
-    "picks one with set_episode_style. A vertical-video cut lives in the episode's short "
+    "picks one with set_episode_style, and get_visual_style and save_visual_style read and set "
+    "a style's palette, fonts, cut rhythm, smallest text and safe zone. A vertical-video cut lives in the episode's short "
     "script (get_short_script, write_short_script); owners and editors can speak it with "
     "generate_voice_over, which spends ElevenLabs credits (see them first with "
     "estimate_voice_over, and read each block's timed words with get_voice_over). An episode's voice-over, sound effects, score and "
@@ -351,6 +353,7 @@ def build(services: Services) -> MCPServer:
     from sreditor.pitch_tools import add_pitch_tools
     from sreditor.render_tools import add_render_tools
     from sreditor.short_script_tools import add_short_script_tools
+    from sreditor.style_tools import add_style_data_tools
 
     server: MCPServer = MCPServer(name="sreditor", instructions=INSTRUCTIONS)
     # Registration order is the order clients list the tools in.
@@ -363,6 +366,7 @@ def build(services: Services) -> MCPServer:
     add_short_script_tools(server, services)
     add_library_tools(server, services)
     add_style_tools(server, services)
+    add_style_data_tools(server, services)
     add_media_tools(server, services)
     add_render_tools(server, services)
     add_external_media_tools(server, services)
@@ -835,11 +839,14 @@ def add_style_tools(server: MCPServer, services: Services) -> None:
         return access_for(services, slug, who.user, who.token)
 
     @server.tool(annotations=tool_annotations("Read an episode's visual style", Effect.READ))
-    def get_episode_style(context: Context, slug: str, number: int) -> EpisodeStyle:
-        """Read the visual style an episode picked from the channel's library, with its
-        description; style is null when it picked none. Use it before describing visuals."""
+    def get_episode_style(context: Context, slug: str, number: int) -> EpisodeStyleDetail:
+        """Read the visual style an episode picked from the channel's library: its description
+        (style) and its structured sheet (srstudio style, palette, fonts, cut rhythm, smallest
+        text, safe zone); both are null when it picked none. Use it before describing visuals."""
         return reported(
-            lambda: library_operations.get_episode_style(services, access(context, slug), number)
+            lambda: srstudio_operations.get_episode_style_detail(
+                services, access(context, slug), number
+            )
         )
 
     @server.tool(annotations=tool_annotations("Set an episode's visual style", Effect.REPLACE))
@@ -849,13 +856,13 @@ def add_style_tools(server: MCPServer, services: Services) -> None:
         number: int,
         style_id: UUID | None,
         expected_revision: int | None = None,
-    ) -> EpisodeStyle:
+    ) -> EpisodeStyleDetail:
         """Pick an episode's visual style by its id from list_library (kind style), or null for
         none. Add a missing style first with save_library_entry. Pass the `revision` from
         get_episode_style as `expected_revision` (0 before the first pick). Needs content:write."""
         choice = StyleChoice(style_id=style_id)
         return reported(
-            lambda: library_operations.choose_episode_style(
+            lambda: srstudio_operations.choose_episode_style_detail(
                 services, access(context, slug), number, choice, expected_revision
             )
         )
