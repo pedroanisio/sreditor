@@ -79,6 +79,8 @@ class Flash(StrEnum):
     VOICE_REUSED = "voice_reused"
     TIMINGS_APPLIED = "timings_applied"
     LINK_ADDED = "link_added"
+    PUBLISHED_INCOMPLETE = "published_incomplete"
+    METRICS_RECORDED = "metrics_recorded"
 
 
 CHANGED_MEANWHILE = N_(
@@ -112,6 +114,10 @@ FLASH_TEXT: dict[Flash, str] = {
     Flash.VOICE_REUSED: N_("Nothing changed since the last take, so it was reused at no cost."),
     Flash.TIMINGS_APPLIED: N_("The blocks now use the times measured in the voice-over."),
     Flash.LINK_ADDED: N_("Link added."),
+    Flash.PUBLISHED_INCOMPLETE: N_(
+        "Episode saved as published, but its delivery package is incomplete. Open Delivery to see what is missing."
+    ),
+    Flash.METRICS_RECORDED: N_("Numbers recorded."),
 }
 
 
@@ -197,6 +203,13 @@ SECTIONS: tuple[Section, ...] = (
         key="external-media",
         label=N_("Third-party media"),
         suffix="/external-media",
+        permission=Permission.READ,
+        group=SectionGroup.PRODUCTION,
+    ),
+    Section(
+        key="metrics",
+        label=N_("Metrics"),
+        suffix="/metrics",
         permission=Permission.READ,
         group=SectionGroup.PRODUCTION,
     ),

@@ -1,0 +1,58 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% block page_title %}{{ _("Numbers") }} · {{ platform_name }} · {{ episode.title }}{% endblock %}
+{% block page %}
+{% set may_write = can("write_content") %}
+{% set lead = _("How the post on %(platform)s performed, one entry per day. Numbers come from the platform's analytics: sreditor never fetches them.", platform=platform_name) %}
+{% include "workspace/_episode_header.html" %}
+{{ ui.back_link(back_link, _("Delivery")) }}
+{{ ui.form_error(errors) }}
+{% call ui.panel(_("Numbers on %(platform)s", platform=platform_name), id="snapshots") %}
+  {% if snapshots %}
+  {% call(snapshot) ui.items(snapshots, _("Snapshots")) %}
+    {% call ui.item_body() %}
+      <strong>{{ _.day(snapshot.captured_on) }}</strong>
+      {{ ui.meta(lines[snapshot.id | string]) }}
+      {% if snapshot.retention %}
+      {% call ui.more(_("Retention (%(count)s points)", count=snapshot.retention | length)) %}
+        <p>{% for point in snapshot.retention %}{{ point.second | round(1) }} s: {{ point.percent | round(1) }}%{% if not loop.last %} · {% endif %}{% endfor %}</p>
+      {% endcall %}
+      {% endif %}
+    {% endcall %}
+  {% endcall %}
+  {% if next_cursor %}{{ ui.pager(post_link ~ "?cursor=" ~ next_cursor, _("Older days")) }}{% endif %}
+  {% else %}
+  <p class="muted">{{ _("No numbers yet. Enter them from the platform's analytics page or import its retention CSV.") }}</p>
+  {% endif %}
+  {% if may_write %}{% call ui.panel_actions() %}
+    {{ ui.dialog_button("add-numbers", _("Enter numbers"), plus=true) }}
+    {{ ui.dialog_button("import-retention", _("Import retention CSV"), variant="ghost") }}
+  {% endcall %}{% endif %}
+{% endcall %}
+{% if may_write %}
+{% set is_numbers = sent is not none %}
+{% set numbers_errors = errors if is_numbers else {} %}
+{% call ui.dialog("add-numbers", _("Enter numbers"), _("Close"), open=is_numbers) %}
+  {% call ui.form(post_link ~ "/snapshots", csrf_field, csrf_token) %}
+    {{ ui.field("captured_on", _("Day"), numbers_errors, type="date", value=sent.captured_on if is_numbers else "", required=false, id="numbers-day", hint=_("Leave it empty for today. A second entry for the same day fills in what was left out.")) }}
+    {{ ui.field("views", _("Views"), numbers_errors, type="number", value=sent.views if is_numbers else "", required=false, id="numbers-views") }}
+    {{ ui.field("reach", _("Reach"), numbers_errors, type="number", value=sent.reach if is_numbers else "", required=false, id="numbers-reach") }}
+    {{ ui.field("likes", _("Likes"), numbers_errors, type="number", value=sent.likes if is_numbers else "", required=false, id="numbers-likes") }}
+    {{ ui.field("comments", _("Comments"), numbers_errors, type="number", value=sent.comments if is_numbers else "", required=false, id="numbers-comments") }}
+    {{ ui.field("shares", _("Shares"), numbers_errors, type="number", value=sent.shares if is_numbers else "", required=false, id="numbers-shares") }}
+    {{ ui.field("saves", _("Saves"), numbers_errors, type="number", value=sent.saves if is_numbers else "", required=false, id="numbers-saves") }}
+    {{ ui.field("avg_watch_s", _("Average watch time (s)"), numbers_errors, type="number", value=sent.avg_watch_s if is_numbers else "", required=false, id="numbers-watch") }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Save numbers")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% set is_csv = sent_csv is not none %}
+{% set csv_errors = errors if is_csv else {} %}
+{% call ui.dialog("import-retention", _("Import retention CSV"), _("Close"), open=is_csv) %}
+  {% call ui.form(post_link ~ "/retention", csrf_field, csrf_token, upload=true) %}
+    {{ ui.file_field("file", _("CSV file"), csv_errors, accept=".csv,text/csv", hint=_("Two columns with a header, such as second,percent, up to %(count)s characters.", count=max_csv_chars), id="retention-file") }}
+    {{ ui.field("captured_on", _("Day"), csv_errors, type="date", value=sent_csv.captured_on if is_csv else "", required=false, id="retention-day", hint=_("Leave it empty for today. It replaces that day's retention.")) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Import")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% endif %}
+{% endblock %}

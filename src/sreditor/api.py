@@ -16,6 +16,7 @@ from sreditor import (
     book_routes,
     classification_routes,
     context_routes,
+    delivery_routes,
     episode_routes,
     export_routes,
     external_media_routes,
@@ -27,6 +28,7 @@ from sreditor import (
     oauth_routes,
     operations,
     pitch_routes,
+    post_metrics_routes,
     problems,
     render_routes,
     research_routes,
@@ -42,6 +44,7 @@ from sreditor.channels import BrandKit, Channel, Platform, PlatformAccount
 from sreditor.classification import ClassificationStore
 from sreditor.context import ContextStore
 from sreditor.database import Clock, Database, utc_now
+from sreditor.delivery import DeliveryStore
 from sreditor.deps import Access, CurrentUser, Services, ServicesDep, request_token
 from sreditor.editorial import (
     Editorial,
@@ -63,6 +66,7 @@ from sreditor.media import MediaNotFound, MediaStore
 from sreditor.members import MemberStore, Permission
 from sreditor.pagination import DEFAULT_LIMIT, Cursor, Limit, Page
 from sreditor.pitches import PitchStore
+from sreditor.post_metrics import PostMetricsStore
 from sreditor.problems import ProblemError, problem_response, problem_type
 from sreditor.render_upload import PartStore
 from sreditor.renders import RenderStore
@@ -161,6 +165,8 @@ def create_app(
         assets=assets,
         renders=RenderStore(database),
         render_parts=PartStore(settings.assets_dir, settings.max_media_bytes),
+        deliveries=DeliveryStore(database),
+        post_metrics=PostMetricsStore(database),
         voice=build_voice(settings.voice),
     )
     mcp = mcp_server.build(services)
@@ -199,6 +205,8 @@ def create_app(
     external_media_routes.install_error_handlers(app)
     short_script_routes.install_short_script_error_handlers(app)
     classification_routes.install_error_handlers(app)
+    delivery_routes.install_error_handlers(app)
+    post_metrics_routes.install_error_handlers(app)
     app.include_router(auth_routes.router)
     app.include_router(token_routes.router)
     app.include_router(oauth_routes.router)
@@ -214,6 +222,8 @@ def create_app(
     app.include_router(waiver_routes.router)
     app.include_router(external_media_routes.router)
     app.include_router(classification_routes.router)
+    app.include_router(delivery_routes.router)
+    app.include_router(post_metrics_routes.router)
     app.include_router(srstudio_routes.router)
     app.include_router(render_routes.router)
     app.include_router(render_routes.worker_router)

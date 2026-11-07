@@ -11,6 +11,7 @@ from fastapi import Request, Response
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, ValidationError, field_validator
 
 from sreditor.channels import HEX_PATTERN, LANGUAGE_PATTERN, SLUG_PATTERN
+from sreditor.delivery import HASHTAG_PATTERN
 from sreditor.i18n import N_, Translator
 from sreditor.security import new_token
 from sreditor.users import DisplayName, Password
@@ -123,6 +124,7 @@ PATTERN_MESSAGES = {
     SLUG_PATTERN: N_("Use lowercase letters and numbers, with single hyphens between words."),
     HEX_PATTERN: N_("Enter a color as # and six hex digits, such as #ff0066."),
     LANGUAGE_PATTERN: N_("Enter a language code such as en or pt-BR."),
+    HASHTAG_PATTERN: N_("A hashtag has letters, numbers and underscores only, with no spaces."),
 }
 PREFIX_MESSAGES = {
     URL_ERROR_PREFIX: N_("Enter a full link, starting with https://."),

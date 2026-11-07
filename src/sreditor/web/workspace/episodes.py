@@ -74,6 +74,7 @@ MEDIA_TAB = N_("Media")
 THIRD_PARTY_TAB = N_("Third-party")
 CLASSIFICATION_TAB = N_("Classification")
 WAIVERS_TAB = N_("Waivers")
+DELIVERY_TAB = N_("Delivery")
 SRSTUDIO_TAB = "srstudio"  # a product name, the same in every language
 EPISODE_TABS = (
     ("", DETAILS_TAB, "details", Permission.READ),
@@ -83,6 +84,7 @@ EPISODE_TABS = (
     ("/media", MEDIA_TAB, "media", Permission.READ),
     ("/external-media", THIRD_PARTY_TAB, "external-media", Permission.READ),
     ("/classification", CLASSIFICATION_TAB, "classification", Permission.READ),
+    ("/delivery", DELIVERY_TAB, "delivery", Permission.READ),
     ("/waivers", WAIVERS_TAB, "waivers", Permission.READ_WAIVERS),
     ("/srstudio", SRSTUDIO_TAB, "srstudio", Permission.WRITE_CHANNEL),
 )
@@ -271,20 +273,24 @@ def episode(request: Request, app: ServicesDep, access: PageAccess, number: int)
     return episode_page(request, app, access, EpisodeView(number=number))
 
 
+def saved_flash(revised: RevisedEpisode) -> Flash:
+    """What to say after a save: published with a gap in its delivery package says so (warn only)."""
+    return Flash.PUBLISHED_INCOMPLETE if revised.warnings else Flash.SAVED
+
+
 def save_outcome(
     request: Request, app: Services, access: ChannelAccess, number: int, fields: EpisodeFields
-) -> Outcome | None:
-    """Save the form; the errors to show, or None when it is saved."""
+) -> Outcome | RevisedEpisode:
+    """Save the form; the errors to show, or the saved episode."""
     translate = translator(request)
     try:
-        replace_episode(app, access, number, as_input(fields), revision_of(fields.revision))
+        return replace_episode(app, access, number, as_input(fields), revision_of(fields.revision))
     except ValidationError as invalid:
         return Outcome.invalid(field_errors(invalid, translate))
     except EpisodeChanged:
         return Outcome.conflict({"form": translate(EPISODE_CHANGED)})
     except ProblemError as problem:
         return refused(problem, translate)
-    return None
 
 
 @router.post("/app/channels/{slug}/episodes/{number}")
@@ -300,11 +306,11 @@ def save_episode(
         return rejected
     require(access, Permission.WRITE_CONTENT)
     found_episode(app, access, number)
-    outcome = save_outcome(request, app, access, number, fields)
-    if outcome is not None:
-        shown = EpisodeView(number=number, outcome=outcome, sent=fields)
+    saved = save_outcome(request, app, access, number, fields)
+    if isinstance(saved, Outcome):
+        shown = EpisodeView(number=number, outcome=saved, sent=fields)
         return episode_page(request, app, access, shown)
-    return done(request, app, episodes_url(access.channel.slug, number), Flash.SAVED)
+    return done(request, app, episodes_url(access.channel.slug, number), saved_flash(saved))
 
 
 @router.post("/app/channels/{slug}/episodes/{number}/delete")
@@ -343,7 +349,7 @@ def move_to_stage(
     found_episode(app, access, number)
     translate = translator(request)
     try:
-        move_episode(app, access, number, EpisodeStatus(fields.status))
+        moved = move_episode(app, access, number, EpisodeStatus(fields.status))
     except ValueError:
         outcome = Outcome.invalid({"form": translate(UNKNOWN_STAGE)})
         return list_page(request, app, access, ListView(outcome=outcome))
@@ -352,4 +358,5 @@ def move_to_stage(
         return list_page(request, app, access, ListView(outcome=outcome))
     except ProblemError as problem:
         return list_page(request, app, access, ListView(outcome=refused(problem, translate)))
-    return done(request, app, episodes_url(access.channel.slug), Flash.EPISODE_MOVED)
+    flash = Flash.PUBLISHED_INCOMPLETE if moved.warnings else Flash.EPISODE_MOVED
+    return done(request, app, episodes_url(access.channel.slug), flash)

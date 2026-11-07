@@ -77,6 +77,7 @@ KIND_PATHS = {
     "sound-effects": MediaKind.SOUND_EFFECT,
     "score": MediaKind.SCORE,
     "visual-effects": MediaKind.VISUAL_EFFECT,
+    "covers": MediaKind.COVER,
 }
 PATH_OF = {kind: path for path, kind in KIND_PATHS.items()}
 NO_STYLE = N_("No style")
@@ -107,6 +108,12 @@ KIND_TEXT: dict[MediaKind, dict[str, str]] = {
         "upload": N_("Upload visual effect"),
         "empty": N_("No visual effects yet."),
         "more": N_("More visual effects"),
+    },
+    MediaKind.COVER: {
+        "title": N_("Covers"),
+        "upload": N_("Upload cover"),
+        "empty": N_("No covers yet. Upload the image each cut is posted with."),
+        "more": N_("More covers"),
     },
 }
 

@@ -221,3 +221,44 @@ class MediaFields(SubmittedFields):
     note: str = ""
     revision: str = ""
     file: UploadFile | None = None
+
+
+class CutFields(SubmittedFields):
+    """A delivery cut; `hashtags` is one text, split on spaces and commas; `revision` is the package's."""
+
+    name: str = ""
+    video_id: str = ""
+    cover_id: str = ""
+    caption: str = ""
+    alt_text: str = ""
+    hashtags: str = ""
+    revision: str = ""
+
+
+class PostFields(SubmittedFields):
+    """A post on one platform account: the cut, the link and when it went live."""
+
+    cut: str = ""
+    url: str = ""
+    published_at: str = ""
+    revision: str = ""
+
+
+class SnapshotFields(SubmittedFields):
+    """A post's numbers for one day, as typed; an empty number is left out."""
+
+    captured_on: str = ""
+    views: str = ""
+    reach: str = ""
+    likes: str = ""
+    comments: str = ""
+    shares: str = ""
+    saves: str = ""
+    avg_watch_s: str = ""
+
+
+class RetentionFields(SubmittedFields):
+    """A retention CSV and the day it is from; the file may be pasted as text instead."""
+
+    captured_on: str = ""
+    file: UploadFile | None = None
