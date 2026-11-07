@@ -212,7 +212,22 @@ class TokenStore:
             ).fetchone()
         if row is None:
             return None
-        token = to_token(row)
+        return self.owner_of(to_token(row))
+
+    def live(self, token_id: UUID) -> tuple[User, ApiToken] | None:
+        """The active user and token behind a token id, if it is not revoked or expired.
+
+        Unlike `authenticate` it neither needs the secret nor counts as a use of the token.
+        """
+        with self.database.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM api_tokens WHERE id = ? AND revoked_at IS NULL AND expires_at > ?",
+                (str(token_id), self.database.now()),
+            ).fetchone()
+        return self.owner_of(to_token(row)) if row is not None else None
+
+    def owner_of(self, token: ApiToken) -> tuple[User, ApiToken] | None:
+        """The token with its user, unless the user is gone or not active."""
         user = self.users.get(token.user_id)
         if user is None or user.status is not UserStatus.ACTIVE:
             return None

@@ -507,6 +507,21 @@ CREATE INDEX IF NOT EXISTS render_jobs_by_episode ON render_jobs (channel_slug, 
 CREATE INDEX IF NOT EXISTS render_jobs_by_status ON render_jobs (status, position);
 CREATE INDEX IF NOT EXISTS render_jobs_by_export
     ON render_jobs (channel_slug, number, export_sha256, preset, engine_version);
+CREATE TABLE IF NOT EXISTS file_links (
+    link_hash TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    token_id TEXT NOT NULL REFERENCES api_tokens (id) ON DELETE CASCADE,
+    channel_slug TEXT NOT NULL REFERENCES channels (slug) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    number INTEGER,
+    reference TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used_at TEXT
+);
+CREATE INDEX IF NOT EXISTS file_links_by_expiry ON file_links (expires_at);
 """
 
 Clock = Callable[[], datetime]

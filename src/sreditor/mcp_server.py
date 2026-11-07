@@ -121,7 +121,10 @@ INSTRUCTIONS = (
     "Owners and editors can list an episode's signed waivers with list_waivers. "
     "Owners and editors render an episode into video with request_render, which answers at once; "
     "follow it with get_render until it is done, then download the video from its download_path "
-    "with the same token."
+    "with the same token. "
+    "Files move through single-use links valid for 15 minutes: get_file_link for a brand file, "
+    "media file, render, third-party copy or srstudio export, create_upload_link to attach a "
+    "media file, and check_srstudio_export to see what an srstudio export lacks."
 )
 
 # Domain errors an agent can act on, reported as tool errors with their message.
@@ -347,6 +350,7 @@ def build(services: Services) -> MCPServer:
     from sreditor.classification_tools import add_classification_tools
     from sreditor.context_tools import add_context_tools
     from sreditor.external_media_tools import add_external_media_tools
+    from sreditor.file_tools import add_file_tools
     from sreditor.pitch_tools import add_pitch_tools
     from sreditor.render_tools import add_render_tools
     from sreditor.short_script_tools import add_short_script_tools
@@ -364,6 +368,7 @@ def build(services: Services) -> MCPServer:
     add_style_tools(server, services)
     add_media_tools(server, services)
     add_render_tools(server, services)
+    add_file_tools(server, services)
     add_external_media_tools(server, services)
     add_classification_tools(server, services)
     add_context_tools(server, services)
