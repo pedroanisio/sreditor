@@ -1,4 +1,4 @@
-"""Command line: `sreditor render [--check]`, `sreditor serve` and `sreditor doctor`."""
+"""Command line: `sreditor render [--check]`, `sreditor serve`, `sreditor doctor` and `sreditor worker`."""
 
 from __future__ import annotations
 
@@ -39,6 +39,9 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     admin.add_argument("--email", required=True)
     admin.add_argument("--name", required=True, help="display name")
     add_doctor_parser(commands)
+    commands.add_parser(
+        "worker", help="run a render worker: claim, build, encode and upload render jobs"
+    )
     return parser.parse_args(argv)
 
 
@@ -127,6 +130,30 @@ def doctor(args: argparse.Namespace, environ: Mapping[str, str]) -> int:
     return EXIT_ERROR if any(finding.status in pending for finding in findings) else EXIT_OK
 
 
+def worker(environ: Mapping[str, str]) -> int:
+    """Run a render worker until it is stopped; settings come from SREDITOR_WORKER_*."""
+    import logging
+    import signal
+    import subprocess
+    import threading
+
+    from sreditor.render_worker import EngineRefused, WorkerClient, connect, run_forever
+    from sreditor.worker_engine import Engine, WorkerMisconfigured, worker_settings
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    stop = threading.Event()
+    # A stopped container finishes the job in hand; its lease would requeue it otherwise.
+    signal.signal(signal.SIGTERM, lambda number, frame: stop.set())
+    try:
+        settings = worker_settings(environ)
+        with connect(settings) as http:
+            run_forever(WorkerClient(http), Engine(settings), settings, stop)
+    except (WorkerMisconfigured, EngineRefused, OSError, subprocess.CalledProcessError) as failure:
+        print(f"sreditor worker: {failure}", file=sys.stderr)
+        return EXIT_ERROR
+    return EXIT_OK
+
+
 def main(argv: Sequence[str] | None = None, environ: Mapping[str, str] | None = None) -> int:
     """Run the subcommand named on the command line and return its exit code."""
     args = parse_args(argv)
@@ -137,6 +164,8 @@ def main(argv: Sequence[str] | None = None, environ: Mapping[str, str] | None = 
         return create_admin(args, environ)
     if args.command == "doctor":
         return doctor(args, environ)
+    if args.command == "worker":
+        return worker(environ)
     root: Path = args.root.resolve()
     flags = {name: getattr(args, name) for name in ENVIRONMENT}
     try:

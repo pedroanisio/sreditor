@@ -28,6 +28,7 @@ from sreditor.field_types import MediaType
 from sreditor.i18n import Translator
 from sreditor.web.classification_labels import DIMENSION_LABELS, STATE_LABELS, VALUE_LABELS
 from sreditor.web.labels import EPISODE_STATUS_LABELS
+from sreditor.web.markdown_text import add_markdown_filters
 from sreditor.web.workspace.external_media import PURPOSE_LABELS, RIGHTS_LABELS
 from sreditor.web.workspace.short_script import FUNCTION_LABELS
 
@@ -261,6 +262,7 @@ def environment(translate: Translator) -> Environment:
         loader=FileSystemLoader(TEMPLATES), autoescape=select_autoescape(), auto_reload=False
     )
     jinja.globals["_"] = translate
+    add_markdown_filters(jinja)
     return jinja
 
 

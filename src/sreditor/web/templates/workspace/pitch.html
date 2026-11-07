@@ -4,7 +4,7 @@
 {% block page %}
 {% set may_write = can("write_content") %}
 {{ ui.back_link(list_link, _("Pitches")) }}
-{% call ui.page_header(pitch.title, pitch.summary) %}
+{% call ui.page_header(pitch.title, pitch.summary | markdown_plain) %}
   {{ ui.badge(_(pitch_status_labels[pitch.status]), pitch_status_tones[pitch.status]) }}
   {{ ui.link_button(channel_link ~ "/items/pitch/" ~ pitch.id, _("Context"), variant="ghost") }}
   {% call ui.menu(_("Export")) %}
@@ -40,7 +40,7 @@
     {% call ui.panel_actions() %}{{ ui.button(_("Save notes")) }}{% endcall %}
   {% endcall %}
   {% elif notes.text %}
-  {{ ui.text_block(notes.text) }}
+  {{ ui.markdown_block(notes.text) }}
   {% else %}
   <p class="muted">{{ _("No notes yet.") }}</p>
   {% endif %}

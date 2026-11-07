@@ -195,7 +195,7 @@ def add_context_writes(server: MCPServer, services: Services) -> None:
     ) -> ContextView:
         """Set an item's answers to what, who, where, when, why and how, and link it to other
         items of the channel, in one call. `answers` replaces all six (leave one empty when it
-        does not apply); `links` are added, and a link that already exists is kept as it is.
+        does not apply); answers may use Markdown. `links` are added, and a link that already exists is kept as it is.
         Point `who` at characters and `where` at locations of the library when they exist; a
         person or place outside the library stays a name in the answer. Every link's target is
         checked before anything is written. Pass `revision` from get_context as

@@ -7,7 +7,7 @@ from enum import StrEnum
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
-from pydantic import BaseModel, ConfigDict, PositiveInt, ValidationError
+from pydantic import BaseModel, BeforeValidator, ConfigDict, PositiveInt, ValidationError
 
 from sreditor import book_operations as books
 from sreditor.book_operations import (
@@ -34,6 +34,15 @@ from sreditor.problems import ProblemError
 from sreditor.web.books import book_file
 
 router = APIRouter(tags=["export"])
+
+
+def blank_as_none(value: object) -> object:
+    """Read an empty field as no limit: the page's form sends from= and to= when left empty."""
+    return None if value == "" else value
+
+
+# An episode number bound that an empty query value leaves open.
+EpisodeBound = Annotated[PositiveInt | None, BeforeValidator(blank_as_none)]
 
 
 class BookLanguage(StrEnum):
@@ -91,10 +100,10 @@ def book_options(
         Query(alias="status", description="Repeat to keep only episodes of these statuses."),
     ] = [],  # noqa: B006  # FastAPI copies query defaults per request
     first: Annotated[
-        PositiveInt | None, Query(alias="from", description="The first episode number to keep.")
+        EpisodeBound, Query(alias="from", description="The first episode number to keep.")
     ] = None,
     last: Annotated[
-        PositiveInt | None, Query(alias="to", description="The last episode number to keep.")
+        EpisodeBound, Query(alias="to", description="The last episode number to keep.")
     ] = None,
 ) -> BookOptions:
     """The sections and episodes a book holds; 422 when the range ends before it starts."""

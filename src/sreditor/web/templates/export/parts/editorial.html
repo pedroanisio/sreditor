@@ -1,8 +1,8 @@
 {% set editorial = part.editorial %}
 {% set single = [editorial.purpose, editorial.voice, editorial.audience]|select %}
 <dl class="doc-facts">
-  {% for line in single %}<dt>{{ labels.guidelines[line.kind] }}</dt><dd class="doc-text">{{ line.text }}</dd>{% endfor %}
-  {% for line in editorial.pillars %}<dt>{{ labels.guidelines[line.kind] }}</dt><dd class="doc-text">{{ line.text }}</dd>{% endfor %}
-  {% for line in editorial.avoid %}<dt>{{ labels.guidelines[line.kind] }}</dt><dd class="doc-text">{{ line.text }}</dd>{% endfor %}
+  {% for line in single %}<dt>{{ labels.guidelines[line.kind] }}</dt><dd class="doc-markdown">{{ line.text | markdown }}</dd>{% endfor %}
+  {% for line in editorial.pillars %}<dt>{{ labels.guidelines[line.kind] }}</dt><dd class="doc-markdown">{{ line.text | markdown }}</dd>{% endfor %}
+  {% for line in editorial.avoid %}<dt>{{ labels.guidelines[line.kind] }}</dt><dd class="doc-markdown">{{ line.text | markdown }}</dd>{% endfor %}
 </dl>
 {% if not (editorial.purpose or editorial.voice or editorial.audience or editorial.pillars or editorial.avoid) %}<p class="book-empty">{{ _("No guidelines yet.") }}</p>{% endif %}

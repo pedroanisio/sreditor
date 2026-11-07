@@ -17,7 +17,7 @@
   {% for stage, stage_label, rows in board %}
   {% call ui.board_column(stage, stage_label, rows | length) %}
     {% for row in rows %}
-    {% call ui.board_card("#" ~ row.number ~ " · " ~ row.title, row.summary | truncate(90), list_link ~ "/" ~ row.number, movable=may_write) %}
+    {% call ui.board_card("#" ~ row.number ~ " · " ~ row.title, row.summary | markdown_plain | truncate(90), list_link ~ "/" ~ row.number, movable=may_write) %}
       {% if may_write %}{{ ui.board_move(list_link ~ "/" ~ row.number ~ "/move", csrf_field, csrf_token, stage_options, row.status, "stage-" ~ row.number, _("Stage of episode %(number)s", number=row.number), _("Move")) }}{% endif %}
     {% endcall %}
     {% endfor %}
@@ -26,7 +26,7 @@
 {% endcall %}
 {% else %}
 {% call(row) ui.items(episodes, _("Episodes")) %}
-  {{ ui.item_main("#" ~ row.number ~ " · " ~ row.title, row.summary | truncate(120), list_link ~ "/" ~ row.number) }}
+  {{ ui.item_main("#" ~ row.number ~ " · " ~ row.title, row.summary | markdown_plain | truncate(120), list_link ~ "/" ~ row.number) }}
   {% call ui.item_side() %}
     {{ ui.badge(_(episode_status_labels[row.status]), episode_status_tones[row.status]) }}
   {% endcall %}

@@ -596,6 +596,12 @@
 <p class="text-block{% if mono %} mono{% endif %}">{{ text }}</p>
 {%- endmacro %}
 
+{# Long text someone wrote in Markdown, such as research notes, shown formatted
+   (rule project.text.markdown). #}
+{% macro markdown_block(text) -%}
+<div class="markdown">{{ text | markdown }}</div>
+{%- endmacro %}
+
 {# An ordered list of short entries, such as a screenplay's scenes. #}
 {% macro numbered(entries, label) -%}
 <ol class="numbered" aria-label="{{ label }}">

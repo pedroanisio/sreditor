@@ -98,6 +98,7 @@
   </div>
   {{ ui.text_block(_("Facts, open questions and leads. Cite each fact's source below.") ~ "\n" ~ _("No sources yet.")) }}
   {{ ui.text_block("INT. KITCHEN - DAY\n\nANA\nIs it Monday again?", mono=true) }}
+  {{ ui.markdown_block("## " ~ _("Sources") ~ "\n\n" ~ _("Facts, open questions and leads. Cite each fact's source below.") ~ "\n\n- **" ~ _("Draft") ~ "**\n- *" ~ _("No sources yet.") ~ "*\n\n> [https://example.org](https://example.org)") }}
   {% call ui.split() %}
     {% call ui.panel(_("Screenplay")) %}{{ ui.text_block("INT. KITCHEN - DAY\n\nANA\n(sighing)\nIs it Monday again?\n\nCUT TO:", mono=true) }}{% endcall %}
     {% call ui.panel(_("Preview")) %}{{ ui.screenplay(design_screenplay, _("The formatted screenplay shows here as you write.")) }}{% endcall %}

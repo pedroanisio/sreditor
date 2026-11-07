@@ -548,7 +548,9 @@ def add_editorial_tools(server: MCPServer, services: Services) -> None:
         expected_revision: int | None = None,
         idempotency_key: IdempotencyKey = None,
     ) -> Annotated[CallToolResult, Guideline]:
-        """Set the purpose, voice or audience, or add a pillar or avoid guideline.
+        """Set the purpose, voice or audience, or add a pillar or avoid guideline. The text
+        may use Markdown (headings, emphasis, lists, quotes, links), which pages and PDF books
+        show formatted.
 
         Needs the editorial:write scope, and the channel's rules must allow it. When setting
         purpose, voice or audience, pass its `revision` from get_editorial as
@@ -720,7 +722,8 @@ def add_episode_tools(server: MCPServer, services: Services) -> None:
         idempotency_key: IdempotencyKey = None,
     ) -> Annotated[CallToolResult, RevisedEpisode]:
         """Add an episode with the channel's next number; it starts as an idea unless `status`
-        says otherwise. Needs content:write. Each call creates another episode unless you pass
+        says otherwise. The summary may use Markdown. Needs content:write. Each call creates
+        another episode unless you pass
         an `idempotency_key`, any unique string per intended episode: a retry with the same key
         and episode returns the episode the first call made, marked replayed, instead of a
         duplicate."""
@@ -746,7 +749,7 @@ def add_episode_tools(server: MCPServer, services: Services) -> None:
         expected_revision: int | None = None,
     ) -> RevisedEpisode:
         """Replace an episode's title, summary and status, for example to move it to script.
-        Needs content:write. Call get_episode first and pass its `revision` as
+        The summary may use Markdown. Needs content:write. Call get_episode first and pass its `revision` as
         `expected_revision`, so a change someone else made in the meantime is never lost."""
         return reported(
             lambda: episode_operations.replace_episode(
@@ -815,7 +818,9 @@ def add_research_tools(server: MCPServer, services: Services) -> None:
         expected_revision: int | None = None,
     ) -> ResearchNotes:
         """Replace an episode's research notes with the whole new text; to cite where a fact
-        comes from, use add_source instead. Needs content:write. Pass the notes' `revision` from
+        comes from, use add_source instead. Write them in Markdown (headings, emphasis, lists,
+        quotes, links), which pages and PDF books show formatted. Needs content:write. Pass the
+        notes' `revision` from
         get_research as `expected_revision` (0 when empty) so you never overwrite notes you have
         not read."""
         return reported(

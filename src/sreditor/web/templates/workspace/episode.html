@@ -2,7 +2,7 @@
 {% import "_ui.html" as ui %}
 {% block page_title %}{{ episode.title }}{% endblock %}
 {% block page %}
-{% set lead = episode.summary %}
+{% set lead = episode.summary | markdown_plain %}
 {% include "workspace/_episode_header.html" %}
 {{ ui.form_error(errors) }}
 {% if unchecked_claims == 1 %}

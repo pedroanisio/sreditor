@@ -23,3 +23,4 @@ store/*.sqlite-journal
 # Playwright evidence: screenshots and failure traces (rule ui.e2e.evidence)
 e2e-evidence/
 _tmp/video-classification-1.0.0.zip
+.claude/

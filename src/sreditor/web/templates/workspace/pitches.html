@@ -10,7 +10,7 @@
 {{ ui.form_error(errors) }}
 {% if pitches %}
 {% call(row) ui.items(pitches, _("Pitches")) %}
-  {{ ui.item_main(row.title, row.summary | truncate(120), pitches_link ~ "/" ~ row.id) }}
+  {{ ui.item_main(row.title, row.summary | markdown_plain | truncate(120), pitches_link ~ "/" ~ row.id) }}
   {% call ui.item_side() %}
     {{ ui.badge(_(pitch_status_labels[row.status]), pitch_status_tones[row.status]) }}
   {% endcall %}

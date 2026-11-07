@@ -161,7 +161,7 @@ def add_pitch_writes(server: MCPServer, services: Services) -> None:
         context: Context, slug: str, pitch: PitchInput, idempotency_key: IdempotencyKey = None
     ) -> Annotated[CallToolResult, Pitch]:
         """Add a story idea to a channel: a title, a summary and a status (idea by default).
-        Needs content:write. Each call adds another pitch unless you pass an `idempotency_key`
+        The summary may use Markdown. Needs content:write. Each call adds another pitch unless you pass an `idempotency_key`
         (a retry with the same key and pitch returns the first one), so check list_pitches
         first; to change one, use update_pitch."""
         call = IdempotentCall(
@@ -186,7 +186,7 @@ def add_pitch_writes(server: MCPServer, services: Services) -> None:
         expected_revision: int | None = None,
     ) -> Pitch:
         """Replace a pitch's title, summary and status, for example to move it from idea to
-        research or approved. Needs content:write. Pass the pitch's `revision` from get_pitch
+        research or approved. The summary may use Markdown. Needs content:write. Pass the pitch's `revision` from get_pitch
         as `expected_revision` so you never overwrite a change you have not read."""
         change = PitchChange(pitch_id=pitch_id, expected_revision=expected_revision)
         return pitch_reported(
@@ -247,7 +247,8 @@ def add_pitch_research_tools(server: MCPServer, services: Services) -> None:
         expected_revision: int | None = None,
     ) -> PitchNotes:
         """Replace a pitch's research notes with the whole new text; to cite where a fact
-        comes from, use add_pitch_source instead. Needs content:write. Pass the notes'
+        comes from, use add_pitch_source instead. Write them in Markdown (headings, emphasis,
+        lists, quotes, links), which pages and PDF books show formatted. Needs content:write. Pass the notes'
         `revision` from get_pitch as `expected_revision` (0 when empty)."""
         change = PitchChange(pitch_id=pitch_id, expected_revision=expected_revision)
         return pitch_reported(

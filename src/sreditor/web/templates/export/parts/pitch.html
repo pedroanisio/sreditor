@@ -1,10 +1,10 @@
 {% from "_macros.html" import sources_table %}
 <article class="book-part">
   <h3>{{ part.pitch.title }} <span class="doc-pill">{{ labels.pitch_status[part.pitch.status] }}</span></h3>
-  {% if part.pitch.summary %}<p class="doc-lead">{{ part.pitch.summary }}</p>{% endif %}
+  {% if part.pitch.summary %}<div class="doc-lead doc-markdown">{{ part.pitch.summary | markdown }}</div>{% endif %}
   {% include "parts/_context.html" %}
   {% if part.episodes %}<p class="doc-muted">{{ _("Feeds episodes") }}: {% for number in part.episodes %}#{{ number }}{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
   <h4>{{ _("Research notes") }}</h4>
-  {% if part.notes %}<p class="doc-text">{{ part.notes }}</p>{% else %}<p class="book-empty">{{ _("No research notes yet.") }}</p>{% endif %}
+  {% if part.notes %}<div class="doc-markdown">{{ part.notes | markdown }}</div>{% else %}<p class="book-empty">{{ _("No research notes yet.") }}</p>{% endif %}
   {% if part.sources %}<h4>{{ _("Sources") }}</h4>{{ sources_table(part.sources) }}{% endif %}
 </article>

@@ -1,0 +1,51 @@
+# syntax=docker/dockerfile:1.19
+#
+# The render worker (rule project.render.workers): srstudio plus a pinned scene-render engine, running
+# `sreditor worker`. It pulls jobs from sreditor over HTTPS and needs no inbound port.
+#
+#   docker build -f Dockerfile.worker -t sreditor-worker:0.9.0 .
+#   docker run --gpus all -e SREDITOR_WORKER_SERVER_URL=https://sreditor-dev.arc4d3.com \
+#     -e SREDITOR_WORKER_TOKEN=srw_... -e SREDITOR_WORKER_BUILD_COMMAND='...' \
+#     -v /run/lock:/run/lock sreditor-worker:0.9.0
+#
+# git: srstudio installs some of its dependencies from git.
+# The engine comes from its own image, as srstudio's ADR 0224 does: SCENE_RENDER_VERSION must be the
+# version the instance pins (SREDITOR_RENDER_ENGINE_VERSION), or sreditor refuses the worker's claims.
+# srstudio comes from SRSTUDIO_GIT at SRSTUDIO_REF; pin a release tag once srstudio ships the command
+# that builds a scene from sreditor's export.
+
+ARG SCENE_RENDER_VERSION=0.9.0
+ARG SRSTUDIO_GIT=https://github.com/pedroanisio/srstudio.git
+ARG SRSTUDIO_REF=main
+
+FROM pedroanisio/scene-render:${SCENE_RENDER_VERSION}
+ARG SRSTUDIO_GIT
+ARG SRSTUDIO_REF
+USER root
+RUN set -eu; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git python3 python3-venv; \
+    rm -rf /var/lib/apt/lists/*; \
+    python3 -m venv /opt/worker
+ENV PATH=/opt/worker/bin:$PATH
+
+ADD --keep-git-dir=false ${SRSTUDIO_GIT}#${SRSTUDIO_REF} /opt/srstudio-src
+RUN pip install --no-cache-dir /opt/srstudio-src && rm -rf /opt/srstudio-src
+
+WORKDIR /opt/sreditor
+COPY pyproject.toml ./
+COPY src ./src
+RUN pip install --no-cache-dir . && install -d -o render -g render /work/jobs && install -d -m 1777 /run/lock
+
+# The NVIDIA runtime mounts the driver's Vulkan and video libraries only for these capabilities;
+# without a GPU, scene-render falls back to the image's lavapipe.
+ENV NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,graphics,utility,video \
+    SREDITOR_SCENE_RENDER=/usr/local/bin/scene-render \
+    SREDITOR_WORKER_DIR=/work/jobs \
+    SRSTUDIO_GPU_LOCK=/run/lock/srstudio-gpu.lock \
+    PYTHONUNBUFFERED=1
+USER render
+WORKDIR /work
+ENTRYPOINT []
+CMD ["sreditor", "worker"]

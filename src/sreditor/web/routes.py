@@ -58,11 +58,13 @@ from sreditor.web.forms import (
     token_from,
 )
 from sreditor.web.labels import platform_name
+from sreditor.web.markdown_text import add_markdown_filters
 from sreditor.web.static_assets import STATIC_DIR, STATIC_ROUTE, VersionedStaticFiles, static_url
 
 HERE = Path(__file__).parent
 TEMPLATES = Jinja2Templates(directory=HERE / "templates")
 TEMPLATES.env.globals["static_url"] = static_url
+add_markdown_filters(TEMPLATES.env)
 
 # Where a signed-in visitor lands.
 APP_PATH = AFTER_SIGN_IN

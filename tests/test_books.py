@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from sreditor.web import books as books_module
 from sreditor.web.books import ChannelFilesOnly
 from sreditor.web.export_files import FONTS
 from sreditor.web.forms import CSRF_COOKIE
@@ -113,6 +114,25 @@ def test_pitch_book_pdf_is_a_pdf(filled: TestClient) -> None:  # noqa: F811
     pitch = filled.get(BASE + "/pitches").json()["items"][0]
     content = book(filled, f"{BASE}/pitches/{pitch['id']}/book", format="pdf")
     assert content.startswith(PDF_SIGNATURE)
+
+
+def test_pitch_book_pdf_markdown_notes_print_formatted(
+    filled: TestClient,  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pitch = filled.get(BASE + "/pitches").json()["items"][0]
+    research = f"{BASE}/pitches/{pitch['id']}/research"
+    written(filled.put(research, json={"text": "## Lead\n\n**Strike** vote", "revision": 1}))
+    printed: list[str] = []
+
+    def recording_html(**arguments: Any) -> Any:
+        printed.append(arguments["string"])
+        return books_module.HTML.__wrapped__(**arguments)
+
+    recording_html.__wrapped__ = books_module.HTML  # type: ignore[attr-defined]
+    monkeypatch.setattr(books_module, "HTML", recording_html)
+    book(filled, f"{BASE}/pitches/{pitch['id']}/book", format="pdf")
+    assert "<h2>Lead</h2>" in printed[0] and "<strong>Strike</strong> vote" in printed[0]
 
 
 def test_episode_book_json_adds_context_and_cast(filled: TestClient) -> None:  # noqa: F811
@@ -243,6 +263,11 @@ def test_channel_book_status_filter_leaves_other_episodes_out(library: TestClien
 
 def test_channel_book_range_keeps_episodes_inside_it(library: TestClient) -> None:
     found = book(library, CHANNEL_BOOK, section="episodes", **{"from": 1, "to": 1})
+    assert [part["export"]["episode"]["number"] for part in found["parts"]] == [1]
+
+
+def test_channel_book_empty_range_keeps_every_episode(library: TestClient) -> None:
+    found = book(library, CHANNEL_BOOK, section="episodes", **{"from": "", "to": ""})
     assert [part["export"]["episode"]["number"] for part in found["parts"]] == [1]
 
 

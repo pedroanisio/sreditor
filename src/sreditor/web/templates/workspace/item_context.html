@@ -19,7 +19,7 @@
   {% endcall %}
   {% else %}
   {% set shown = namespace(pairs=[]) %}
-  {% for question in questions %}{% if answers[question.value] %}{% set shown.pairs = shown.pairs + [(_(question_labels[question]), answers[question.value])] %}{% endif %}{% endfor %}
+  {% for question in questions %}{% if answers[question.value] %}{% set shown.pairs = shown.pairs + [(_(question_labels[question]), answers[question.value] | markdown)] %}{% endif %}{% endfor %}
   {% if shown.pairs %}{{ ui.facts(shown.pairs) }}{% else %}<p class="muted">{{ _("No answers yet.") }}</p>{% endif %}
   {% endif %}
 {% endcall %}

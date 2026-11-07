@@ -18,7 +18,7 @@
   {# One text per kind: read it here, change it in a dialog, so it shows once and in full. #}
   {% if section_row.entries %}
   {% set guideline, source = section_row.entries[0] %}
-  {{ ui.text_block(guideline.text) }}
+  {{ ui.markdown_block(guideline.text) }}
   {% call ui.panel_actions() %}
     {{ ui.badge(_(source), "accent" if source == here else "") }}
     {% if may_write %}
@@ -39,7 +39,7 @@
   {% if section_row.entries %}
   {% call(entry) ui.items(section_row.entries, _(section_row.label)) %}
     {% set guideline, source = entry %}
-    {% call ui.item_body() %}{{ ui.text_block(guideline.text) }}{% endcall %}
+    {% call ui.item_body() %}{{ ui.markdown_block(guideline.text) }}{% endcall %}
     {% call ui.item_side() %}
       {{ ui.badge(_(source), "accent" if source == here else "") }}
       {% if may_write and source == here %}

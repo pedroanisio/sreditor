@@ -55,6 +55,16 @@ def test_research_notes_save_keeps_text_with_note(owner: TestClient) -> None:
     assert "Changes saved." in page and "Lead one\nLead two" in page
 
 
+def test_research_notes_markdown_for_viewer_shows_formatted(
+    app: FastAPI, mailer: RecordingMailer, owner: TestClient
+) -> None:
+    owner.get(
+        submit(owner, RESEARCH, {"text": "**Lead** one", "revision": "0"}).headers["location"]
+    )
+    viewer = join(app, mailer, owner, "vi@example.com", "viewer")
+    assert "<p><strong>Lead</strong> one</p>" in viewer.get(RESEARCH).text
+
+
 def test_research_notes_stale_revision_shows_conflict_and_keeps_text(owner: TestClient) -> None:
     submit(owner, RESEARCH, {"text": "First", "revision": "0"})
     response = submit(owner, RESEARCH, {"text": "Mine", "revision": "0"})

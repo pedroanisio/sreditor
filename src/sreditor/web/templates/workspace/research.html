@@ -24,7 +24,7 @@
   {% call ui.subsection(research.pitch.title, "pitch-research-" ~ loop.index) %}
   <p><a href="{{ pitches_link }}/{{ research.pitch.id }}">{{ research.pitch.title }}</a></p>
   {{ ui.inherited(_("From the pitch: change these notes and sources on the pitch's page.")) }}
-  {% if research.notes.text %}{{ ui.text_block(research.notes.text) }}{% else %}<p class="muted">{{ _("The pitch has no notes yet.") }}</p>{% endif %}
+  {% if research.notes.text %}{{ ui.markdown_block(research.notes.text) }}{% else %}<p class="muted">{{ _("The pitch has no notes yet.") }}</p>{% endif %}
   {% if research.sources %}
   {% call(source) ui.items(research.sources, _("Pitch sources")) %}
     {% call ui.item_body() %}
@@ -49,7 +49,7 @@
     {% call ui.panel_actions() %}{{ ui.button(_("Save notes")) }}{{ ui.autosave_status(_("Saving…"), _("Saved at %(time)s"), _("Could not save. Press the button to try again."), _("Someone else changed this text. Reload the page to see their changes; saving as you type is paused."), _("This text is over the limit, so it was not saved. Shorten it.")) }}{% endcall %}
   {% endcall %}
   {% elif notes.text %}
-  {{ ui.text_block(notes.text) }}
+  {{ ui.markdown_block(notes.text) }}
   {% else %}
   <p class="muted">{{ _("No notes yet.") }}</p>
   {% endif %}
