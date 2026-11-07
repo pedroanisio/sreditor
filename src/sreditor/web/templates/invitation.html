@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}{{ _("Join %(channel)s", channel=invitation.channel) }}{% endblock %}
+{% block main %}
+{% call ui.card(center=true) %}
+  <h1>{{ _("Join %(channel)s", channel=invitation.channel) }}</h1>
+  {{ ui.facts([(_("Role"), role), (_("For"), invitation.email)]) }}
+  {% if user and user.email == invitation.email %}
+  {% call ui.form("/invitations/join", csrf_field, csrf_token, novalidate=false) %}
+    {{ ui.button(_("Accept invitation"), wide=true) }}
+  {% endcall %}
+  {% elif user %}
+  {# Only the invited account can accept, so offer the way to it instead of a button that fails. #}
+  {% call ui.alert("info") %}{{ _("You're signed in as %(current)s, but this invitation is for %(invited)s.", current=user.email, invited=invitation.email) }}{% endcall %}
+  {% call ui.form("/logout", csrf_field, csrf_token, novalidate=false) %}
+    {{ ui.hidden("next", "/login?next=" ~ (here | urlencode)) }}
+    {{ ui.button(_("Sign out and continue as %(email)s", email=invitation.email), wide=true) }}
+  {% endcall %}
+  {% else %}
+  {% call ui.actions(stack=true) %}
+    {{ ui.link_button("/login?next=" ~ (here | urlencode), _("Sign in to accept"), wide=true) }}
+    {{ ui.link_button("/register", _("Create an account with %(email)s", email=invitation.email), variant="ghost", wide=true) }}
+  {% endcall %}
+  <p class="muted">{{ _("After you confirm your email, open the invitation link again to accept it.") }}</p>
+  {% endif %}
+{% endcall %}
+{% endblock %}

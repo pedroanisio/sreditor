@@ -1,0 +1,233 @@
+"""MCP tools for a channel's pitches (pautas) and the pitch an episode uses (rule agentic.mcp).
+
+A few task-sized tools (agentic.mcp.tools.outcomes): find pitches, read one with its research,
+create or update one, write its notes, cite or drop a source, and point an episode at it.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from uuid import UUID
+
+from mcp.server.mcpserver import Context, MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
+from pydantic import BaseModel, ConfigDict
+
+from sreditor import pitch_operations as pitches
+from sreditor.deps import ChannelAccess, Services, access_for
+from sreditor.mcp_server import Effect, Removed, principal, reported, tool_annotations
+from sreditor.pagination import DEFAULT_LIMIT, Page, ToolLimit
+from sreditor.pitch_operations import PitchChange, PitchQuery, PitchSourceChange
+from sreditor.pitches import (
+    EpisodePitch,
+    Pitch,
+    PitchChoice,
+    PitchInput,
+    PitchInUse,
+    PitchNotes,
+    PitchNotesInput,
+    PitchNotFound,
+    PitchSource,
+    PitchStatus,
+)
+from sreditor.research import SourceInput, SourceNotFound
+
+
+class PitchWithResearch(BaseModel):
+    """A pitch with its notes, a page of its sources and the episodes that use it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    pitch: Pitch
+    notes: PitchNotes
+    sources: Page[PitchSource]
+    episodes: list[int]
+
+
+def pitch_error_message(error: Exception) -> str | None:
+    """How to fix a refused pitch call (agentic.mcp.errors); None for other errors."""
+    if isinstance(error, PitchNotFound):
+        return f"Pitch {error} not found; call list_pitches for the channel's pitch ids"
+    if isinstance(error, PitchInUse):
+        numbers = ", ".join(str(number) for number in error.episodes)
+        return (
+            f"Pitch {error} is used by episodes {numbers}; call set_episode_pitch with "
+            "pitch_id null for each of them first"
+        )
+    if isinstance(error, SourceNotFound):
+        return f"Source {error} not found; call get_pitch for the pitch's source ids"
+    return None
+
+
+def pitch_reported[T](action: Callable[[], T]) -> T:
+    """Run a pitch tool's action; pitch refusals name their own fix, others go to `reported`.
+
+    The pitch errors are caught first, because `reported` would point a missing source at the
+    episode tool get_research.
+    """
+
+    def guarded() -> T:
+        try:
+            return action()
+        except (PitchNotFound, PitchInUse, SourceNotFound) as refusal:
+            raise ToolError(pitch_error_message(refusal) or str(refusal)) from refusal
+
+    return reported(guarded)
+
+
+def add_pitch_tools(server: MCPServer, services: Services) -> None:
+    """Tools to find, read and write pitches, and to point an episode at one."""
+    add_pitch_reads(server, services)
+    add_pitch_writes(server, services)
+    add_pitch_research_tools(server, services)
+
+
+def channel_access(services: Services, context: Context, slug: str) -> ChannelAccess:
+    """The caller's access to the channel, from the token behind the MCP request."""
+    who = principal(context)
+    return access_for(services, slug, who.user, who.token)
+
+
+def add_pitch_reads(server: MCPServer, services: Services) -> None:
+    """Tools to list pitches and read one with its research."""
+
+    def access(context: Context, slug: str) -> ChannelAccess:
+        return channel_access(services, context, slug)
+
+    @server.tool(annotations=tool_annotations("List pitches", Effect.READ))
+    def list_pitches(
+        context: Context,
+        slug: str,
+        status: PitchStatus | None = None,
+        cursor: str | None = None,
+        limit: ToolLimit = DEFAULT_LIMIT,
+    ) -> Page[Pitch]:
+        """List a channel's pitches (pautas: story ideas for episodes), oldest first. Pass
+        `status` (idea, research, approved, discarded) to narrow, and `next_cursor` as `cursor`
+        for more. Read one with its research using get_pitch."""
+        query = PitchQuery(status=status, cursor=cursor, limit=limit)
+        return pitch_reported(lambda: pitches.list_pitches(services, access(context, slug), query))
+
+    @server.tool(annotations=tool_annotations("Read a pitch", Effect.READ))
+    def get_pitch(
+        context: Context,
+        slug: str,
+        pitch_id: UUID,
+        cursor: str | None = None,
+        limit: ToolLimit = DEFAULT_LIMIT,
+    ) -> PitchWithResearch:
+        """Read a pitch with its research notes, its sources and the episodes that use it,
+        before writing about it. Notes at revision 0 were never written. Pass
+        `sources.next_cursor` as `cursor` for more sources."""
+
+        def read() -> PitchWithResearch:
+            channel = access(context, slug)
+            return PitchWithResearch(
+                pitch=pitches.get_pitch(services, channel, pitch_id),
+                notes=pitches.get_notes(services, channel, pitch_id),
+                sources=pitches.list_sources(services, channel, pitch_id, cursor, limit),
+                episodes=pitches.pitch_episodes(services, channel, pitch_id),
+            )
+
+        return pitch_reported(read)
+
+
+def add_pitch_writes(server: MCPServer, services: Services) -> None:
+    """Tools to create and update pitches and to point an episode at one."""
+
+    def access(context: Context, slug: str) -> ChannelAccess:
+        return channel_access(services, context, slug)
+
+    @server.tool(annotations=tool_annotations("Create a pitch", Effect.CREATE))
+    def create_pitch(context: Context, slug: str, pitch: PitchInput) -> Pitch:
+        """Add a story idea to a channel: a title, a summary and a status (idea by default).
+        Needs content:write. Each call adds another pitch, so check list_pitches first; to
+        change one, use update_pitch."""
+        return pitch_reported(lambda: pitches.create_pitch(services, access(context, slug), pitch))
+
+    @server.tool(annotations=tool_annotations("Update a pitch", Effect.REPLACE))
+    def update_pitch(
+        context: Context,
+        slug: str,
+        pitch_id: UUID,
+        pitch: PitchInput,
+        expected_revision: int | None = None,
+    ) -> Pitch:
+        """Replace a pitch's title, summary and status, for example to move it from idea to
+        research or approved. Needs content:write. Pass the pitch's `revision` from get_pitch
+        as `expected_revision` so you never overwrite a change you have not read."""
+        change = PitchChange(pitch_id=pitch_id, expected_revision=expected_revision)
+        return pitch_reported(
+            lambda: pitches.replace_pitch(services, access(context, slug), change, pitch)
+        )
+
+    @server.tool(annotations=tool_annotations("Set an episode's pitch", Effect.REPLACE))
+    def set_episode_pitch(
+        context: Context,
+        slug: str,
+        number: int,
+        pitch_id: UUID | None,
+        expected_revision: int | None = None,
+    ) -> EpisodePitch:
+        """Point an episode at one of the channel's pitches (from list_pitches), or pass
+        pitch_id null for none. The episode then shows the pitch's notes and sources as they
+        are, never a copy; several episodes may share a pitch. Needs content:write."""
+        choice = PitchChoice(pitch_id=pitch_id)
+        return pitch_reported(
+            lambda: pitches.choose_episode_pitch(
+                services, access(context, slug), number, choice, expected_revision
+            )
+        )
+
+
+def add_pitch_research_tools(server: MCPServer, services: Services) -> None:
+    """Tools to write a pitch's notes and cite or drop its sources."""
+
+    def access(context: Context, slug: str) -> ChannelAccess:
+        return channel_access(services, context, slug)
+
+    @server.tool(annotations=tool_annotations("Write pitch notes", Effect.REPLACE))
+    def write_pitch_notes(
+        context: Context,
+        slug: str,
+        pitch_id: UUID,
+        notes: PitchNotesInput,
+        expected_revision: int | None = None,
+    ) -> PitchNotes:
+        """Replace a pitch's research notes with the whole new text; to cite where a fact
+        comes from, use add_pitch_source instead. Needs content:write. Pass the notes'
+        `revision` from get_pitch as `expected_revision` (0 when empty)."""
+        change = PitchChange(pitch_id=pitch_id, expected_revision=expected_revision)
+        return pitch_reported(
+            lambda: pitches.write_notes(services, access(context, slug), change, notes)
+        )
+
+    @server.tool(annotations=tool_annotations("Cite a pitch source", Effect.CREATE))
+    def add_pitch_source(
+        context: Context, slug: str, pitch_id: UUID, source: SourceInput
+    ) -> PitchSource:
+        """Cite a source for one claim of a pitch: its link, title and the claim it supports.
+        Every episode that uses the pitch shows it. Needs content:write. `accessed_on`
+        defaults to today. Each call adds another source."""
+        return pitch_reported(
+            lambda: pitches.add_source(services, access(context, slug), pitch_id, source)
+        )
+
+    @server.tool(annotations=tool_annotations("Remove a pitch source", Effect.REMOVE))
+    def remove_pitch_source(
+        context: Context,
+        slug: str,
+        pitch_id: UUID,
+        source_id: UUID,
+        expected_revision: int | None = None,
+    ) -> Removed:
+        """Stop citing a source for a pitch, by the `id` get_pitch lists. Needs content:write."""
+        change = PitchSourceChange(
+            pitch_id=pitch_id, source_id=source_id, expected_revision=expected_revision
+        )
+
+        def remove() -> Removed:
+            pitches.remove_source(services, access(context, slug), change)
+            return Removed(kind="pitch_source", id=source_id)
+
+        return pitch_reported(remove)

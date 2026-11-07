@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}{{ _("Choose a new password") }}{% endblock %}
+{% block main %}
+{% call ui.card() %}
+  <h1>{{ _("Choose a new password") }}</h1>
+  {{ ui.form_error(errors) }}
+  {% call ui.form("/reset-password", csrf_field, csrf_token, token_form=true) %}
+    {{ ui.token_field(_("Link from your email"), errors, value=token, hint=_("Paste the whole link from the email.")) }}
+    {{ ui.field("password", _("New password"), errors, type="password", autocomplete="new-password", hint=_("At least 12 characters. Saving it signs out every other session."), minlength=12) }}
+    {{ ui.button(_("Save password"), wide=true) }}
+  {% endcall %}
+  {% if errors.get("token") %}<p class="muted center"><a href="/forgot-password">{{ _("Request a new link") }}</a></p>{% endif %}
+{% endcall %}
+{% endblock %}

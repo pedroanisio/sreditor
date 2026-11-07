@@ -1,0 +1,61 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% block page_title %}{{ _("Screenplay") }} · {{ episode.title }}{% endblock %}
+{% block page %}
+{% set may_write = can("write_content") %}
+{{ ui.back_link(channel_link ~ "/episodes", _("Episodes")) }}
+{% call ui.page_header("#" ~ episode.number ~ " · " ~ episode.title, _("The episode's script, written in Fountain: plain text that formats itself as a screenplay.")) %}
+  {{ ui.badge(_(episode_status_labels[episode.status]), episode_status_tones[episode.status]) }}
+{% endcall %}
+{{ ui.tabs(episode_tabs, episode_tab, _("Episode pages")) }}
+{{ ui.form_error(errors) }}
+{% call ui.panel(_("Screenplay"), id="screenplay") %}
+  {% if may_write %}
+  {% call ui.form(screenplay_link, csrf_field, csrf_token) %}
+    {{ ui.hidden("revision", screenplay.revision) }}
+    {{ ui.textarea("text", _("Fountain text"), errors, value=screenplay_text, limit=screenplay_limit, rows=20, mono=true, hint=_("Start a scene with INT. or EXT.; put who speaks in capitals on its own line, with their lines below.")) }}
+    <p><a href="{{ fountain_guide }}" rel="noopener noreferrer" target="_blank">{{ _("How to write in Fountain") }}</a></p>
+    {% call ui.panel_actions() %}{{ ui.button(_("Save screenplay")) }}{% endcall %}
+  {% endcall %}
+  {% elif screenplay.text %}
+  {{ ui.text_block(screenplay.text, mono=true) }}
+  {% else %}
+  <p class="muted">{{ _("No screenplay yet.") }}</p>
+  {% endif %}
+{% endcall %}
+{% call ui.panel(_("Scenes"), id="scenes") %}
+  {% if screenplay.scenes %}
+  {{ ui.numbered(screenplay.scenes, _("Scenes")) }}
+  {% else %}
+  <p class="muted">{{ _("No scenes yet. Start one with a line such as INT. KITCHEN - DAY.") }}</p>
+  {% endif %}
+{% endcall %}
+{% for group, title, empty_text, kind_path, kind in [(cast.characters, _("Characters"), _("No one speaks yet."), "characters", "character"), (cast.locations, _("Locations"), _("No places yet."), "locations", "location")] %}
+{% call ui.panel(title, id=kind_path) %}
+  {% if group %}
+  {% call(member) ui.items(group, title) %}
+    {% call ui.item_body() %}
+      <strong>{{ member.name }}</strong>
+      {% if member.entry %}
+      {{ ui.badge(_("In the library"), "success") }}
+      {% if member.entry.description %}<p>{{ member.entry.description }}</p>{% endif %}
+      {% else %}
+      {{ ui.badge(_("Not in the library")) }}
+      {% endif %}
+    {% endcall %}
+    {% if may_write and not member.entry %}
+    {% call ui.item_side() %}
+      {% call ui.form(library_link ~ "/" ~ kind_path, csrf_field, csrf_token) %}
+        {{ ui.hidden("name", member.name) }}
+        {{ ui.hidden("episode", episode.number) }}
+        {{ ui.button(_("Add to library"), variant="ghost", size="small") }}
+      {% endcall %}
+    {% endcall %}
+    {% endif %}
+  {% endcall %}
+  {% else %}
+  <p class="muted">{{ empty_text }}</p>
+  {% endif %}
+{% endcall %}
+{% endfor %}
+{% endblock %}

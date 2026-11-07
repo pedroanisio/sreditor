@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}{{ _("Confirm your email") }}{% endblock %}
+{% block main %}
+{% call ui.card(center=true) %}
+  {{ ui.status_icon("info") }}
+  <h1>{{ _("Confirm your email") }}</h1>
+  {# Opening the link only shows this form; the POST spends the token (web.tokens.post-only). #}
+  <p class="muted">{{ _("Press the button to finish setting up your account.") }}</p>
+  {{ ui.form_error(errors) }}
+  {% call ui.form("/verify", csrf_field, csrf_token, token_form=true) %}
+    {{ ui.token_field(_("Link from your email"), errors, value=token, hint=_("Paste the whole link from the email.")) }}
+    {{ ui.button(_("Confirm email"), wide=true) }}
+  {% endcall %}
+  {% if errors.get("token") %}<p class="muted"><a href="/login">{{ _("Go to sign in") }}</a></p>{% endif %}
+{% endcall %}
+{% endblock %}

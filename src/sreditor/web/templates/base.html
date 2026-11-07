@@ -1,0 +1,40 @@
+{% import "_ui.html" as ui -%}
+<!doctype html>
+<html lang="{{ locale }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}sreditor{% endblock %} · sreditor</title>
+  <meta name="description" content="{{ _('Manage your social media channels, their accounts, brand kits and editorial guidelines in one place.') }}">
+  {# htmx swaps 4xx pages too, since they carry form errors; no eval, no injected styles (CSP). #}
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false, "selfRequestsOnly": true, "responseHandling": [{"code": "204", "swap": false}, {"code": "[234]..", "swap": true}, {"code": "...", "swap": false, "error": true}]}'>
+  <link rel="stylesheet" href="{{ url_for('static', path='tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+  <link rel="icon" href="{{ url_for('static', path='icon.svg') }}" type="image/svg+xml">
+  <script src="{{ url_for('static', path='htmx.min.js') }}" defer></script>
+  <script src="{{ url_for('static', path='token.js') }}" defer></script>
+  <script src="{{ url_for('static', path='workspace.js') }}" defer></script>
+  <noscript><link rel="stylesheet" href="{{ url_for('static', path='noscript.css') }}"></noscript>
+</head>
+<body hx-boost="true">
+  {% block body %}
+  {% call ui.site_header(url_for('static', path='icon.svg')) %}
+    {% if user %}
+    <a href="/app">{{ user.display_name }}</a>
+    {% call ui.form("/logout", csrf_field, csrf_token, class="inline", novalidate=false) %}
+      {{ ui.button(_("Sign out"), variant="ghost", size="small") }}
+    {% endcall %}
+    {% else %}
+    <a href="/login">{{ _("Sign in") }}</a>
+    {{ ui.link_button("/register", _("Get started"), size="small") }}
+    {% endif %}
+  {% endcall %}
+  <main id="main">
+    {% block main %}{% endblock %}
+  </main>
+  {% call ui.site_footer(_("Terms"), _("Privacy")) %}
+    {{ ui.languages(languages, _("Language")) }}
+  {% endcall %}
+  {% endblock %}
+</body>
+</html>

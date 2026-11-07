@@ -1,0 +1,16 @@
+{% extends "workspace/layout.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}{{ _("New channel") }}{% endblock %}
+{% block content %}
+{% call ui.card(wide=true) %}
+  <h1>{{ _("New channel") }}</h1>
+  <p class="muted">{{ _("You will be its owner. You can add accounts and invite people next.") }}</p>
+  {{ ui.form_error(errors) }}
+  {% call ui.form("/app/channels/new", csrf_field, csrf_token) %}
+    {{ ui.field("name", _("Name"), errors, value=values.name, maxlength=200) }}
+    {{ ui.field("slug", _("Address"), errors, value=values.slug, required=false, maxlength=64, hint=_("Lowercase letters, numbers and hyphens. Leave it empty to make one from the name. It cannot change later.")) }}
+    {{ ui.field("language", _("Language"), errors, value=values.language, maxlength=35, hint=_("The language the channel posts in, such as en or pt-BR.")) }}
+    {{ ui.button(_("Create channel"), wide=true) }}
+  {% endcall %}
+{% endcall %}
+{% endblock %}

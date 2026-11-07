@@ -1,0 +1,26 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% block page_title %}{{ _("Settings") }}{% endblock %}
+{% block page %}
+{% call ui.page_header(_("Settings"), _("The channel's name, language and status.")) %}{% endcall %}
+{{ ui.form_error(errors) }}
+{% call ui.panel(_("Channel"), id="channel") %}
+  {% call ui.form(channel_link ~ "/settings", csrf_field, csrf_token) %}
+    {{ ui.hidden("revision", revision) }}
+    {{ ui.field("name", _("Name"), errors, value=values.name, maxlength=200) }}
+    {{ ui.field("language", _("Language"), errors, value=values.language, maxlength=35, hint=_("The language the channel posts in, such as en or pt-BR.")) }}
+    {{ ui.select("status", _("Status"), status_options, errors, value=values.status, hint=_("Only active channels are ready to publish.")) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Save changes")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% if can("delete_channel") %}
+{% call ui.panel(_("Delete channel"), id="danger") %}
+  <p>{{ _("Deleting removes the channel, its accounts, brand kit, members and invitations. Its editorial history stays in the rule store. This cannot be undone.") }}</p>
+  {% call ui.form(channel_link ~ "/delete", csrf_field, csrf_token) %}
+    {{ ui.hidden("revision", revision) }}
+    {{ ui.field("confirm_slug", _("Type %(slug)s to confirm", slug=channel.slug), errors, autocomplete="off") }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Delete this channel"), variant="danger") }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,74 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% block page_title %}{{ _("Media") }} · {{ episode.title }}{% endblock %}
+{% block page %}
+{% set may_write = can("write_content") %}
+{% set too_large = _("This file is larger than %(size)s MB.", size=max_megabytes) %}
+{{ ui.back_link(channel_link ~ "/episodes", _("Episodes")) }}
+{% call ui.page_header("#" ~ episode.number ~ " · " ~ episode.title, _("The episode's visual style, voice-over, sound and visual effects, played right here.")) %}
+  {{ ui.badge(_(episode_status_labels[episode.status]), episode_status_tones[episode.status]) }}
+{% endcall %}
+{{ ui.tabs(episode_tabs, episode_tab, _("Episode pages")) }}
+{{ ui.form_error(errors) }}
+{% call ui.panel(_("Visual style"), id="style") %}
+  {% if style.style %}<p><strong>{{ style.style.name }}</strong>{% if style.style.description %}: {{ style.style.description }}{% endif %}</p>
+  {% else %}<p class="muted">{{ _("No style picked. Styles are described in the channel's library.") }} <a href="{{ channel_link }}/library#styles">{{ _("Library") }}</a></p>{% endif %}
+  {% if may_write and style_options | length > 1 %}
+  {% call ui.form(style_link, csrf_field, csrf_token) %}
+    {{ ui.hidden("revision", style.revision) }}
+    {{ ui.select("style_id", _("Style"), style_options, errors, value=(style.style.id | string) if style.style else "", hint=_("The look every visual of the episode follows.")) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Save style")) }}{% endcall %}
+  {% endcall %}
+  {% endif %}
+{% endcall %}
+{% for group in kinds %}
+{% set text = group.text %}
+{% call ui.panel(_(text.title), id=group.path) %}
+  {% if group.files %}
+  {% call(file) ui.items(group.files, _(text.title)) %}
+    {% call ui.item_body() %}
+      <strong>{{ file.name }}</strong>
+      {{ ui.meta(file.size_bytes | filesizeformat) }}
+      {% if file.note %}<p>{{ file.note }}</p>{% endif %}
+      {{ ui.player(media_link ~ "/" ~ file.id ~ "/file", file.media_type, file.name) }}
+    {% endcall %}
+    {% if may_write %}
+    {% call ui.item_side() %}{{ ui.dialog_button("edit-" ~ file.id, _("Edit"), variant="ghost", size="small") }}{% endcall %}
+    {% endif %}
+  {% endcall %}
+  {% if group.next_cursor %}{{ ui.pager(media_link ~ "?kind=" ~ group.kind ~ "&cursor=" ~ group.next_cursor ~ "#" ~ group.path, _(text.more)) }}{% endif %}
+  {% else %}
+  <p class="muted">{{ _(text.empty) }}</p>
+  {% endif %}
+  {% if may_write %}{% call ui.panel_actions() %}{{ ui.dialog_button("upload-" ~ group.path, _(text.upload), plus=true) }}{% endcall %}{% endif %}
+{% endcall %}
+{% if may_write %}
+{% for file in group.files %}
+{% set is_sent = editing == file.id | string %}
+{% set shown = sent if is_sent else file %}
+{% set shown_errors = errors if is_sent else {} %}
+{% call ui.dialog("edit-" ~ file.id, file.name, _("Close"), open=is_sent) %}
+  {% call ui.form(media_link ~ "/" ~ file.id, csrf_field, csrf_token) %}
+    {{ ui.hidden("revision", file.revision) }}
+    {{ ui.field("name", _("Name"), shown_errors, value=shown.name, maxlength=name_limit, id=file.id ~ "-name") }}
+    {{ ui.textarea("note", _("Note"), shown_errors, value=shown.note, limit=note_limit, rows=3, id=file.id ~ "-note") }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Save changes")) }}{% endcall %}
+  {% endcall %}
+  {% call ui.panel_actions() %}
+    {{ ui.confirm(_("Remove"), _("Remove this file from the episode?"), media_link ~ "/" ~ file.id ~ "/remove", csrf_field, csrf_token, _("Remove"), fields=[("revision", file.revision)]) }}
+  {% endcall %}
+{% endcall %}
+{% endfor %}
+{% set is_new = sent_kind == group.kind and not editing %}
+{% set new_errors = errors if is_new else {} %}
+{% call ui.dialog("upload-" ~ group.path, _(text.upload), _("Close"), open=is_new) %}
+  {% call ui.form(group.upload_link, csrf_field, csrf_token, upload=true) %}
+    {{ ui.file_field("file", _("File"), new_errors, accept=group.accept, hint=group.formats ~ " · " ~ _("Up to %(size)s MB each.", size=max_megabytes), id=group.path ~ "-file", max_bytes=max_bytes, too_large=too_large) }}
+    {{ ui.field("name", _("Name"), new_errors, value=sent.name if is_new else "", maxlength=name_limit, required=false, id=group.path ~ "-name", hint=_("Leave it empty to use the file's name.")) }}
+    {{ ui.textarea("note", _("Note"), new_errors, value=sent.note if is_new else "", limit=note_limit, rows=2, id=group.path ~ "-note") }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Upload")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% endif %}
+{% endfor %}
+{% endblock %}

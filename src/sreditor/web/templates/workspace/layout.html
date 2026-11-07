@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{#
+  The signed-in frame (rule web.app.layout): a sidebar with the channel switcher, the links of
+  the current place and the person's menu, beside the page. Below --breakpoint-compact the
+  sidebar becomes a bar at the top and its links a row that scrolls sideways.
+#}
+{% block body %}
+{% set path = request.url.path %}
+{% set place = "tokens" if path.startswith("/app/account/tokens") else ("account" if path.startswith("/app/account") else "channels") %}
+<div class="app">
+  {% call ui.app_sidebar(url_for('static', path='icon.svg')) %}
+    <div class="app-switcher">
+      {% call ui.menu(channel.name if channel else _("All channels"), start=true, wide=true) %}
+        <a href="/app"{% if not channel and place == "channels" %} aria-current="page"{% endif %}>{{ _("All channels") }}</a>
+        {% for slug, name in switcher %}
+        <a href="/app/channels/{{ slug }}"{% if channel and channel.slug == slug %} aria-current="page"{% endif %}>{{ name }}</a>
+        {% endfor %}
+        <hr>
+        <a href="/app/channels/new">{{ _("New channel") }}</a>
+      {% endcall %}
+    </div>
+    {% block sidebar_nav %}
+    {{ ui.sidenav([
+      ("/app", _("Channels"), "channels"),
+      ("/app/account", _("Account"), "account"),
+      ("/app/account/tokens", _("API tokens"), "tokens"),
+    ], place, _("Workspace")) }}
+    {% endblock %}
+    <div class="app-user">
+      {% call ui.menu(user.display_name, up=true, avatar=true, wide=true) %}
+        <a href="/app/account">{{ _("Account") }}</a>
+        <a href="/app/account/tokens">{{ _("API tokens") }}</a>
+        <hr>
+        {{ ui.languages(languages, _("Language")) }}
+        <hr>
+        {% call ui.form("/logout", csrf_field, csrf_token, novalidate=false) %}
+          {{ ui.menu_button(_("Sign out")) }}
+        {% endcall %}
+      {% endcall %}
+    </div>
+  {% endcall %}
+  <main id="main" class="app-main">
+    <div class="app-content">{% block content %}{% endblock %}</div>
+  </main>
+</div>
+{% if flash %}{{ ui.toast(_(flash)) }}{% endif %}
+{% endblock %}

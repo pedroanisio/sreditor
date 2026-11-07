@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}{{ title }}{% endblock %}
+{% block main %}
+{% call ui.card(center=true) %}
+  {{ ui.status_icon(tone) }}
+  <h1>{{ title }}</h1>
+  <p>{{ text }}</p>
+  {% if link %}<p>{{ ui.link_button(link[0], link[1]) }}</p>{% endif %}
+{% endcall %}
+{% endblock %}

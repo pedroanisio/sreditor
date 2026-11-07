@@ -1,0 +1,27 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% block page_title %}{{ _("Episodes") }}{% endblock %}
+{% block page %}
+{% call ui.page_header(_("Episodes"), _("Each episode moves from idea to published. Its research, screenplay, voice-over, sound and visuals will live here as they arrive.")) %}{% endcall %}
+{{ ui.form_error(errors) }}
+{% if episodes %}
+{% call(row) ui.items(episodes, _("Episodes")) %}
+  {{ ui.item_main("#" ~ row.number ~ " · " ~ row.title, row.summary | truncate(120), channel_link ~ "/episodes/" ~ row.number) }}
+  {% call ui.item_side() %}
+    {{ ui.badge(_(episode_status_labels[row.status]), episode_status_tones[row.status]) }}
+  {% endcall %}
+{% endcall %}
+{% if next_cursor %}{{ ui.pager(channel_link ~ "/episodes?cursor=" ~ next_cursor, _("More episodes")) }}{% endif %}
+{% else %}
+{% call ui.empty(_("No episodes yet"), _("Add the first episode below. It starts as an idea.") if can("write_content") else _("Nobody has added an episode yet.")) %}{% endcall %}
+{% endif %}
+{% if can("write_content") %}
+{% call ui.panel(_("New episode"), id="new-episode") %}
+  {% call ui.form(channel_link ~ "/episodes", csrf_field, csrf_token) %}
+    {{ ui.field("title", _("Title"), errors, value=sent.title if sent else "", maxlength=title_limit) }}
+    {{ ui.textarea("summary", _("Summary"), errors, value=sent.summary if sent else "", limit=summary_limit, rows=3, hint=_("What the episode is about, in a few lines.")) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Add episode")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% endif %}
+{% endblock %}

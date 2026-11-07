@@ -1,0 +1,60 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% block page_title %}{{ _("Waivers") }} · {{ episode.title }}{% endblock %}
+{% block page %}
+{% set may_write = can("write_editorial") %}
+{% set too_large = _("This file is larger than %(size)s MB.", size=max_megabytes) %}
+{{ ui.back_link(channel_link ~ "/episodes", _("Episodes")) }}
+{% call ui.page_header("#" ~ episode.number ~ " · " ~ episode.title, _("The signed releases behind the episode: image, voice and location rights. Only owners and editors see them.")) %}
+  {{ ui.badge(_(episode_status_labels[episode.status]), episode_status_tones[episode.status]) }}
+{% endcall %}
+{{ ui.tabs(episode_tabs, episode_tab, _("Episode pages")) }}
+{{ ui.form_error(errors) }}
+{% call ui.panel(_("Waivers"), id="waivers") %}
+  {% if waivers %}
+  {% call(waiver) ui.items(waivers, _("Waivers")) %}
+    {% call ui.item_body() %}
+      <strong>{{ waiver.signer }}</strong>
+      {{ ui.meta((_("Signed on %(date)s", date=_.day(waiver.signed_on)) ~ " · " if waiver.signed_on else "") ~ (waiver.size_bytes | filesizeformat)) }}
+      {% if waiver.covers %}<p>{{ waiver.covers }}</p>{% endif %}
+    {% endcall %}
+    {% call ui.item_side() %}
+      {{ ui.link_button(waivers_link ~ "/" ~ waiver.id ~ "/file", _("Download"), variant="ghost", size="small", download=true) }}
+      {% if may_write %}{{ ui.dialog_button("edit-" ~ waiver.id, _("Edit"), variant="ghost", size="small") }}{% endif %}
+    {% endcall %}
+  {% endcall %}
+  {% if next_cursor %}{{ ui.pager(waivers_link ~ "?cursor=" ~ next_cursor, _("More waivers")) }}{% endif %}
+  {% else %}
+  <p class="muted">{{ _("No waivers yet. Upload a signed release for each person, voice or place the episode shows.") }}</p>
+  {% endif %}
+  {% if may_write %}{% call ui.panel_actions() %}{{ ui.dialog_button("upload-waiver", _("Upload waiver"), plus=true) }}{% endcall %}{% endif %}
+{% endcall %}
+{% if may_write %}
+{% for waiver in waivers %}
+{% set is_sent = editing == waiver.id | string %}
+{% set shown_errors = errors if is_sent else {} %}
+{% call ui.dialog("edit-" ~ waiver.id, waiver.signer, _("Close"), open=is_sent) %}
+  {% call ui.form(waivers_link ~ "/" ~ waiver.id, csrf_field, csrf_token) %}
+    {{ ui.hidden("revision", waiver.revision) }}
+    {{ ui.field("signer", _("Signed by"), shown_errors, value=sent.signer if is_sent else waiver.signer, maxlength=signer_limit, id=waiver.id ~ "-signer") }}
+    {{ ui.field("signed_on", _("Signed on"), shown_errors, type="date", value=sent.signed_on if is_sent else (waiver.signed_on.isoformat() if waiver.signed_on else ""), required=false, id=waiver.id ~ "-signed-on") }}
+    {{ ui.textarea("covers", _("What it covers"), shown_errors, value=sent.covers if is_sent else waiver.covers, limit=covers_limit, rows=3, id=waiver.id ~ "-covers") }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Save changes")) }}{% endcall %}
+  {% endcall %}
+  {% call ui.panel_actions() %}
+    {{ ui.confirm(_("Remove"), _("Remove this waiver from the episode?"), waivers_link ~ "/" ~ waiver.id ~ "/remove", csrf_field, csrf_token, _("Remove"), fields=[("revision", waiver.revision)]) }}
+  {% endcall %}
+{% endcall %}
+{% endfor %}
+{% set new_errors = errors if is_new else {} %}
+{% call ui.dialog("upload-waiver", _("Upload waiver"), _("Close"), open=is_new) %}
+  {% call ui.form(waivers_link, csrf_field, csrf_token, upload=true) %}
+    {{ ui.file_field("file", _("Signed file"), new_errors, accept=accept, hint=formats ~ " · " ~ _("Up to %(size)s MB each.", size=max_megabytes), id="waiver-file", max_bytes=max_bytes, too_large=too_large) }}
+    {{ ui.field("signer", _("Signed by"), new_errors, value=sent.signer if is_new else "", maxlength=signer_limit, id="waiver-signer") }}
+    {{ ui.field("signed_on", _("Signed on"), new_errors, type="date", value=sent.signed_on if is_new else "", required=false, id="waiver-signed-on") }}
+    {{ ui.textarea("covers", _("What it covers"), new_errors, value=sent.covers if is_new else "", limit=covers_limit, rows=2, id="waiver-covers", hint=_("Such as image and voice in episode 3, on every platform.")) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Upload")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% endif %}
+{% endblock %}

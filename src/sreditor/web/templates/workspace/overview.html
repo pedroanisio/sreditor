@@ -1,0 +1,24 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% block page_title %}{{ _("Overview") }}{% endblock %}
+{% block page %}
+{% call ui.page_header(channel.name, channel.slug ~ " · " ~ channel.language) %}
+  {{ ui.badge(_(status_labels[channel.status]), status_tones[channel.status]) }}
+{% endcall %}
+{% call ui.panel(_("Getting ready"), id="ready") %}
+  {% if remaining %}
+  <p>{{ _("%(count)s steps left before the channel is ready.", count=remaining) }}</p>
+  {% else %}
+  <p>{{ _("The channel has everything it needs.") }}</p>
+  {% endif %}
+  {{ ui.checklist(checklist_items) }}
+{% endcall %}
+{% call ui.panel(_("At a glance"), id="glance") %}
+  {{ ui.facts([
+    (_("Accounts"), channel.accounts | length),
+    (_("Members"), member_count),
+    (_("Episodes"), episode_count),
+    (_("Brand colors"), channel.brand.colors | length),
+  ]) }}
+{% endcall %}
+{% endblock %}

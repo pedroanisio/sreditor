@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{#
+  Development only (settings.has_dev_pages): every component of _ui.html in each state, side by side
+  in the light and dark themes. The footer's language switch shows it in each language.
+#}
+{% block title %}{{ _("Design system") }}{% endblock %}
+
+{% macro showcase(theme, label) %}
+<section class="theme-{{ theme }}" aria-label="{{ label }}" data-theme="{{ theme }}">
+  <h3>{{ label }}</h3>
+
+  <h4>{{ _("Colors") }}</h4>
+  <div class="row">
+    {% for name in colors %}
+    <div class="swatch"><span class="swatch-{{ name }}"></span><span>{{ name }}</span></div>
+    {% endfor %}
+  </div>
+
+  <h4>{{ _("Buttons") }}</h4>
+  {% for variant in ["", "ghost"] %}
+  <div class="row">
+    {% for state, state_label in states %}
+    {{ ui.button(state_label, variant=variant, type="button", state=state) }}
+    {% endfor %}
+    {{ ui.button(_("Small"), variant=variant, size="small", type="button") }}
+  </div>
+  {% endfor %}
+
+  <h4>{{ _("Fields") }}</h4>
+  {{ ui.field(theme ~ "-default", _("Email"), {}, type="email", hint=_("At least 12 characters.")) }}
+  {{ ui.field(theme ~ "-hover", _("Hover"), {}, state="is-hover") }}
+  {{ ui.field(theme ~ "-focus", _("Focus"), {}, state="is-focus") }}
+  {{ ui.field(theme ~ "-invalid", _("Error"), {theme ~ "-invalid": _("This field is required.")}) }}
+  {% call ui.checkbox(theme ~ "-consent", {}) %}{{ _("I agree to the") }} <a href="/terms">{{ _("terms of service") }}</a>{% endcall %}
+  {% call ui.checkbox(theme ~ "-checked", {}, checked=true) %}{{ _("I agree to the") }} <a href="/terms">{{ _("terms of service") }}</a>{% endcall %}
+  {% call ui.checkbox(theme ~ "-unchecked", {theme ~ "-unchecked": _("Accept the terms of service and privacy policy to continue.")}) %}{{ _("I agree to the") }} <a href="/terms">{{ _("terms of service") }}</a>{% endcall %}
+
+  <h4>{{ _("Links") }}</h4>
+  {% call ui.actions() %}
+    {% for variant in ["", "ghost"] %}{% for state, state_label in states %}{{ ui.link_button("/design", state_label, variant=variant, state=state) }}{% endfor %}{% endfor %}
+    {{ ui.link_button("/design", _("Small"), size="small") }}
+    {{ ui.link_button("/static/design-sample.wav", _("Download"), variant="ghost", size="small", download=true) }}
+  {% endcall %}
+
+  <h4>{{ _("Alerts") }}</h4>
+  {% for tone in tones %}{% call ui.alert(tone) %}{{ _("Too many attempts. Wait a minute and try again.") }}{% endcall %}{% endfor %}
+
+  <h4>{{ _("Status icons") }}</h4>
+  <div class="row">{% for tone in tones %}{{ ui.status_icon(tone) }}{% endfor %}</div>
+
+  <h4>{{ _("Tags") }}</h4>
+  {{ ui.tags([_("editor")]) }}
+  {{ ui.tags(["TikTok", "YouTube"], "outline") }}
+
+  <h4>{{ _("Lists") }}</h4>
+  {{ ui.facts([(_("Role"), _("editor")), (_("For"), "ana@example.com")]) }}
+  {{ ui.rows([("funny-memes", _("editor")), ("daily-news", _("viewer"))]) }}
+
+  <h4>{{ _("Danger buttons") }}</h4>
+  {% for variant in ["danger", "ghost danger"] %}
+  <div class="row">
+    {% for state, state_label in states %}{{ ui.button(state_label, variant=variant, type="button", state=state) }}{% endfor %}
+  </div>
+  {% endfor %}
+
+  <h4>{{ _("Form controls") }}</h4>
+  {{ ui.select(theme ~ "-status", _("Status"), [("draft", _("Draft")), ("active", _("Active"))], {}, value="active", hint=_("Only active channels are ready to publish.")) }}
+  {{ ui.select(theme ~ "-status-focus", _("Focus"), [("draft", _("Draft"))], {}, state="is-focus") }}
+  {{ ui.select(theme ~ "-role", _("Role"), [("viewer", _("viewer"))], {theme ~ "-role": _("Choose a role.")}) }}
+  {{ ui.textarea(theme ~ "-bio", _("Description"), {}, value="Memes every day.", limit=80) }}
+  {{ ui.textarea(theme ~ "-over", _("Description"), {theme ~ "-over": _("%(platform)s allows %(limit)s characters; this has %(count)s.", platform="TikTok", limit=10, count=16)}, value="Memes every day.", limit=10) }}
+  {{ ui.textarea(theme ~ "-script", _("Screenplay"), {}, value="INT. KITCHEN - DAY\n\nANA\nIs it Monday again?", limit=200, rows=5, mono=true) }}
+  {{ ui.file_field(theme ~ "-logo", _("Upload"), {}, accept="image/png", hint="PNG, JPG, WEBP") }}
+  {{ ui.file_field(theme ~ "-avatar", _("Upload"), {theme ~ "-avatar": _("Choose a file.")}) }}
+  {{ ui.file_field(theme ~ "-voice", _("File"), {}, accept="audio/mpeg", hint="MP3, WAV, M4A", max_bytes=1048576, too_large=_("This file is larger than %(size)s MB.", size=1)) }}
+  {{ ui.choices(theme ~ "-scopes", _("Permissions"), [("channels:read", "channels:read", _("Read channels, their accounts, brand kits and editorial.")), ("editorial:write", "editorial:write", "")], {}, selected=["channels:read"]) }}
+  {{ ui.choices(theme ~ "-none", _("Permissions"), [("channels:read", "channels:read", "")], {theme ~ "-none": _("Choose at least one permission.")}) }}
+  {{ ui.choices(theme ~ "-plain", _("Permissions"), [("channels:read", _("Read channels, their accounts, brand kits and editorial."), "channels:read")], {}, selected=["channels:read"], code_labels=false) }}
+  {% call ui.fields_row() %}
+    {{ ui.field(theme ~ "-color-name", _("Color name"), {}) }}
+    {{ ui.field(theme ~ "-color", _("Color"), {}, type="color", value="#ff0066") }}
+  {% endcall %}
+  {{ ui.copy_field(theme ~ "-secret", _("Your new token"), "sre_example", _("Copy"), _("Copied")) }}
+
+  <h4>{{ _("Workspace") }}</h4>
+  <div class="row">
+    {{ ui.badge(_("Draft")) }}{{ ui.badge(_("Active"), "success") }}{{ ui.badge(_("Paused"), "warning") }}{{ ui.badge(_("Set here"), "accent") }}
+    {{ ui.meta("@memes") }}
+  </div>
+  {{ ui.text_block(_("Facts, open questions and leads. Cite each fact's source below.") ~ "\n" ~ _("No sources yet.")) }}
+  {{ ui.text_block("INT. KITCHEN - DAY\n\nANA\nIs it Monday again?", mono=true) }}
+  {{ ui.numbered(["INT. KITCHEN - DAY", "EXT. BUS STOP - MORNING"], _("Scenes")) }}
+  {{ ui.player("/static/design-sample.wav", "audio/wav", _("Voice-over")) }}
+  {{ ui.player("/static/design-sample.wav", "video/webm", _("Visual effects")) }}
+  <div class="row">
+    {% call ui.menu(_("Channels")) %}<a href="/design">Funny Memes</a>{% endcall %}
+    {% call ui.menu(_("Hover"), state="is-hover") %}<a href="/design">Funny Memes</a>{% endcall %}
+    {% call ui.menu(_("Channels"), start=true, state="is-open") %}
+      <a href="/design" aria-current="page">Funny Memes</a><a href="/design">Daily News</a><hr><a href="/design">{{ _("New channel") }}</a>
+    {% endcall %}
+  </div>
+  <div class="row">
+    {% call ui.menu("Ana", up=true, avatar=true, wide=true) %}<a href="/design">{{ _("Account") }}</a>{% endcall %}
+    {{ ui.mark("Funny Memes") }} {{ ui.mark("Ana", round=true) }}
+    {{ ui.dialog_button(theme ~ "-dialog", _("Add account"), plus=true) }}
+    {{ ui.dialog_button(theme ~ "-dialog", _("Edit"), variant="ghost", size="small") }}
+  </div>
+  {{ ui.sidenav([("/design", _("Overview"), "overview"), ("/design", _("Accounts"), "accounts"), ("/design", _("Brand"), "brand"), ("/design", _("Editorial"), "editorial"), ("/design", _("Pitches"), "pitches"), ("/design", _("Episodes"), "episodes"), ("/design", _("Library"), "library"), ("/design", _("Members"), "members"), ("/design", _("Settings"), "settings"), ("/design", _("Channels"), "channels"), ("/design", _("Account"), "account"), ("/design", _("API tokens"), "tokens")], "accounts", _("Channel sections"), states={"overview": "is-hover", "brand": "is-active", "editorial": "is-focus"}) }}
+  <div class="row">
+    {% call ui.menu(_("Pressed"), state="is-active") %}<a href="/design">Funny Memes</a>{% endcall %}
+    {{ ui.icon_button("close", _("Close"), type="button") }}
+    {{ ui.icon_button("close", _("Hover"), type="button", state="is-hover") }}
+    {{ ui.icon_button("close", _("Focus"), type="button", state="is-focus") }}
+    {{ ui.icon_button("close", _("Pressed"), type="button", state="is-active") }}
+  </div>
+  {{ ui.toast(_("Changes saved."), state="is-static") }}
+  {% call ui.dialog(theme ~ "-dialog", _("Add an account"), _("Close"), state="is-static") %}
+    {% call ui.fields_row() %}
+      {{ ui.select(theme ~ "-platform", _("Platform"), [("tiktok", "TikTok")], {}) }}
+      {{ ui.field(theme ~ "-handle", _("Handle"), {}) }}
+    {% endcall %}
+    {{ ui.select(theme ~ "-role", _("Role"), [("editor", "Editor")], {}, label_hidden=true) }}
+  {% endcall %}
+  <div>
+    {% call ui.page_header(_("Accounts"), _("The channel's profile on each platform.")) %}{{ ui.button(_("Add account"), size="small", type="button") }}{% endcall %}
+    {{ ui.tabs([("/design", _("Channel"), ""), ("/design", "TikTok", "tiktok")], "tiktok", _("Brand kit levels")) }}
+    {{ ui.tabs([("/design", _("Hover"), "hover"), ("/design", _("Focus"), "focus"), ("/design", _("Pressed"), "pressed")], "", _("States"), states={"hover": "is-hover", "focus": "is-focus", "pressed": "is-active"}) }}
+    {% call ui.panel(_("Getting ready"), id=theme ~ "-ready") %}
+      {{ ui.checklist([(true, _("Add an account"), "/design"), (false, _("Upload an avatar"), "/design"), (false, _("Set the channel to active"), "")]) }}
+      {% call ui.panel_actions() %}{{ ui.button(_("Save changes"), type="button") }}{% endcall %}
+      {% call ui.subsection(_("Pitch research"), theme ~ "-research") %}<p class="muted">{{ _("The pitch has no notes yet.") }}</p>{% endcall %}
+    {% endcall %}
+    {% call ui.panel(_("Colors"), id=theme ~ "-colors") %}
+      {% call(color) ui.items([("#ff0066", "Pink"), ("#12111a", "Ink")], _("Colors")) %}
+        {% call ui.item_body() %}{{ ui.chip(color[0], color[1]) }}{% endcall %}
+        {% call ui.item_side() %}{{ ui.confirm(_("Remove"), _("Remove %(name)s?", name=color[1]), "/design", csrf_field, csrf_token, _("Remove color")) }}{% endcall %}
+      {% endcall %}
+    {% endcall %}
+    {% call ui.panel(_("Files"), id=theme ~ "-files") %}
+      {% call(entry) ui.tiles([("avatar", _("Avatar")), ("video", _("Intro video")), ("font", _("Font"))], _("Files")) %}
+        {% set slot, label = entry %}
+        {{ ui.tile_media(url_for("static", path="icon.svg") if slot == "avatar" else "", label, slot if slot != "avatar" else "image") }}
+        {% call ui.tile_body(label) %}
+          {% if slot == "avatar" %}<p>PNG · 400 × 400</p>{{ ui.inherited(_("From the channel")) }}{% else %}<p>{{ _("Not set") }}</p>{% endif %}
+        {% endcall %}
+        {% call ui.tile_actions() %}
+          {{ ui.dialog_button(theme ~ "-dialog", _("Replace") if slot == "avatar" else _("Upload"), variant="ghost", size="small") }}
+          {% if slot == "avatar" %}{{ ui.confirm(_("Remove"), _("Remove this file from the kit?"), "/design", csrf_field, csrf_token, _("Remove file"), state="is-open") }}{% endif %}
+        {% endcall %}
+      {% endcall %}
+    {% endcall %}
+    {{ ui.item_main("Funny Memes", "funny-memes", "/design") }}
+    {% call ui.empty(_("No channels yet"), _("Create your first channel, then add its accounts, brand kit and editorial guidelines.")) %}{{ ui.link_button("/design", _("New channel")) }}{% endcall %}
+    {{ ui.pager("/design", _("More channels")) }}
+  </div>
+</section>
+{% endmacro %}
+
+{% block main %}
+<article class="design">
+  <h1>{{ _("Design system") }}</h1>
+  <p class="muted">{{ _("Every component in each state. Use the language switch below to see each language.") }}</p>
+
+  <h2>{{ _("Card") }}</h2>
+  {% call ui.card(center=true) %}
+    {{ ui.status_icon("success") }}
+    <h1>{{ _("Email verified") }}</h1>
+    <p>{{ _("Your account is ready.") }}</p>
+    {{ ui.link_button("/login", _("Sign in")) }}
+  {% endcall %}
+
+  {% call ui.card(wide=true) %}
+    <h1>{{ _("Welcome, %(name)s", name="Ana") }}</h1>
+    {% call ui.alert("success") %}{{ _("Your account is ready.") }}{% endcall %}
+    {% call ui.form("/design", csrf_field, csrf_token, class="htmx-request") %}
+      {{ ui.button(_("Loading"), wide=true) }}
+    {% endcall %}
+  {% endcall %}
+
+  <h2>{{ _("Page shell") }}</h2>
+  {% call ui.site_header(url_for('static', path='icon.svg')) %}
+    <a href="/design">{{ _("Sign in") }}</a>
+    {{ ui.link_button("/design", _("Get started"), size="small") }}
+  {% endcall %}
+  {% call ui.site_footer(_("Terms"), _("Privacy")) %}
+    {{ ui.languages(languages, _("Language")) }}
+  {% endcall %}
+  <div class="row">
+    {% call ui.menu("Ana", avatar=true, state="is-open") %}
+      <a href="/design">{{ _("Account") }}</a>
+      <hr>
+      {{ ui.languages(languages, _("Language")) }}
+      <hr>
+      {% call ui.form("/design", csrf_field, csrf_token, novalidate=false) %}{{ ui.menu_button(_("Sign out")) }}{% endcall %}
+    {% endcall %}
+  </div>
+
+  <h2>{{ _("Link from an email") }}</h2>
+  {% call ui.card() %}
+    {{ ui.token_field(_("Link from your email"), {"token": _("This link is invalid or has expired.")}, hint=_("Paste the whole link from the email.")) }}
+  {% endcall %}
+
+  <h2>{{ _("Landing") }}</h2>
+  {% call ui.hero(_("Social media channel manager"), _("Run every channel from one place."), _("Set up your first channel in minutes.")) %}
+    {% call ui.actions() %}{{ ui.link_button("/register", _("Get started")) }}{% endcall %}
+  {% endcall %}
+  {% call ui.features(_("What sreditor does")) %}
+    {{ ui.feature(_("Brand kits"), _("Keep each channel's avatar, assets and colors next to the accounts that use them.")) }}
+    {{ ui.feature(_("Team roles"), _("Invite people by email as %(roles)s, so each person can do exactly what their role needs.", roles=_("editor"))) }}
+  {% endcall %}
+
+  <h2>{{ _("Spacing") }}</h2>
+  {% for step in spacing %}<div class="space-sample space-{{ step }}" title="--space-{{ step }}"></div>{% endfor %}
+
+  <h2>{{ _("Themes") }}</h2>
+  <div class="themes">
+    {{ showcase("light", _("Light theme")) }}
+    {{ showcase("dark", _("Dark theme")) }}
+  </div>
+</article>
+{% endblock %}

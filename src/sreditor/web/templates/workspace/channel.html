@@ -1,0 +1,5 @@
+{% extends "workspace/layout.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}{% block page_title %}{% endblock %} · {{ channel.name }}{% endblock %}
+{% block sidebar_nav %}{{ ui.sidenav(sections, section, _("Channel sections")) }}{% endblock %}
+{% block content %}{% block page %}{% endblock %}{% endblock %}

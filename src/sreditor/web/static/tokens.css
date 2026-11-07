@@ -1,0 +1,224 @@
+/*
+ * Design tokens: the only place raw values live (rule ui.tokens).
+ * Components in style.css use var(--...) only; tests/test_design.py enforces it.
+ * Light values apply by default and under .theme-light; dark values follow the system setting
+ * and apply under .theme-dark, so /design can show both themes side by side.
+ */
+
+/* Inter, served from here (rule web.security.headers); SIL Open Font License, fonts/OFL.txt.
+   Only the latin subset: it covers English and Portuguese. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("fonts/inter-latin.woff2") format("woff2");
+}
+
+:root,
+.theme-light {
+  /* Color */
+  --color-bg: #f7f7fb;
+  --color-surface: #ffffff;
+  --color-text: #1c1b29;
+  --color-text-muted: #5d5b72;
+  --color-border: #e3e2ee;
+  --color-border-strong: #86839c; /* 3:1 on bg and surface (WCAG 1.4.11) */
+  --color-accent: #4338ca;
+  --color-accent-hover: #3730a3;
+  --color-accent-pressed: #312e81;
+  --color-accent-soft: #eef0ff;
+  --color-on-accent: #ffffff;
+  --color-danger: #b42318;
+  --color-danger-soft: #fef3f2;
+  --color-danger-hover: #912018;
+  --color-on-danger: #ffffff;
+  --color-warning: #93370d;
+  --color-warning-soft: #fffaeb;
+  --color-success: #067647;
+  --color-success-soft: #ecfdf3;
+  --color-focus: #4338ca;
+  --shadow-sm: 0 1px 2px rgb(28 27 41 / 6%);
+  --shadow-md: 0 4px 16px rgb(28 27 41 / 8%);
+  --color-backdrop: rgb(28 27 41 / 45%);
+  --shadow-lg: 0 12px 40px rgb(28 27 41 / 18%);
+  color-scheme: light;
+}
+
+.theme-dark {
+  --color-bg: #12111a;
+  --color-surface: #1c1b27;
+  --color-text: #ecebf5;
+  --color-text-muted: #a3a1b8;
+  --color-border: #2e2d3d;
+  --color-border-strong: #6d6a85;
+  --color-accent: #8b8cf8;
+  --color-accent-hover: #a5a6fb;
+  --color-accent-pressed: #bfc0fc;
+  --color-accent-soft: #24234a;
+  --color-on-accent: #12111a;
+  --color-danger: #f97066;
+  --color-danger-soft: #3a1a1a;
+  --color-danger-hover: #fb8a81;
+  --color-on-danger: #12111a;
+  --color-warning: #fdb022;
+  --color-warning-soft: #33260a;
+  --color-success: #47cd89;
+  --color-success-soft: #0f2a1d;
+  --color-focus: #a5a6fb;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 30%);
+  --shadow-md: 0 4px 16px rgb(0 0 0 / 40%);
+  --color-backdrop: rgb(0 0 0 / 60%);
+  --shadow-lg: 0 12px 40px rgb(0 0 0 / 55%);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.theme-light) {
+    --color-bg: #12111a;
+    --color-surface: #1c1b27;
+    --color-text: #ecebf5;
+    --color-text-muted: #a3a1b8;
+    --color-border: #2e2d3d;
+    --color-border-strong: #6d6a85;
+    --color-accent: #8b8cf8;
+    --color-accent-hover: #a5a6fb;
+    --color-accent-pressed: #bfc0fc;
+    --color-accent-soft: #24234a;
+    --color-on-accent: #12111a;
+    --color-danger: #f97066;
+    --color-danger-soft: #3a1a1a;
+    --color-danger-hover: #fb8a81;
+    --color-on-danger: #12111a;
+    --color-warning: #fdb022;
+    --color-warning-soft: #33260a;
+    --color-success: #47cd89;
+    --color-success-soft: #0f2a1d;
+    --color-focus: #a5a6fb;
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 30%);
+    --shadow-md: 0 4px 16px rgb(0 0 0 / 40%);
+    --color-backdrop: rgb(0 0 0 / 60%);
+    --shadow-lg: 0 12px 40px rgb(0 0 0 / 55%);
+    color-scheme: dark;
+  }
+}
+
+:root {
+  /* Spacing scale */
+  --space-0: 0;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+  --space-gutter: clamp(1rem, 4vw, 3rem);
+  --space-section: clamp(2rem, 8vw, 6rem);
+  --space-card: clamp(1.25rem, 5vw, 2.25rem);
+  --space-card-top: clamp(1rem, 6vw, 4rem);
+
+  /* Shape */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+  --border-width: 1px;
+  --focus-width: 2px;
+  --focus-offset: 2px;
+
+  /* Type */
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-size-xs: 0.85rem;
+  --font-size-sm: 0.9rem;
+  --font-size-md: 1rem;
+  --font-size-lg: 1.1rem;
+  --font-size-xl: 1.2rem;
+  --font-size-2xl: 1.6rem;
+  --font-size-display: clamp(2.2rem, 6vw, 3.6rem);
+  --font-weight-regular: 400;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --line-height-tight: 1.1;
+  --line-height-body: 1.55;
+  --letter-spacing-caps: 0.04em;
+  --letter-spacing-tight: -0.02em;
+  --font-weight-medium: 500;
+
+  /* Layout */
+  --width-content: 72rem;
+  --width-card: 26rem;
+  --width-card-wide: 40rem;
+  --width-prose: 44rem;
+  --width-lead: 40rem;
+  --width-feature-min: 15rem;
+  --size-icon: 1.25rem;
+  --size-check: 1.05rem;
+  --size-spinner: 1em;
+  --size-logo: 1.75rem;
+  --icon-stroke: 2;
+  --size-status: 2.5rem;
+  --size-swatch-width: 4.5rem;
+  --size-swatch-height: 3rem;
+  --height-screen: 100vh;
+  --size-textarea-min: 4lh; /* an empty text box still invites a few lines */
+  --size-textarea-max: 70vh; /* a long text scrolls inside its box, keeping its Save button near */
+  --height-player: 20rem; /* a video plays this tall at most, so a list of them stays scannable */
+  --width-headline: 18ch;
+  --ring: 0 0 0 var(--focus-width);
+  --width-full: 100%;
+  --width-sidebar: 16rem;
+  --width-app-content: 64rem;
+  --width-dialog: 34rem;
+  --width-toast: 24rem;
+  --size-control: 2.5rem;
+  --size-control-small: 2rem;
+  --size-mark: 2.5rem;
+  --size-avatar: 2rem;
+  --size-icon-small: 1rem;
+  --size-icon-large: 2rem;
+  /* The edge that fades where a row scrolls on; a mask reads only the alpha of this color. */
+  --size-fade: 2.5rem;
+  --mask-solid: #000;
+  --width-tile: 13rem;
+  --width-item-min: 10rem;
+  /* Media queries cannot read custom properties, so style.css writes this value in its
+     @media rules; tests/test_design.py checks they match. Below it the sidebar becomes a top bar. */
+  --breakpoint-compact: 48rem;
+  --layer-sidebar: 20;
+  --layer-toast: 30;
+  --width-menu: 16rem;
+  --size-preview: 6rem;
+  --size-chip: 1.5rem;
+  --layer-menu: 10;
+
+  /* Motion (rule ui.motion): short and gentle; entering eases out. */
+  --duration-instant: 100ms;
+  --duration-fast: 160ms;
+  --duration-base: 220ms;
+  /* One turn of the loading indicator; the exception in ui.motion, kept under reduced motion. */
+  --duration-spin: 700ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  /* Leaving eases in (rule ui.motion). */
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --press-scale: 0.98;
+  --rise-distance: 6px;
+  --lift-distance: -3px;
+  --turn-full: 1turn;
+  --turn-eighth: 0.125turn;
+  --opacity-busy: 0.7;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-instant: 0ms;
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --press-scale: 1;
+    --rise-distance: 0;
+    --lift-distance: 0;
+  }
+}

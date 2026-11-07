@@ -1,0 +1,116 @@
+# A fixed project name: Alloy ships the logs of this project's containers by this name.
+name: sreditor
+
+services:
+  sreditor:
+    build: .
+    image: sreditor:latest
+    # Run as the owner of ./store and ./var; set SREDITOR_UID and SREDITOR_GID in .env.
+    user: "${SREDITOR_UID:-1000}:${SREDITOR_GID:-1000}"
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      # Forms are accepted only from this origin (web.forms.csrf) and email links point to it,
+      # so it must be the exact address you open in the browser.
+      SREDITOR_PUBLIC_URL: ${SREDITOR_PUBLIC_URL:-http://localhost:8000}
+      # Development only: log emails with their links intact when no API key is set.
+      SREDITOR_MAIL_LOG_TOKENS: ${SREDITOR_MAIL_LOG_TOKENS:-false}
+      # With an API key, emails go out through SMTP2GO from a sender verified there;
+      # without one they only go to the log.
+      SREDITOR_SMTP2GO_API_KEY: ${SREDITOR_SMTP2GO_API_KEY:-}
+      SREDITOR_MAIL_SENDER: ${SREDITOR_MAIL_SENDER:-}
+      # Only this machine (through the loopback port) and the tunnel reach the app, so it
+      # trusts their X-Forwarded-For; per-client rate limits then see each visitor's address.
+      SREDITOR_FORWARDED_ALLOW_IPS: ${SREDITOR_FORWARDED_ALLOW_IPS:-*}
+      # Prometheus reads /metrics here over the compose network; the port is not published
+      # and the tunnel routes only to 8000, so metrics never reach the internet.
+      SREDITOR_METRICS_PORT: "9100"
+    volumes:
+      - ./store:/store
+      # Data and uploaded brand files (SREDITOR_ASSETS_DIR=/data/assets in the image).
+      - ./var:/data
+    restart: unless-stopped
+
+  # Publishes the app on the internet through a Cloudflare Tunnel: no port is opened on this
+  # machine. Started only with the "tunnel" profile (COMPOSE_PROFILES=tunnel in .env).
+  # In Cloudflare, route the tunnel's public hostname to http://sreditor:8000.
+  cloudflared:
+    image: cloudflare/cloudflared:2025.11.1
+    profiles: ["tunnel"]
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      # Read from the environment rather than the command line, so `ps` never shows it.
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      sreditor:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Observability, started with the "observability" profile (add it to COMPOSE_PROFILES in .env).
+  # Grafana is the only one with a port, on this machine only: http://127.0.0.1:3000.
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    profiles: ["observability"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+    volumes:
+      - ./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      - sreditor
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.5.3
+    profiles: ["observability"]
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - ./deploy/observability/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/loki
+    restart: unless-stopped
+
+  # Reads container logs through the Docker socket, which gives it control of Docker on this
+  # machine; it has no published port and runs only Alloy's own configuration.
+  alloy:
+    image: grafana/alloy:v1.10.0
+    profiles: ["observability"]
+    command: ["run", "--storage.path=/var/lib/alloy/data", "/etc/alloy/config.alloy"]
+    environment:
+      COMPOSE_PROJECT: sreditor
+    volumes:
+      - ./deploy/observability/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy-data:/var/lib/alloy/data
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:12.1.0
+    profiles: ["observability"]
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      # Set GRAFANA_ADMIN_PASSWORD in .env; without it Grafana falls back to admin/admin.
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/sreditor.json
+    volumes:
+      - ./deploy/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
+  loki-data:
+  alloy-data:
+  grafana-data:

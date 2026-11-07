@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}{{ _("Social media channel manager") }}{% endblock %}
+{% block main %}
+{% call ui.hero(_("Social media channel manager"), _("Run every channel from one place."), _("Keep each channel's accounts, brand kit and editorial voice together, so everyone who publishes for it stays on brand.")) %}
+  {% call ui.actions() %}
+    {{ ui.link_button("/register", _("Create your account")) }}
+    {{ ui.link_button("/login", _("Sign in"), variant="ghost") }}
+  {% endcall %}
+  {{ ui.tags(platforms, "outline", _("Supported platforms")) }}
+{% endcall %}
+
+{% call ui.features(_("What sreditor does")) %}
+  {{ ui.feature(_("Channels and accounts"), _("Group a brand's accounts on every platform under one channel, and see at a glance which platforms it covers.")) }}
+  {{ ui.feature(_("Brand kits"), _("Keep each channel's avatar, assets and colors next to the accounts that use them.")) }}
+  {{ ui.feature(_("Editorial guidelines"), _("Write down a channel's purpose, voice, audience, content pillars and topics to avoid once. Each platform inherits them and can override what differs.")) }}
+  {{ ui.feature(_("Team roles"), _("Invite people by email as %(roles)s, so each person can do exactly what their role needs.", roles=roles)) }}
+{% endcall %}
+
+<section class="cta">
+  <h2>{{ _("Set up your first channel in minutes.") }}</h2>
+  {{ ui.link_button("/register", _("Get started")) }}
+</section>
+{% endblock %}

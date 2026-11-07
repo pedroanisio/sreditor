@@ -1,0 +1,40 @@
+{% extends "workspace/layout.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}{{ _("API tokens") }}{% endblock %}
+{% block content %}
+{% call ui.page_header(_("API tokens"), _("Tokens let agents use the API and the MCP server as you. A token never does more than your role allows, and only what its permissions name.")) %}
+  {{ ui.link_button("/app/account", _("Account"), variant="ghost") }}
+{% endcall %}
+{% if created %}
+{% call ui.panel(_("Your new token"), id="new-token") %}
+  {% call ui.alert("info") %}{{ _("Copy it now: it will not be shown again.") }}{% endcall %}
+  {{ ui.copy_field("secret", created.token.name, created.secret, _("Copy"), _("Copied")) }}
+{% endcall %}
+{% endif %}
+{% call ui.panel(_("Your tokens"), id="tokens") %}
+  {% if tokens %}
+  {% call(token) ui.items(tokens, _("Your tokens")) %}
+    {{ ui.item_main(token.name, token.prefix ~ "… · " ~ (token.scopes | join(", "))) }}
+    {% call ui.item_side() %}
+      {% if token.revoked_at %}
+      {{ ui.badge(_("Revoked")) }}
+      {% else %}
+      {{ ui.meta(_("Expires %(date)s", date=_.day(token.expires_at))) }}
+      {{ ui.confirm(_("Revoke"), _("Revoke %(name)s? Agents using it lose access at once.", name=token.name), "/app/account/tokens/" ~ (token.id | string) ~ "/revoke", csrf_field, csrf_token, _("Revoke token")) }}
+      {% endif %}
+    {% endcall %}
+  {% endcall %}
+  {% if next_cursor %}{{ ui.pager("/app/account/tokens?cursor=" ~ next_cursor, _("More tokens")) }}{% endif %}
+  {% else %}
+  <p>{{ _("No tokens yet.") }}</p>
+  {% endif %}
+{% endcall %}
+{% call ui.panel(_("New token"), id="create") %}
+  {% call ui.form("/app/account/tokens", csrf_field, csrf_token) %}
+    {{ ui.field("name", _("Name"), errors, value=sent.name if sent else "", maxlength=80, autocomplete="off", hint=_("What the agent is, so you recognise it later.")) }}
+    {{ ui.choices("scopes", _("Permissions"), scope_choices, errors, selected=sent.scopes if sent else []) }}
+    {{ ui.select("expires_in_days", _("Expires after"), day_choices, errors, value=sent.expires_in_days if sent else default_days | string) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Create token")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% endblock %}

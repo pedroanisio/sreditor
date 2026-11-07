@@ -1,0 +1,9 @@
+# Dashboards come from files in this repository; edits made in Grafana are not saved back.
+apiVersion: 1
+providers:
+  - name: sreditor
+    folder: sreditor
+    type: file
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards

@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+dist/
+build/
+*.egg-info/
+
+# Tests and coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime data and local configuration
+var/
+.env
+store/*.sqlite-journal
+
+# Playwright evidence: screenshots and failure traces (rule ui.e2e.evidence)
+e2e-evidence/

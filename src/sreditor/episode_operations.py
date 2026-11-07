@@ -1,0 +1,103 @@
+"""Episode operations shared by the REST routes, the MCP tools and the pages (rule agentic.mcp).
+
+Creating and editing an episode is content work, open to contributors and the content:write
+scope; deleting one loses its history, so it needs a role that may change the channel itself.
+"""
+
+from __future__ import annotations
+
+from fastapi import status
+
+from sreditor.deps import ChannelAccess, Services
+from sreditor.episodes import Episode, EpisodeInput, RevisedEpisode
+from sreditor.members import Permission
+from sreditor.operations import gated
+from sreditor.pagination import Page, decode_cursor, encode_cursor
+from sreditor.problems import ProblemError
+
+INVALID_CURSOR = "Invalid cursor"
+
+
+class EpisodeOperation:
+    """stmt operation names an agent's episode writes are gated on."""
+
+    CREATE = "episode.create"
+    WRITE = "episode.write"
+    DELETE = "episode.delete"
+
+
+def after_number(cursor: str | None) -> int | None:
+    """The episode number a cursor points past."""
+    position = decode_cursor(cursor)
+    if position is None:
+        return None
+    if not position.isdigit():
+        raise ProblemError(status.HTTP_400_BAD_REQUEST, INVALID_CURSOR, "invalid-cursor")
+    return int(position)
+
+
+def episode_access(
+    app: Services, access: ChannelAccess, number: int, permission: Permission
+) -> str:
+    """The channel's slug once the permission is checked and the episode is known to exist."""
+    access.require(permission)
+    app.episodes.get(access.channel.slug, number)
+    return access.channel.slug
+
+
+def list_episodes(
+    app: Services, access: ChannelAccess, cursor: str | None, limit: int
+) -> Page[Episode]:
+    """The channel's episodes by number."""
+    access.require(Permission.READ)
+    rows = app.episodes.list(access.channel.slug, after_number(cursor), limit + 1)
+    items = rows[:limit]
+    has_more = len(rows) > limit
+    return Page[Episode](
+        items=items, next_cursor=encode_cursor(str(items[-1].number)) if has_more else None
+    )
+
+
+def get_episode(app: Services, access: ChannelAccess, number: int) -> RevisedEpisode:
+    """One episode with the revision to send back when changing it."""
+    access.require(Permission.READ)
+    return app.episodes.get(access.channel.slug, number)
+
+
+def create_episode(app: Services, access: ChannelAccess, data: EpisodeInput) -> RevisedEpisode:
+    """Add an episode with the channel's next number."""
+    access.require(Permission.WRITE_CONTENT)
+    slug = access.channel.slug
+    return gated(app, access, EpisodeOperation.CREATE, lambda: app.episodes.create(slug, data))
+
+
+def replace_episode(
+    app: Services,
+    access: ChannelAccess,
+    number: int,
+    data: EpisodeInput,
+    expected_revision: int | None,
+) -> RevisedEpisode:
+    """Replace an episode's title, summary and status."""
+    access.require(Permission.WRITE_CONTENT)
+    slug = access.channel.slug
+    return gated(
+        app,
+        access,
+        EpisodeOperation.WRITE,
+        lambda: app.episodes.replace(slug, number, data, expected_revision),
+    )
+
+
+def delete_episode(
+    app: Services, access: ChannelAccess, number: int, expected_revision: int | None
+) -> None:
+    """Delete an episode; its number is never given to another one."""
+    access.require(Permission.WRITE_CHANNEL)
+    slug = access.channel.slug
+    gated(
+        app,
+        access,
+        EpisodeOperation.DELETE,
+        lambda: app.episodes.delete(slug, number, expected_revision),
+    )

@@ -1,0 +1,63 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% block page_title %}{{ _("Members") }}{% endblock %}
+{% block page %}
+{% set role_options = roles | map("string") | list %}
+{% set may_manage = can("manage_members") %}
+{% set invite_errors = errors if target == "invite" else {} %}
+{% call ui.page_header(_("Members"), _("Who works on the channel. Owners manage everything; editors manage the channel, its editorial and contributors; contributors write content; viewers read.")) %}
+  {% if may_manage %}{{ ui.dialog_button("invite", _("Invite someone"), plus=true) }}{% endif %}
+{% endcall %}
+{# A row without a role picker (such as your own) shows its error above the list. #}
+{% set picker_ids = rows | selectattr("can_change") | map(attribute="member.user_id") | map("string") | list %}
+{% if target and target != "invite" and target not in picker_ids %}{{ ui.form_error({"form": errors.values() | first}) }}{% else %}{{ ui.form_error(errors if target != "invite" else {}) }}{% endif %}
+{% call ui.panel(_("People"), id="people") %}
+  {% call(row) ui.items(rows, _("Members")) %}
+    {% set member = row.member %}
+    {% set member_id = member.user_id | string %}
+    {{ ui.mark(member.display_name, round=true) }}
+    {{ ui.item_main(member.display_name ~ (" (" ~ _("you") ~ ")" if row.is_self else ""), member.email) }}
+    {% call ui.item_side() %}
+      {% if row.can_change %}
+      {% call ui.form(channel_link ~ "/members/" ~ member_id ~ "/role", csrf_field, csrf_token, class="inline") %}
+        {{ ui.select("role", _("Role of %(name)s", name=member.display_name), role_choices, errors if target == member_id else {}, value=member.role.value, id="role-" ~ member_id, label_hidden=true) }}
+        {{ ui.button(_("Change role"), variant="ghost", size="small") }}
+      {% endcall %}
+      {{ ui.confirm(_("Remove"), _("Remove %(name)s from the channel?", name=member.display_name), channel_link ~ "/members/" ~ member_id ~ "/remove", csrf_field, csrf_token, _("Remove member")) }}
+      {% else %}
+      {{ ui.badge(_.role(member.role) | capitalize) }}
+      {% endif %}
+      {% if row.can_leave %}
+      {{ ui.confirm(_("Leave"), _("Leave this channel? You will need a new invitation to come back."), channel_link ~ "/members/" ~ member_id ~ "/remove", csrf_field, csrf_token, _("Leave channel")) }}
+      {% endif %}
+    {% endcall %}
+  {% endcall %}
+{% endcall %}
+{% if may_manage %}
+{% call ui.panel(_("Pending invitations"), id="invitations") %}
+  {% if invitations %}
+  {% call(invitation) ui.items(invitations, _("Pending invitations")) %}
+    {{ ui.mark(invitation.email, round=true) }}
+    {{ ui.item_main(invitation.email, _("%(role)s · expires %(date)s", role=_.role(invitation.role), date=_.day(invitation.expires_at))) }}
+    {% if invitation.role.value in role_options %}
+    {% call ui.item_side() %}
+      {{ ui.confirm(_("Revoke"), _("Revoke the invitation to %(email)s? Its link stops working.", email=invitation.email), channel_link ~ "/invitations/" ~ (invitation.id | string) ~ "/revoke", csrf_field, csrf_token, _("Revoke invitation")) }}
+    {% endcall %}
+    {% endif %}
+  {% endcall %}
+  {% else %}
+  <p>{{ _("No pending invitations.") }}</p>
+  {% endif %}
+{% endcall %}
+{% call ui.dialog("invite", _("Invite someone"), _("Close"), open=target == "invite") %}
+  {% call ui.form(channel_link ~ "/members/invite", csrf_field, csrf_token) %}
+    {% call ui.fields_row() %}
+      {{ ui.field("email", _("Email"), invite_errors, type="email", value=sent.email if sent else "", autocomplete="off", id="invite-email") }}
+      {{ ui.select("role", _("Role"), role_choices, invite_errors, value=sent.role if sent else "contributor", id="invite-role") }}
+    {% endcall %}
+    {{ ui.form_error(invite_errors) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Send invitation")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% endif %}
+{% endblock %}

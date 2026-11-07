@@ -1,0 +1,234 @@
+"""Channel operations shared by the REST routes and the MCP tools (rule agentic.mcp).
+
+Writes made with an API token pass the stmt gate first and emit their AFTER event once they
+succeed (rule agentic.gate), and record the token as their author (rule agentic.audit).
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+from uuid import uuid4
+
+from fastapi import status
+from pydantic import BaseModel, ConfigDict
+
+from sreditor.channels import BrandKit, Channel, Platform, PlatformAccount
+from sreditor.deps import ChannelAccess, Services, author
+from sreditor.editorial import Editorial, Guideline, GuidelineInput
+from sreditor.members import Permission
+from sreditor.pagination import Page, decode_cursor, page
+from sreditor.problems import ProblemError
+from sreditor.repository import ChannelExists, ChannelNotFound
+from sreditor.store import Owner
+from sreditor.tokens import ApiToken, Scope
+from sreditor.users import User
+
+ALLOW = "ALLOW"
+TOKEN_OWNER = "token"
+
+
+class Operation:
+    """stmt operation names an agent's writes are gated on."""
+
+    CHANNEL_CREATE = "channel.create"
+    CHANNEL_WRITE = "channel.write"
+    CHANNEL_DELETE = "channel.delete"
+    EDITORIAL_WRITE = "editorial.write"
+    EDITORIAL_RETIRE = "editorial.retire"
+
+
+class Revised(BaseModel):
+    """A channel together with the revision its ETag is built from."""
+
+    model_config = ConfigDict(frozen=True)
+
+    channel: Channel
+    revision: int
+
+
+def owner_of(user: User, token: ApiToken | None) -> Owner:
+    """The stmt author of a write: the token when an agent made it, otherwise the user."""
+    if token is not None:
+        return Owner(type=TOKEN_OWNER, id=str(token.id))
+    return author(user)
+
+
+def gated[T](app: Services, access: ChannelAccess, operation: str, write: Callable[[], T]) -> T:
+    """Run a write; with an API token, only after the stmt gate in the channel's scope allows it."""
+    return gate_in(app, app.editorials.scope(access.channel.slug), access, operation, write)
+
+
+def gate_in[T](
+    app: Services, scope: str, access: ChannelAccess, operation: str, write: Callable[[], T]
+) -> T:
+    """Run `write`, but for an API token first ask the stmt gate and emit its AFTER event."""
+    if access.token is None:
+        return write()
+    context: dict[str, Any] = {
+        "channel": access.channel.slug,
+        "user": str(access.user.id),
+        "role": access.role.value if access.role else None,
+        "token": str(access.token.id),
+        "scopes": [str(scope) for scope in access.token.scopes],
+    }
+    gate_id = f"gate-{uuid4()}"
+    decision = app.stmt.gate(scope, {"id": gate_id, "operation": operation, "context": context})
+    if decision.decision != ALLOW:
+        raise ProblemError(
+            status.HTTP_403_FORBIDDEN,
+            f"The rules for this channel do not allow {operation} ({decision.decision})",
+            "gate-refused",
+            decision=decision.decision,
+            event_id=decision.event_id,
+            blocks=decision.blocks,
+        )
+    result = write()
+    app.stmt.emit(
+        scope,
+        {"id": f"after-{uuid4()}", "cause": gate_id, "operation": operation, "context": context},
+    )
+    return result
+
+
+def require_account(channel: Channel, platform: Platform | None) -> None:
+    """Refuse with 422 when the channel has no account on the platform; no platform passes."""
+    if platform is not None and channel.account(platform) is None:
+        raise ProblemError(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"Channel {channel.slug} has no {platform} account",
+            "no-platform-account",
+        )
+
+
+def require_scope(token: ApiToken | None, scope: Scope) -> None:
+    """Refuse with 403 a token that lacks the scope; sessions are not narrowed by scopes."""
+    if token is not None and not token.allows(scope):
+        raise ProblemError(status.HTTP_403_FORBIDDEN, f"This token lacks the {scope} scope")
+
+
+def list_channels(
+    app: Services, user: User, cursor: str | None, limit: int, token: ApiToken | None = None
+) -> Page[Channel]:
+    """The channels the user belongs to (every channel for an admin), ordered by slug.
+
+    A token needs channels:read, as reading any one of those channels does.
+    """
+    require_scope(token, Scope.CHANNELS_READ)
+    slugs = None if user.is_admin else list(app.members.roles_of(user.id))
+    rows = app.channels.list(slugs, after=decode_cursor(cursor), limit=limit + 1)
+    return page(rows, limit, lambda channel: channel.slug)
+
+
+def create_channel(app: Services, user: User, token: ApiToken | None, channel: Channel) -> Channel:
+    """Create a channel owned by the user; a token needs the channels:write scope."""
+    require_scope(token, Scope.CHANNELS_WRITE)
+    try:
+        app.channels.get(channel.slug)
+    except ChannelNotFound:
+        access = ChannelAccess(channel=channel, role=None, user=user, token=token)
+
+        def create() -> Channel:
+            app.editorials.register(channel)
+            return app.channels.create(channel, owner=user.id)
+
+        return gate_in(app, app.stmt.settings.scope, access, Operation.CHANNEL_CREATE, create)
+    raise ChannelExists(channel.slug)
+
+
+def replace_channel(
+    app: Services, access: ChannelAccess, channel: Channel, expected_revision: int | None
+) -> Revised:
+    """Replace the whole channel document, optionally only if it is still at a revision."""
+    access.require(Permission.WRITE_CHANNEL)
+    if channel.slug != access.channel.slug:
+        raise ProblemError(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "Slug in body and path differ", "slug-mismatch"
+        )
+
+    def replace() -> Revised:
+        app.editorials.register(channel)
+        return Revised(channel=channel, revision=app.channels.replace(channel, expected_revision))
+
+    return gated(app, access, Operation.CHANNEL_WRITE, replace)
+
+
+def put_account(
+    app: Services, access: ChannelAccess, account: PlatformAccount, expected_revision: int | None
+) -> Revised:
+    """Add the channel's account on a platform, or replace it."""
+    others = [a for a in access.channel.accounts if a.platform != account.platform]
+    updated = access.channel.model_copy(update={"accounts": [*others, account]})
+    return replace_channel(app, access, updated, expected_revision)
+
+
+def delete_account(
+    app: Services, access: ChannelAccess, platform: Platform, expected_revision: int | None
+) -> Revised:
+    """Remove the channel's account on a platform."""
+    channel = access.channel
+    if channel.account(platform) is None:
+        raise ProblemError(
+            status.HTTP_404_NOT_FOUND, f"Channel {channel.slug} has no {platform} account"
+        )
+    remaining = [a for a in channel.accounts if a.platform != platform]
+    return replace_channel(
+        app, access, channel.model_copy(update={"accounts": remaining}), expected_revision
+    )
+
+
+def delete_channel(app: Services, access: ChannelAccess, expected_revision: int | None) -> None:
+    """Delete the channel record, its members and invitations; its Editorial stays in stmt."""
+    access.require(Permission.DELETE_CHANNEL)
+    slug = access.channel.slug
+    gated(
+        app, access, Operation.CHANNEL_DELETE, lambda: app.channels.delete(slug, expected_revision)
+    )
+
+
+def get_brand(access: ChannelAccess, platform: Platform | None) -> BrandKit:
+    """The brand kit, with the platform's overrides applied when one is given."""
+    access.require(Permission.READ)
+    require_account(access.channel, platform)
+    return access.channel.brand_for(platform)
+
+
+def get_editorial(app: Services, access: ChannelAccess, platform: Platform | None) -> Editorial:
+    """House rules, the channel's guidelines and, with a platform, its overrides."""
+    access.require(Permission.READ)
+    require_account(access.channel, platform)
+    return app.editorials.editorial(access.channel, platform)
+
+
+def write_guideline(app: Services, access: ChannelAccess, data: GuidelineInput) -> Guideline:
+    """Set the purpose, voice or audience, or add a pillar or an avoid guideline."""
+    access.require(Permission.WRITE_EDITORIAL)
+    require_account(access.channel, data.platform)
+    owner = owner_of(access.user, access.token)
+    return gated(
+        app,
+        access,
+        Operation.EDITORIAL_WRITE,
+        lambda: app.editorials.write(access.channel, data, owner),
+    )
+
+
+def retire_guideline(
+    app: Services,
+    access: ChannelAccess,
+    statement_id: str,
+    platform: Platform | None,
+    expected_revision: int | None = None,
+) -> None:
+    """Retire one of the channel's guidelines, if it is still at `expected_revision`."""
+    access.require(Permission.WRITE_EDITORIAL)
+    require_account(access.channel, platform)
+    owner = owner_of(access.user, access.token)
+    gated(
+        app,
+        access,
+        Operation.EDITORIAL_RETIRE,
+        lambda: app.editorials.retire(
+            access.channel, statement_id, platform, owner, expected_revision
+        ),
+    )

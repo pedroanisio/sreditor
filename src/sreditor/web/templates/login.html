@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}{{ _("Sign in") }}{% endblock %}
+{% block main %}
+{% call ui.card() %}
+  <h1>{{ _("Sign in") }}</h1>
+  <p class="muted">{{ _("New here?") }} <a href="/register">{{ _("Create an account") }}</a></p>
+  {{ ui.form_error(errors) }}
+  {% call ui.form("/login", csrf_field, csrf_token) %}
+    {{ ui.hidden("next", next_path) }}
+    {{ ui.field("email", _("Email"), errors, type="email", value=email, autocomplete="email") }}
+    {{ ui.field("password", _("Password"), errors, type="password", autocomplete="current-password") }}
+    {{ ui.button(_("Sign in"), wide=true) }}
+  {% endcall %}
+  <p class="muted center"><a href="/forgot-password">{{ _("Forgot your password?") }}</a></p>
+{% endcall %}
+{% endblock %}

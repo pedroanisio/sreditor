@@ -1,0 +1,541 @@
+{#
+  The design system (rule ui.design-system): every page builds from these macros, and /design
+  shows each of them in every state, theme and language. Styles live in static/style.css.
+  `state` adds a class that mirrors a real state (is-hover, is-focus, is-active, is-loading) so
+  /design can show it without a pointer.
+#}
+
+{% macro csrf(field, token) -%}
+<input type="hidden" name="{{ field }}" value="{{ token }}">
+{%- endmacro %}
+
+{% macro hidden(name, value) -%}
+<input type="hidden" name="{{ name }}" value="{{ value }}">
+{%- endmacro %}
+
+{# A form that shows it is working: htmx marks it .htmx-request and disables its submit button,
+   so it cannot be pressed twice (rule ui.microinteractions). #}
+{% macro form(action, csrf_field, csrf_token, class="", novalidate=true, token_form=false, auto_submit=false, upload=false) -%}
+<form method="post" action="{{ action }}"{% if class %} class="{{ class }}"{% endif %}{% if novalidate %} novalidate{% endif %}{% if upload %} enctype="multipart/form-data"{% endif %}
+  {%- if token_form %} data-token-form{% endif %}{% if auto_submit %} data-auto-submit{% endif %}
+  hx-disabled-elt="find button[type='submit']">
+  {{ csrf(csrf_field, csrf_token) }}
+  {{ caller() }}
+</form>
+{%- endmacro %}
+
+{% macro button(label, variant="", size="", wide=false, type="submit", state="", formaction="") -%}
+<button class="{{ ['button', variant, size, 'wide' if wide else '', state] | select | join(' ') }}" type="{{ type }}"
+  {%- if formaction %} formaction="{{ formaction }}"{% endif %}
+  {%- if state == "is-loading" %} disabled aria-busy="true"{% endif %}>{{ label }}</button>
+{%- endmacro %}
+
+{# With `download`, the browser saves the file instead of htmx loading it as a page. #}
+{% macro link_button(href, label, variant="", size="", wide=false, state="", download=false) -%}
+<a class="{{ ['button', variant, size, 'wide' if wide else '', state] | select | join(' ') }}" href="{{ href }}"{% if download %} download hx-boost="false"{% endif %}>{{ label }}</a>
+{%- endmacro %}
+
+{% macro icon(name) -%}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  {%- if name == "success" %}<path d="M20 6 9 17l-5-5"/>
+  {%- elif name == "error" %}<circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/>
+  {%- elif name == "todo" %}<circle cx="12" cy="12" r="9"/>
+  {%- elif name == "done" %}<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>
+  {%- elif name == "overview" %}<path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>
+  {%- elif name == "accounts" %}<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 5 0v-1a9 9 0 1 0-4 7"/>
+  {%- elif name == "brand" %}<path d="M12 3a9 9 0 1 0 0 18c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1.1.9-2 2-2h2.4A4.6 4.6 0 0 0 21 9.8C21 6 17 3 12 3Z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="15" cy="7" r="1"/>
+  {%- elif name == "editorial" %}<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+  {%- elif name == "pitches" %}<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/>
+  {%- elif name == "episodes" %}<path d="M4 11v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8Z"/><path d="m4 11-.9-3.6a1 1 0 0 1 .7-1.2l13.5-3.4a1 1 0 0 1 1.2.7l.6 2.5Z"/><path d="m7.7 5.3 3.1 4"/><path d="m13.6 3.8 3.1 4"/>
+  {%- elif name == "library" %}<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5Z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>
+  {%- elif name == "members" %}<circle cx="9" cy="8" r="4"/><path d="M2 21v-1a7 7 0 0 1 14 0v1"/><path d="M16 4a4 4 0 0 1 0 8"/><path d="M22 21v-1a7 7 0 0 0-4-6.3"/>
+  {%- elif name == "settings" %}<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>
+  {%- elif name == "channels" %}<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+  {%- elif name == "account" %}<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/>
+  {%- elif name == "tokens" %}<circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 9.8-9.8"/><path d="m16 7 3 3"/><path d="m19 4 2 2"/>
+  {%- elif name == "image" %}<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/>
+  {%- elif name == "video" %}<rect x="2" y="5" width="15" height="14" rx="2"/><path d="m17 10 5-3v10l-5-3"/>
+  {%- elif name == "font" %}<path d="M4 20 10 4h1l6 16"/><path d="M6.5 14h8"/><path d="M17 20h4"/>
+  {%- elif name == "plus" %}<path d="M12 5v14M5 12h14"/>
+  {%- elif name == "back" %}<path d="m15 18-6-6 6-6"/>
+  {%- elif name == "close" %}<path d="M18 6 6 18M6 6l12 12"/>
+  {%- else %}<path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/>{% endif -%}
+</svg>
+{%- endmacro %}
+
+{% macro status_icon(tone) -%}
+<span class="status-icon {{ tone }}">{{ icon(tone) }}</span>
+{%- endmacro %}
+
+{% macro alert(tone="error") -%}
+<div class="alert {{ tone }}" role="{{ 'alert' if tone == 'error' else 'status' }}">{{ caller() }}</div>
+{%- endmacro %}
+
+{# Errors sit next to their field (web.forms.errors); a form-wide one sits above the form. #}
+{% macro form_error(errors) -%}
+{% if errors.get("form") %}{% call alert("error") %}{{ errors["form"] }}{% endcall %}{% endif %}
+{%- endmacro %}
+
+{% macro field(name, label, errors, type="text", value="", autocomplete="", hint="", minlength=none, state="", required=true, maxlength=none, id="") -%}
+{% set error = errors.get(name) %}
+{% set field_id = id or name %}
+<div class="field{% if error %} invalid{% endif %}">
+  <label for="{{ field_id }}">{{ label }}</label>
+  <input id="{{ field_id }}" class="input{% if state %} {{ state }}{% endif %}" name="{{ name }}" type="{{ type }}" value="{{ value }}"
+    {%- if required %} required{% endif %}
+    {%- if autocomplete %} autocomplete="{{ autocomplete }}"{% endif %}
+    {%- if minlength %} minlength="{{ minlength }}"{% endif %}
+    {%- if maxlength %} maxlength="{{ maxlength }}"{% endif %}
+    {%- if error %} aria-invalid="true" aria-describedby="{{ field_id }}-error"{% elif hint %} aria-describedby="{{ field_id }}-hint"{% endif %}>
+  {% if error %}<p class="error" id="{{ field_id }}-error">{{ error }}</p>
+  {% elif hint %}<p class="hint" id="{{ field_id }}-hint">{{ hint }}</p>{% endif %}
+</div>
+{%- endmacro %}
+
+{# A choice from a short list; `options` are (value, label) pairs. #}
+{% macro select(name, label, options, errors, value="", hint="", id="", state="", label_hidden=false) -%}
+{% set error = errors.get(name) %}
+{% set field_id = id or name %}
+<div class="field{% if error %} invalid{% endif %}">
+  <label for="{{ field_id }}"{% if label_hidden %} class="visually-hidden"{% endif %}>{{ label }}</label>
+  <select id="{{ field_id }}" class="input{% if state %} {{ state }}{% endif %}" name="{{ name }}"
+    {%- if error %} aria-invalid="true" aria-describedby="{{ field_id }}-error"{% elif hint %} aria-describedby="{{ field_id }}-hint"{% endif %}>
+    {% for option_value, option_label in options %}
+    <option value="{{ option_value }}"{% if option_value == value %} selected{% endif %}>{{ option_label }}</option>
+    {% endfor %}
+  </select>
+  {% if error %}<p class="error" id="{{ field_id }}-error">{{ error }}</p>
+  {% elif hint %}<p class="hint" id="{{ field_id }}-hint">{{ hint }}</p>{% endif %}
+</div>
+{%- endmacro %}
+
+{# Longer text. With `limit`, a counter shows the characters used; workspace.js keeps it live and
+   the server shows it too, so it works without JavaScript. Going over the limit is allowed while
+   typing, so a pasted text can be trimmed, and refused on submit. #}
+{% macro textarea(name, label, errors, value="", hint="", limit=none, rows=4, required=false, id="", state="", mono=false) -%}
+{% set error = errors.get(name) %}
+{# The counter shows from four fifths of the limit on, where it starts to matter. #}
+{% set counter_from = (limit * 4) // 5 if limit else 0 %}
+{% set field_id = id or name %}
+<div class="field{% if error %} invalid{% endif %}">
+  <label for="{{ field_id }}">{{ label }}</label>
+  <textarea id="{{ field_id }}" class="input{% if mono %} mono{% endif %}{% if state %} {{ state }}{% endif %}" name="{{ name }}" rows="{{ rows }}"
+    {%- if required %} required{% endif %}
+    {%- if limit %} data-limit="{{ limit }}" data-counter-from="{{ counter_from }}"{% endif %}
+    {%- if error %} aria-invalid="true" aria-describedby="{{ field_id }}-error"{% elif hint %} aria-describedby="{{ field_id }}-hint"{% endif %}>{{ value }}</textarea>
+  {% if limit %}<output class="counter{% if value|length > limit %} over{% elif value|length < counter_from %} is-quiet{% endif %}" for="{{ field_id }}" data-counter-for="{{ field_id }}">{{ value|length }}/{{ limit }}</output>{% endif %}
+  {% if error %}<p class="error" id="{{ field_id }}-error">{{ error }}</p>
+  {% elif hint %}<p class="hint" id="{{ field_id }}-hint">{{ hint }}</p>{% endif %}
+</div>
+{%- endmacro %}
+
+{# A file to upload; `accept` lists the media types the picker offers. #}
+{# With `max_bytes` and `too_large`, workspace.js refuses a larger file before it is sent. #}
+{% macro file_field(name, label, errors, accept="", hint="", id="", max_bytes=none, too_large="") -%}
+{% set error = errors.get(name) %}
+{% set field_id = id or name %}
+<div class="field{% if error %} invalid{% endif %}">
+  <label for="{{ field_id }}">{{ label }}</label>
+  <input id="{{ field_id }}" class="input" name="{{ name }}" type="file" required
+    {%- if accept %} accept="{{ accept }}"{% endif %}
+    {%- if max_bytes %} data-max-bytes="{{ max_bytes }}" data-too-large="{{ too_large }}"{% endif %}
+    {%- if error %} aria-invalid="true" aria-describedby="{{ field_id }}-error"{% elif hint %} aria-describedby="{{ field_id }}-hint"{% endif %}>
+  {% if error %}<p class="error" id="{{ field_id }}-error">{{ error }}</p>
+  {% elif hint %}<p class="hint" id="{{ field_id }}-hint">{{ hint }}</p>{% endif %}
+</div>
+{%- endmacro %}
+
+{# Several checkboxes under one label; `options` are (value, label, hint) triples. #}
+{# Options are (value, label, hint). With code_labels the label is an identifier shown as code;
+   without, the label is plain text and the hint can carry the identifier. #}
+{% macro choices(name, legend, options, errors, selected=[], code_labels=true) -%}
+{% set error = errors.get(name) %}
+<fieldset class="choices"{% if error %} aria-invalid="true" aria-describedby="{{ name }}-error"{% endif %}>
+  <legend>{{ legend }}</legend>
+  {% for option_value, option_label, option_hint in options %}
+  <div class="field check">
+    <input id="{{ name }}-{{ loop.index }}" name="{{ name }}" type="checkbox" value="{{ option_value }}"{% if option_value in selected %} checked{% endif %}
+      {%- if option_hint %} aria-describedby="{{ name }}-{{ loop.index }}-hint"{% endif %}>
+    <label for="{{ name }}-{{ loop.index }}">{% if code_labels %}<code>{{ option_label }}</code>{% else %}{{ option_label }}{% endif %}</label>
+    {% if option_hint %}<p class="hint" id="{{ name }}-{{ loop.index }}-hint">{{ option_hint }}</p>{% endif %}
+  </div>
+  {% endfor %}
+  {% if error %}<p class="error" id="{{ name }}-error">{{ error }}</p>{% endif %}
+</fieldset>
+{%- endmacro %}
+
+{# A checkbox whose label is the caller's content, so it can hold links. #}
+{% macro checkbox(name, errors, checked=false) -%}
+{% set error = errors.get(name) %}
+<div class="field check{% if error %} invalid{% endif %}">
+  <input id="{{ name }}" name="{{ name }}" type="checkbox" required{% if checked %} checked{% endif %}
+    {%- if error %} aria-invalid="true" aria-describedby="{{ name }}-error"{% endif %}>
+  <label for="{{ name }}">{{ caller() }}</label>
+  {% if error %}<p class="error" id="{{ name }}-error">{{ error }}</p>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro card(wide=false, center=false) -%}
+<section class="{{ ['card', 'wide' if wide else '', 'center' if center else ''] | select | join(' ') }}">
+  {{ caller() }}
+</section>
+{%- endmacro %}
+
+{% macro tag(label, variant="") -%}
+<span class="tag{% if variant %} {{ variant }}{% endif %}">{{ label }}</span>
+{%- endmacro %}
+
+{% macro tags(labels, variant="", label="") -%}
+<ul class="tags"{% if label %} aria-label="{{ label }}"{% endif %}>
+  {% for item in labels %}<li>{{ tag(item, variant) }}</li>{% endfor %}
+</ul>
+{%- endmacro %}
+
+{# A row of buttons; `stack` puts them one under another. #}
+{% macro actions(stack=false) -%}
+<div class="actions{% if stack %} stack{% endif %}">{{ caller() }}</div>
+{%- endmacro %}
+
+{# The landing page's opening: a short label, the promise and a lead; the caller adds actions. #}
+{% macro hero(eyebrow, title, lead) -%}
+<section class="hero">
+  <p class="eyebrow">{{ eyebrow }}</p>
+  <h1>{{ title }}</h1>
+  <p class="lead">{{ lead }}</p>
+  {{ caller() }}
+</section>
+{%- endmacro %}
+
+{% macro features(label) -%}
+<section class="features" aria-label="{{ label }}">{{ caller() }}</section>
+{%- endmacro %}
+
+{% macro feature(title, text) -%}
+<article>
+  <h2>{{ title }}</h2>
+  <p>{{ text }}</p>
+</article>
+{%- endmacro %}
+
+{# Label and value pairs, such as an invitation's role and email. #}
+{% macro facts(pairs) -%}
+<dl class="facts">
+  {% for term, value in pairs %}<dt>{{ term }}</dt><dd>{{ value }}</dd>{% endfor %}
+</dl>
+{%- endmacro %}
+
+{# One row per item, its name on the left and a tag on the right. #}
+{% macro rows(items) -%}
+<ul class="channels">
+  {% for name, label in items %}<li><span>{{ name }}</span>{{ tag(label) }}</li>{% endfor %}
+</ul>
+{%- endmacro %}
+
+{# The one-time token from an email link. token.js fills it from the URL fragment and keeps it
+   hidden; it shows when there is nothing to fill, when JavaScript is off (noscript.css) or when the
+   token was refused, so the person can paste the link from the email. #}
+{% macro token_field(label, errors, value="", hint="") -%}
+<div class="token-paste" data-token-paste{% if not errors.get("token") %} hidden{% endif %}>
+  {{ field("token", label, errors, value=value, autocomplete="off", hint=hint) }}
+</div>
+{%- endmacro %}
+
+
+{# ——— Workspace: the signed-in area ——— #}
+
+{# A status; tone is "", success, warning or accent. #}
+{% macro badge(label, tone="") -%}
+<span class="badge{% if tone %} {{ tone }}{% endif %}">{{ label }}</span>
+{%- endmacro %}
+
+{# A disclosure that opens a short list of links or forms; the caller fills the list. #}
+{% macro menu(label, start=false, state="", up=false, avatar=false, wide=false) -%}
+<details class="{{ ['menu', 'start' if start else '', 'up' if up else '', 'wide' if wide else '', state] | select | join(' ') }}"{% if state == "is-open" %} open{% endif %}>
+  <summary>{% if avatar %}{{ mark(label, round=true) }}{% endif %}<span>{{ label }}</span></summary>
+  <div class="menu-list">{{ caller() }}</div>
+</details>
+{%- endmacro %}
+
+{# The sidebar's links; `items` are (href, label, key), the key names the icon and `current` is
+   the open key. In the compact layout the list becomes a row that scrolls sideways. #}
+{% macro sidenav(items, current, label, states={}) -%}
+<nav class="sidenav" aria-label="{{ label }}">
+  <ul>
+    {% for href, item_label, key in items %}
+    <li><a href="{{ href }}"{% if states.get(key) %} class="{{ states[key] }}"{% endif %}{% if key == current %} aria-current="page"{% endif %}>{{ icon(key) }}<span>{{ item_label }}</span></a></li>
+    {% endfor %}
+  </ul>
+</nav>
+{%- endmacro %}
+
+{# A square with a name's first letter: a channel or a platform; `round` for a person. #}
+{% macro mark(name, round=false) -%}
+<span class="mark{% if round %} round{% endif %}" aria-hidden="true">{{ name[:1] | upper }}</span>
+{%- endmacro %}
+
+{# The note after a change, in a corner; it fades after a while and holds while hovered
+   (rule web.app.feedback). #}
+{% macro toast(text, tone="success", state="") -%}
+<div class="toast {{ tone }}{% if state %} {{ state }}{% endif %}" role="status">{{ icon(tone) }}<span>{{ text }}</span></div>
+{%- endmacro %}
+
+{# A form in a modal box; dialog_button opens it (workspace.js). Without JavaScript the box shows
+   in the page and the button hides (noscript.css). `open` shows it on load, as after an error.
+   `state="is-static"` draws it open in the page, for /design. #}
+{% macro dialog(id, title, close_label, open=false, state="") -%}
+<dialog class="dialog{% if state %} {{ state }}{% endif %}" id="{{ id }}" aria-labelledby="{{ id }}-title"{% if open %} data-open{% endif %}{% if state %} open{% endif %}>
+  <div class="dialog-header">
+    <h2 id="{{ id }}-title">{{ title }}</h2>
+    <form method="dialog">{{ icon_button("close", close_label) }}</form>
+  </div>
+  <div class="dialog-body">{{ caller() }}</div>
+</dialog>
+{%- endmacro %}
+
+{# A small button that is only an icon; `label` is what screen readers hear. #}
+{% macro icon_button(name, label, type="submit", state="") -%}
+<button class="icon-button{% if state %} {{ state }}{% endif %}" type="{{ type }}" aria-label="{{ label }}">{{ icon(name) }}</button>
+{%- endmacro %}
+
+{% macro dialog_button(target, label, variant="", size="", plus=false) -%}
+<button class="{{ ['button', variant, size] | select | join(' ') }}" type="button" data-dialog="{{ target }}">{% if plus %}{{ icon("plus") }}{% endif %}{{ label }}</button>
+{%- endmacro %}
+
+{# The levels of one page, such as the channel and each platform; `items` are (href, label, key). #}
+{% macro tabs(items, current, label, states={}) -%}
+<nav class="tabs" aria-label="{{ label }}">
+  <ul>
+    {% for href, item_label, key in items %}
+    <li><a href="{{ href }}"{% if states.get(key) %} class="{{ states[key] }}"{% endif %}{% if key == current %} aria-current="page"{% endif %}>{{ item_label }}</a></li>
+    {% endfor %}
+  </ul>
+</nav>
+{%- endmacro %}
+
+{# The way up to the list a page belongs to, shown above its title, such as "‹ Episodes". #}
+{% macro back_link(href, label) -%}
+<p class="back-link"><a href="{{ href }}">{{ icon("back") }}{{ label }}</a></p>
+{%- endmacro %}
+
+{# A page's title and lead; the caller adds the page's main actions. #}
+{% macro page_header(title, lead="") -%}
+<header class="page-header">
+  <div>
+    <h1>{{ title }}</h1>
+    {% if lead %}<p>{{ lead }}</p>{% endif %}
+  </div>
+  <div class="panel-actions">{{ caller() }}</div>
+</header>
+{%- endmacro %}
+
+{# One block of a workspace page. #}
+{% macro panel(title="", id="") -%}
+<section class="panel"{% if id %} id="{{ id }}"{% endif %}{% if title %} aria-labelledby="{{ id or title|lower|replace(' ', '-') }}-title"{% endif %}>
+  {% if title %}<h2 id="{{ id or title|lower|replace(' ', '-') }}-title">{{ title }}</h2>{% endif %}
+  {{ caller() }}
+</section>
+{%- endmacro %}
+
+{# A labelled block inside a panel, set apart from the form above it. #}
+{% macro subsection(title, id) -%}
+<section class="subsection" aria-labelledby="{{ id }}-title">
+  <h3 id="{{ id }}-title">{{ title }}</h3>
+  {{ caller() }}
+</section>
+{%- endmacro %}
+
+{# Buttons at the end of a panel's form. #}
+{% macro panel_actions() -%}
+<div class="panel-actions">{{ caller() }}</div>
+{%- endmacro %}
+
+{# What is missing, and the caller's action that fills it. #}
+{% macro empty(title, text) -%}
+<div class="empty">
+  <h2>{{ title }}</h2>
+  <p>{{ text }}</p>
+  {{ caller() }}
+</div>
+{%- endmacro %}
+
+{# A list whose rows the caller draws: {% call(item) ui.items(list) %}…{% endcall %}. #}
+{% macro items(entries, label="") -%}
+<ul class="items"{% if label %} aria-label="{{ label }}"{% endif %}>
+  {% for entry in entries %}<li>{{ caller(entry) }}</li>{% endfor %}
+</ul>
+{%- endmacro %}
+
+{# A row's main text and its secondary line. #}
+{% macro item_main(title, detail="", href="") -%}
+<div class="item-main">
+  {% if href %}<a class="item-link" href="{{ href }}">{{ title }}</a>{% else %}<strong>{{ title }}</strong>{% endif %}
+  {% if detail %}<p>{{ detail }}</p>{% endif %}
+</div>
+{%- endmacro %}
+
+{# A grid of cards that the caller draws: {% call(item) ui.tiles(list) %}…{% endcall %}; each card
+   is a tile_media, its text and tile_actions. #}
+{% macro tiles(entries, label="") -%}
+<ul class="tiles"{% if label %} aria-label="{{ label }}"{% endif %}>
+  {% for entry in entries %}<li class="tile">{{ caller(entry) }}</li>{% endfor %}
+</ul>
+{%- endmacro %}
+
+{# A card's picture: the image when there is one, otherwise the icon of its kind. #}
+{% macro tile_media(src="", alt="", icon_name="image") -%}
+<div class="tile-media">{% if src %}{{ preview(src, alt) }}{% else %}{{ icon(icon_name) }}{% endif %}</div>
+{%- endmacro %}
+
+{# A card's text: its title, then the caller's details. #}
+{% macro tile_body(title) -%}
+<div class="tile-body"><strong>{{ title }}</strong>{{ caller() }}</div>
+{%- endmacro %}
+
+{% macro tile_actions() -%}
+<div class="tile-actions">{{ caller() }}</div>
+{%- endmacro %}
+
+{# A row's main content when it is more than a title, such as a file and its upload form. #}
+{% macro item_body() -%}
+<div class="item-main">{{ caller() }}</div>
+{%- endmacro %}
+
+{# Short fields that sit side by side while there is room. #}
+{% macro fields_row() -%}
+<div class="fields">{{ caller() }}</div>
+{%- endmacro %}
+
+{# Text someone wrote, such as research notes, keeping its line breaks; `mono` for plain-text
+   formats such as a Fountain screenplay. #}
+{% macro text_block(text, mono=false) -%}
+<p class="text-block{% if mono %} mono{% endif %}">{{ text }}</p>
+{%- endmacro %}
+
+{# An ordered list of short entries, such as a screenplay's scenes. #}
+{% macro numbered(entries, label) -%}
+<ol class="numbered" aria-label="{{ label }}">
+  {% for entry in entries %}<li>{{ entry }}</li>{% endfor %}
+</ol>
+{%- endmacro %}
+
+{# Plays an audio or video file in the page; `label` names it for screen readers. #}
+{% macro player(src, media_type, label) -%}
+{% if media_type.startswith("video/") -%}
+<video class="player" controls preload="metadata" playsinline src="{{ src }}" aria-label="{{ label }}"></video>
+{%- else -%}
+<audio class="player" controls preload="metadata" src="{{ src }}" aria-label="{{ label }}"></audio>
+{%- endif %}
+{%- endmacro %}
+
+{# A quiet detail next to a title or badge, such as a handle or a date. #}
+{% macro meta(text) -%}
+<span class="meta">{{ text }}</span>
+{%- endmacro %}
+
+{# Says a value comes from a higher level, such as the channel's kit on an account. #}
+{% macro inherited(text) -%}
+<p class="inherited">{{ text }}</p>
+{%- endmacro %}
+
+{# A row's actions, on the right. #}
+{% macro item_side() -%}
+<div class="item-side">{{ caller() }}</div>
+{%- endmacro %}
+
+{# A destructive action that asks once more in place, with no script (rule ui.microinteractions). #}
+{% macro confirm(label, question, action, csrf_field, csrf_token, confirm_label, fields=[], state="") -%}
+<details class="confirm"{% if state == "is-open" %} open{% endif %}>
+  <summary class="button ghost danger small" role="button">{{ label }}</summary>
+  <div class="confirm-box" role="group" aria-label="{{ label }}">
+    <p>{{ question }}</p>
+    {% call form(action, csrf_field, csrf_token) %}
+      {% for field_name, field_value in fields %}{{ hidden(field_name, field_value) }}{% endfor %}
+      <div class="confirm-actions">{{ button(confirm_label, variant="danger", size="small") }}</div>
+    {% endcall %}
+  </div>
+</details>
+{%- endmacro %}
+
+{# A brand color, drawn as SVG so it needs no inline style under the CSP. #}
+{% macro chip(hex, name) -%}
+<span class="chip"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" fill="{{ hex }}"/></svg><span>{{ name }}</span> <code>{{ hex }}</code></span>
+{%- endmacro %}
+
+{# An uploaded image. #}
+{% macro preview(src, alt) -%}
+<img class="preview" src="{{ src }}" alt="{{ alt }}" loading="lazy" decoding="async">
+{%- endmacro %}
+
+{# What a channel still needs; `entries` are (done, label, href), with no link when href is empty. #}
+{% macro checklist(entries) -%}
+<ul class="checklist">
+  {% for done, label, href in entries %}
+  <li class="{{ 'done' if done else 'todo' }}">{{ icon('done' if done else 'todo') }}{% if done or not href %}<span>{{ label }}</span>{% else %}<a href="{{ href }}">{{ label }}</a>{% endif %}</li>
+  {% endfor %}
+</ul>
+{%- endmacro %}
+
+{# A value to copy once; workspace.js makes the button copy it, and the field selects itself. #}
+{% macro copy_field(id, label, value, button_label, copied_label) -%}
+<div class="field">
+  <label for="{{ id }}">{{ label }}</label>
+  <div class="copy">
+    <input id="{{ id }}" class="input" type="text" value="{{ value }}" readonly data-select-on-focus>
+    <button class="button ghost" type="button" data-copy="{{ id }}" data-copied="{{ copied_label }}" hidden>{{ button_label }}</button>
+  </div>
+</div>
+{%- endmacro %}
+
+{# The link to the next page of a list. #}
+{% macro pager(href, label) -%}
+<nav class="pager">{{ link_button(href, label, variant="ghost", size="small") }}</nav>
+{%- endmacro %}
+
+{# The page shell (rule ui.design-system): the public pages' header and footer, and the
+   signed-in sidebar, built from the parts below so /design can show them too. #}
+
+{# The product's icon and name, linking to `href`; the compact sidebar hides the name. #}
+{% macro brand(href, icon_src) -%}
+<a class="brand" href="{{ href }}"><img src="{{ icon_src }}" alt=""><span>sreditor</span></a>
+{%- endmacro %}
+
+{# The language switch; `links` are (href, name, current). It loads the whole page, so
+   <html lang> changes with the language. #}
+{% macro languages(links, label) -%}
+<nav class="languages" aria-label="{{ label }}" hx-boost="false">
+  {% for href, name, current in links %}
+  {% if current %}<span aria-current="true">{{ name }}</span>{% else %}<a href="{{ href }}" rel="nofollow">{{ name }}</a>{% endif %}
+  {% endfor %}
+</nav>
+{%- endmacro %}
+
+{# The public pages' top bar: the brand, then the caller's links. #}
+{% macro site_header(icon_src) -%}
+<header class="site-header">
+  {{ brand("/", icon_src) }}
+  <nav>{{ caller() }}</nav>
+</header>
+{%- endmacro %}
+
+{# The public pages' footer: legal links, then the language switch the caller passes in. #}
+{% macro site_footer(terms_label, privacy_label) -%}
+<footer class="site-footer">
+  <span>© sreditor</span>
+  <a href="/terms">{{ terms_label }}</a>
+  <a href="/privacy">{{ privacy_label }}</a>
+  {{ caller() }}
+</footer>
+{%- endmacro %}
+
+{# The signed-in sidebar: the brand, then the caller's switcher, links and person menu. #}
+{% macro app_sidebar(icon_src) -%}
+<aside class="app-sidebar">
+  {{ brand("/app", icon_src) }}
+  {{ caller() }}
+</aside>
+{%- endmacro %}
+
+{# A form's submit button styled as a menu entry, such as Sign out in the person's menu. #}
+{% macro menu_button(label) -%}
+<button type="submit">{{ label }}</button>
+{%- endmacro %}

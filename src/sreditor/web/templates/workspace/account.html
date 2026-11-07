@@ -1,0 +1,22 @@
+{% extends "workspace/layout.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}{{ _("Account") }}{% endblock %}
+{% block content %}
+{% call ui.page_header(_("Account"), user.email) %}
+  {{ ui.link_button("/app/account/tokens", _("API tokens"), variant="ghost") }}
+{% endcall %}
+{% call ui.panel(_("Profile"), id="profile") %}
+  {% call ui.form("/app/account/profile", csrf_field, csrf_token) %}
+    {{ ui.field("display_name", _("Name"), errors, value=user.display_name, autocomplete="name", maxlength=80) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Save name")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% call ui.panel(_("Password"), id="password") %}
+  <p>{{ _("Changing it signs you out everywhere else.") }}</p>
+  {% call ui.form("/app/account/password", csrf_field, csrf_token) %}
+    {{ ui.field("current_password", _("Current password"), errors, type="password", autocomplete="current-password") }}
+    {{ ui.field("password", _("New password"), errors, type="password", autocomplete="new-password", minlength=12, hint=_("At least 12 characters.")) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Change password")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% endblock %}

@@ -1,0 +1,76 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% block page_title %}{{ _("Accounts") }}{% endblock %}
+{% block page %}
+{% set may_write = can("write_channel") %}
+{% set may_add = may_write and available %}
+{% set is_new = editing and editing.platform not in channel.accounts | map(attribute="platform") | map(attribute="value") | list %}
+{% call ui.page_header(_("Accounts"), _("The channel's profile on each platform.")) %}
+  {% if may_add and channel.accounts %}{{ ui.dialog_button("add-account", _("Add account"), plus=true) }}{% endif %}
+{% endcall %}
+{{ ui.form_error(errors) }}
+{% if channel.accounts %}
+{% call ui.panel() %}
+  {% call(account) ui.items(channel.accounts, _("Accounts")) %}
+    {% set key = account.platform.value %}
+    {% set name = platform_names[account.platform] %}
+    {{ ui.mark(name) }}
+    {% call ui.item_body() %}
+      <strong id="account-{{ key }}">{{ name }}</strong> {{ ui.badge(_(status_labels[account.status]), status_tones[account.status]) }}
+      <p>@{{ account.handle }}{% if account.url %} · <a href="{{ account.url }}" rel="noopener noreferrer">{{ account.url }}</a>{% endif %}</p>
+      {% if account.description %}<p>{{ account.description }}</p>{% endif %}
+    {% endcall %}
+    {% if may_write %}
+    {% call ui.item_side() %}{{ ui.dialog_button("edit-" ~ key, _("Edit"), variant="ghost", size="small") }}{% endcall %}
+    {% endif %}
+  {% endcall %}
+{% endcall %}
+{% else %}
+{% call ui.empty(_("No accounts yet"), _("Add the channel's profile on each platform it posts to.")) %}
+  {% if may_add %}{{ ui.dialog_button("add-account", _("Add account"), plus=true) }}{% endif %}
+{% endcall %}
+{% endif %}
+{% if may_write %}
+{% for account in channel.accounts %}
+{% set key = account.platform.value %}
+{% set name = platform_names[account.platform] %}
+{% set is_sent = editing and editing.platform == key %}
+{% set shown = editing if is_sent else account %}
+{% set shown_errors = errors if is_sent else {} %}
+{% call ui.dialog("edit-" ~ key, name, _("Close"), open=is_sent) %}
+  {% call ui.form(channel_link ~ "/accounts", csrf_field, csrf_token) %}
+    {{ ui.hidden("platform", key) }}
+    {{ ui.hidden("revision", revision) }}
+    {% call ui.fields_row() %}
+      {{ ui.field("handle", _("Handle"), shown_errors, value=shown.handle, maxlength=200, id=key ~ "-handle") }}
+      {{ ui.select("status", _("Status"), status_options, shown_errors, value=shown.status, id=key ~ "-status") }}
+    {% endcall %}
+    {{ ui.field("url", _("Profile address"), shown_errors, type="url", value=shown.url or "", required=false, id=key ~ "-url", hint=_("The full address, starting with https://.")) }}
+    {{ ui.textarea("description", _("Description"), shown_errors, value=shown.description, limit=limits.get(account.platform), id=key ~ "-description") }}
+    {% call ui.panel_actions() %}
+      {{ ui.button(_("Save %(platform)s", platform=name)) }}
+    {% endcall %}
+  {% endcall %}
+  {% call ui.panel_actions() %}
+    {{ ui.confirm(_("Remove"), _("Remove the %(platform)s account and its brand overrides?", platform=name), channel_link ~ "/accounts/" ~ key ~ "/remove", csrf_field, csrf_token, _("Remove account"), fields=[("revision", revision)]) }}
+  {% endcall %}
+{% endcall %}
+{% endfor %}
+{% endif %}
+{% if may_add %}
+{% set new_errors = errors if is_new else {} %}
+{% call ui.dialog("add-account", _("Add an account"), _("Close"), open=is_new) %}
+  {% call ui.form(channel_link ~ "/accounts", csrf_field, csrf_token) %}
+    {{ ui.hidden("revision", revision) }}
+    {% call ui.fields_row() %}
+      {{ ui.select("platform", _("Platform"), platform_options, new_errors, value=editing.platform if is_new else "", id="new-platform") }}
+      {{ ui.field("handle", _("Handle"), new_errors, value=editing.handle if is_new else "", maxlength=200, id="new-handle") }}
+    {% endcall %}
+    {{ ui.field("url", _("Profile address"), new_errors, type="url", value=editing.url if is_new else "", required=false, id="new-url", hint=_("The full address, starting with https://.")) }}
+    {{ ui.textarea("description", _("Description"), new_errors, value=editing.description if is_new else "", id="new-description", hint=limits_hint) }}
+    {{ ui.hidden("status", "active") }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Add account")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}{{ _("Your invitation") }}{% endblock %}
+{% block main %}
+{% call ui.card(center=true) %}
+  {{ ui.status_icon("info") }}
+  <h1>{{ _("Your invitation") }}</h1>
+  <p class="muted">{{ _("Opening the invitation from your email.") }}</p>
+  {{ ui.form_error(errors) }}
+  {# token.js copies the token from the link and submits; the server keeps it in a cookie. #}
+  {% call ui.form("/invitations/open", csrf_field, csrf_token, token_form=true, auto_submit=true) %}
+    {{ ui.token_field(_("Link from your email"), errors, hint=_("Paste the whole link from the email.")) }}
+    {{ ui.button(_("Show invitation"), wide=true) }}
+  {% endcall %}
+{% endcall %}
+{% endblock %}

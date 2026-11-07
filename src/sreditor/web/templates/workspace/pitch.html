@@ -1,0 +1,78 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% block page_title %}{{ pitch.title }}{% endblock %}
+{% block page %}
+{% set may_write = can("write_content") %}
+{{ ui.back_link(list_link, _("Pitches")) }}
+{% call ui.page_header(pitch.title, pitch.summary) %}
+  {{ ui.badge(_(pitch_status_labels[pitch.status]), pitch_status_tones[pitch.status]) }}
+{% endcall %}
+{{ ui.form_error(errors) }}
+{% if may_write %}
+{% call ui.panel(_("Pitch"), id="pitch") %}
+  {% call ui.form(pitch_link, csrf_field, csrf_token) %}
+    {{ ui.hidden("revision", pitch.revision) }}
+    {{ ui.field("title", _("Title"), errors, value=values.title, maxlength=title_limit) }}
+    {{ ui.textarea("summary", _("Summary"), errors, value=values.summary, limit=summary_limit, rows=4, hint=_("The story in a few lines: what it is and why it matters.")) }}
+    {{ ui.select("status", _("Status"), status_options, errors, value=values.status, hint=_("Idea, being researched, approved for an episode, or set aside.")) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Save changes")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% endif %}
+{% call ui.panel(_("Episodes"), id="episodes") %}
+  {% if used_by %}
+  <p>{{ _("Used by episodes:") }} {% for number in used_by %}<a href="{{ episodes_link }}/{{ number }}/research">#{{ number }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>
+  {% else %}
+  <p class="muted">{{ _("No episode uses this pitch yet. Choose it on an episode's Research page.") }}</p>
+  {% endif %}
+{% endcall %}
+{% call ui.panel(_("Notes"), id="notes") %}
+  {% if may_write %}
+  {% call ui.form(pitch_link ~ "/research", csrf_field, csrf_token) %}
+    {{ ui.hidden("revision", notes.revision) }}
+    {{ ui.textarea("text", _("Research notes"), errors, value=notes_text, limit=notes_limit, rows=10, hint=_("Facts, open questions and leads. Every episode that uses this pitch shows them.")) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Save notes")) }}{% endcall %}
+  {% endcall %}
+  {% elif notes.text %}
+  {{ ui.text_block(notes.text) }}
+  {% else %}
+  <p class="muted">{{ _("No notes yet.") }}</p>
+  {% endif %}
+{% endcall %}
+{% call ui.panel(_("Sources"), id="sources") %}
+  {% if sources %}
+  {% call(source) ui.items(sources, _("Sources")) %}
+    {% call ui.item_body() %}
+      <p><a href="{{ source.url }}" rel="noopener noreferrer" target="_blank">{{ source.title }}</a></p>
+      {% if source.claim %}<p>{{ source.claim }}</p>{% endif %}
+      {{ ui.meta(_("Read on %(date)s", date=_.day(source.accessed_on))) }}
+    {% endcall %}
+    {% if may_write %}
+    {% call ui.item_side() %}
+      {{ ui.confirm(_("Remove"), _("Stop citing this source?"), pitch_link ~ "/sources/remove", csrf_field, csrf_token, _("Remove source"), fields=[("source_id", source.id), ("revision", source.revision)]) }}
+    {% endcall %}
+    {% endif %}
+  {% endcall %}
+  {% if next_cursor %}{{ ui.pager(pitch_link ~ "?cursor=" ~ next_cursor, _("More sources")) }}{% endif %}
+  {% else %}
+  <p class="muted">{{ _("No sources yet.") }}</p>
+  {% endif %}
+{% endcall %}
+{% if may_write %}
+{% call ui.panel(_("Add a source"), id="new-source") %}
+  {% call ui.form(pitch_link ~ "/sources", csrf_field, csrf_token) %}
+    {{ ui.field("url", _("Link"), errors, type="url", value=sent_source.url if sent_source else "", hint=_("The full address, starting with https://.")) }}
+    {{ ui.field("title", _("Title"), errors, value=sent_source.title if sent_source else "", maxlength=source_title_limit, id="source-title") }}
+    {{ ui.textarea("claim", _("What it supports"), errors, value=sent_source.claim if sent_source else "", limit=claim_limit, rows=2, hint=_("The claim this source backs up.")) }}
+    {{ ui.field("accessed_on", _("Read on"), errors, type="date", value=sent_source.accessed_on if sent_source else "", required=false, hint=_("Leave it empty for today.")) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Add source")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% endif %}
+{% if can("write_channel") %}
+{% call ui.panel(_("Delete pitch"), id="danger") %}
+  <p>{{ _("Deleting removes the pitch with its notes and sources. Episodes must stop using it first. This cannot be undone.") }}</p>
+  {{ ui.confirm(_("Delete this pitch"), _("Delete this pitch and its research? This cannot be undone."), pitch_link ~ "/delete", csrf_field, csrf_token, _("Delete pitch"), fields=[("revision", pitch.revision)]) }}
+{% endcall %}
+{% endif %}
+{% endblock %}

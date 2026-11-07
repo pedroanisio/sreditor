@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}{{ _("Reset your password") }}{% endblock %}
+{% block main %}
+{% call ui.card() %}
+  <h1>{{ _("Reset your password") }}</h1>
+  <p class="muted">{{ _("Enter your account's email and we'll send you a link to choose a new password.") }}</p>
+  {{ ui.form_error(errors) }}
+  {% call ui.form("/forgot-password", csrf_field, csrf_token) %}
+    {{ ui.field("email", _("Email"), errors, type="email", value=email, autocomplete="email") }}
+    {{ ui.button(_("Send link"), wide=true) }}
+  {% endcall %}
+  <p class="muted center"><a href="/login">{{ _("Back to sign in") }}</a></p>
+{% endcall %}
+{% endblock %}

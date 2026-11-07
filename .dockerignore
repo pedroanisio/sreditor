@@ -1,0 +1,12 @@
+.git
+.venv
+.env
+.pytest_cache
+.coverage
+**/__pycache__
+store
+var
+tests
+uv.lock
+e2e
+e2e-evidence

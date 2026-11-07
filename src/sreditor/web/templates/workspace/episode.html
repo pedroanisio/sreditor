@@ -1,0 +1,32 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% block page_title %}{{ episode.title }}{% endblock %}
+{% block page %}
+{{ ui.back_link(list_link, _("Episodes")) }}
+{% call ui.page_header("#" ~ episode.number ~ " · " ~ episode.title, episode.summary) %}
+  {{ ui.badge(_(episode_status_labels[episode.status]), episode_status_tones[episode.status]) }}
+{% endcall %}
+{{ ui.tabs(episode_tabs, episode_tab, _("Episode pages")) }}
+{{ ui.form_error(errors) }}
+{% if can("write_content") %}
+{% call ui.panel(_("Episode"), id="episode") %}
+  {% call ui.form(channel_link ~ "/episodes/" ~ episode.number, csrf_field, csrf_token) %}
+    {{ ui.hidden("revision", episode_revision) }}
+    {{ ui.field("title", _("Title"), errors, value=values.title, maxlength=title_limit) }}
+    {{ ui.textarea("summary", _("Summary"), errors, value=values.summary, limit=summary_limit, rows=4, hint=_("What the episode is about, in a few lines.")) }}
+    {{ ui.select("status", _("Status"), status_options, errors, value=values.status, hint=_("Where the episode is in production.")) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Save changes")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% else %}
+{% call ui.panel(_("Episode"), id="episode") %}
+  {{ ui.facts([(_("Status"), _(episode_status_labels[episode.status]))]) }}
+{% endcall %}
+{% endif %}
+{% if can("write_channel") %}
+{% call ui.panel(_("Delete episode"), id="danger") %}
+  <p>{{ _("Deleting removes the episode. Its number is not given to another episode. This cannot be undone.") }}</p>
+  {{ ui.confirm(_("Delete this episode"), _("Delete this episode? This cannot be undone."), channel_link ~ "/episodes/" ~ episode.number ~ "/delete", csrf_field, csrf_token, _("Delete episode"), fields=[("revision", episode_revision)]) }}
+{% endcall %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,67 @@
+# Rules code.style.ruff, code.types.strict, code.tests.coverage and docs.generated.from.stmt:
+# every push and pull request must pass formatting, lint, strict types, tests and the docs check.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Unpack stmt
+        run: |
+          mkdir -p "$RUNNER_TEMP/stmt"
+          tar -xzf stmt-1.0.0.tar.gz -C "$RUNNER_TEMP/stmt"
+          echo "STMT_BIN=$RUNNER_TEMP/stmt/stmt-1.0.0/bin/stmt" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/stmt/stmt-1.0.0/bin" >> "$GITHUB_PATH"
+      - name: Format
+        run: uv run ruff format --check src tests e2e
+      - name: Lint
+        run: uv run ruff check src tests e2e
+      - name: Types
+        run: uv run mypy src
+      - name: Tests
+        run: uv run pytest --ignore=e2e -n auto
+      - name: Generated documents match the stmt store
+        run: uv run sreditor render --check
+
+  # Rules ui.e2e.playwright and ui.e2e.evidence: every flow runs in a real browser against the
+  # Docker build, and the screenshots and failure traces are attached to the run.
+  e2e:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Install Chromium for Playwright
+        run: uv run playwright install --with-deps chromium
+      - name: End-to-end tests against the Docker build
+        run: uv run pytest e2e -p no:cacheprovider --no-cov
+      - name: Attach the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-evidence
+          path: e2e-evidence/
+          if-no-files-found: ignore

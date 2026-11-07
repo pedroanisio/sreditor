@@ -1,0 +1,81 @@
+[project]
+name = "sreditor"
+version = "0.1.0"
+description = "Generate project documents from a stmt rule store."
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic[email]>=2.7",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "argon2-cffi>=23.1",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+    "mcp>=1.9",
+    "pillow>=13.0.0",
+    "prometheus-client>=0.21",
+]
+
+[project.scripts]
+sreditor = "sreditor.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+    "httpx>=0.27",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pytest-playwright>=0.10.0",
+    "pytest-xdist>=3.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sreditor"]
+
+[tool.sreditor]
+db = "store/rules.sqlite"
+domain = "sreditor"
+scope = "/"
+channels_db = "var/channels.sqlite"
+assets_dir = "var/assets"
+
+[tool.pytest.ini_options]
+addopts = "--cov=sreditor --cov-branch --cov-report=term-missing"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.coverage.report]
+# Rule code.tests.coverage: coverage must stay above 90%.
+fail_under = 91
+
+[tool.ruff]
+# Rule code.style.ruff: format and lint all Python with Ruff.
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# Rules code.comments.why (one-line docstrings), code.functions.small (complexity at most 10)
+# and code.functions.args (at most 5 parameters), on top of Ruff's defaults.
+extend-select = ["D100", "D101", "D102", "D103", "C901", "PLR0913"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-args = 5
+
+[tool.ruff.lint.per-file-ignores]
+# A test is named after the behaviour it checks (code.tests.naming), which says what a docstring
+# would; fixtures and helpers there are not public API.
+"tests/**" = ["D100", "D101", "D102", "D103"]
+"e2e/**" = ["D100", "D101", "D102", "D103"]
+
+[tool.mypy]
+# Rule code.types.strict.
+strict = true
+plugins = ["pydantic.mypy"]

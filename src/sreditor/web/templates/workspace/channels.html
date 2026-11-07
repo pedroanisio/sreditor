@@ -1,0 +1,25 @@
+{% extends "workspace/layout.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}{{ _("Your channels") }}{% endblock %}
+{% block content %}
+{% call ui.page_header(_("Your channels"), _("Each channel is one presence across social platforms: its accounts, brand kit and editorial guidelines.")) %}
+  {# The empty state below offers the same button. #}
+  {% if rows %}{{ ui.link_button("/app/channels/new", _("New channel")) }}{% endif %}
+{% endcall %}
+{% if rows %}
+{% call(row) ui.items(rows, _("Your channels")) %}
+  {% set channel_row, role = row %}
+  {{ ui.mark(channel_row.name) }}
+  {{ ui.item_main(channel_row.name, channel_row.slug ~ " · " ~ _("Accounts: %(count)s", count=channel_row.accounts | length), "/app/channels/" ~ channel_row.slug) }}
+  {% call ui.item_side() %}
+    {{ ui.badge(_(status_labels[channel_row.status]), status_tones[channel_row.status]) }}
+    {% if role %}{{ ui.badge(_.role(role) | capitalize) }}{% endif %}
+  {% endcall %}
+{% endcall %}
+{% if next_cursor %}{{ ui.pager("/app?cursor=" ~ next_cursor, _("More channels")) }}{% endif %}
+{% else %}
+{% call ui.empty(_("No channels yet"), _("Create your first channel, then add its accounts, brand kit and editorial guidelines.")) %}
+  {{ ui.link_button("/app/channels/new", _("New channel")) }}
+{% endcall %}
+{% endif %}
+{% endblock %}

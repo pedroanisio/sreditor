@@ -1,0 +1,5 @@
+/* Loaded only without JavaScript: nothing copies the token from the link, so ask for it. */
+.token-paste[hidden] { display: block; }
+/* Without JavaScript a dialog cannot open, so its form shows in the page and its button hides. */
+.dialog:not([open]) { display: block; position: static; width: auto; max-width: none; margin: var(--space-0) var(--space-0) var(--space-5); }
+.dialog .dialog-header form, [data-dialog] { display: none; }

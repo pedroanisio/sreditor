@@ -1,0 +1,14 @@
+{% extends "workspace/layout.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}{{ _("Connect %(name)s", name=client.client_name) }}{% endblock %}
+{% block content %}
+{% call ui.page_header(_("Connect %(name)s", name=client.client_name), _("This app asks to use sreditor as you. It gets an API token that never does more than your role allows, and only what you choose below.")) %}{% endcall %}
+{% call ui.panel(id="consent") %}
+  {% call ui.alert("info") %}{{ _("After you allow it, you go back to %(host)s. You can revoke its token at any time on your API tokens page.", host=client_host) }}{% endcall %}
+  {% call ui.form("/oauth/authorize", csrf_field, csrf_token) %}
+    {% for name, value in authorization.items() %}{{ ui.hidden(name, value) }}{% endfor %}
+    {{ ui.choices("scopes", _("Permissions"), scope_choices, errors, selected=selected, code_labels=false) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Allow")) }}{{ ui.button(_("Deny"), variant="ghost", formaction="/oauth/authorize/deny") }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% endblock %}

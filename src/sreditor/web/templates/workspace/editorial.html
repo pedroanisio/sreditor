@@ -1,0 +1,39 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% block page_title %}{{ _("Editorial") }}{% endblock %}
+{% block page %}
+{% set may_write = can("write_editorial") %}
+{% set level = platform.value if platform else "" %}
+{% call ui.page_header(_("Editorial"), _("What the channel is for, how it sounds and what it talks about. Guidelines set on a platform replace the channel's for that platform; house rules apply everywhere.")) %}{% endcall %}
+{{ ui.tabs(tabs, level, _("Editorial levels")) }}
+{{ ui.form_error(errors) }}
+{% for section_row in kinds %}
+{% set kind = section_row.kind.value %}
+{% set is_sent = sent and sent.kind == kind %}
+{% set kind_errors = errors if is_sent else {} %}
+{% call ui.panel(_(section_row.label), id="kind-" ~ kind) %}
+  <p>{{ _(section_row.hint) }}</p>
+  {% if section_row.entries %}
+  {% call(entry) ui.items(section_row.entries, _(section_row.label)) %}
+    {% set guideline, source = entry %}
+    {% call ui.item_body() %}<p>{{ guideline.text }}</p>{% endcall %}
+    {% call ui.item_side() %}
+      {{ ui.badge(_(source), "accent" if source == here else "") }}
+      {% if may_write and source == here %}
+      {{ ui.confirm(_("Retire"), _("Retire this guideline? It stays in the history."), channel_link ~ "/editorial/retire", csrf_field, csrf_token, _("Retire guideline"), fields=[("statement_id", guideline.id), ("platform", level)]) }}
+      {% endif %}
+    {% endcall %}
+  {% endcall %}
+  {% endif %}
+  {% if may_write %}
+  {% call ui.form(channel_link ~ "/editorial", csrf_field, csrf_token) %}
+    {{ ui.hidden("kind", kind) }}
+    {{ ui.hidden("platform", level) }}
+    {% set text = sent.text if is_sent else section_row.current %}
+    {{ ui.textarea("text", _("Change it") if section_row.is_single and section_row.current else _("Add one"), kind_errors, value=text, limit=limit, rows=3, id=kind ~ "-text") }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Save") if section_row.is_single else _("Add"), variant="ghost") }}{% endcall %}
+  {% endcall %}
+  {% endif %}
+{% endcall %}
+{% endfor %}
+{% endblock %}

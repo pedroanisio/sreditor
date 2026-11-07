@@ -1,0 +1,28 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% block page_title %}{{ _("Pitches") }}{% endblock %}
+{% block page %}
+{% call ui.page_header(_("Pitches"), _("Story ideas for the channel, each with its own research. An episode can use one; several episodes can share it.")) %}{% endcall %}
+{{ ui.tabs(status_filters, status_filter, _("Pitch status")) }}
+{{ ui.form_error(errors) }}
+{% if pitches %}
+{% call(row) ui.items(pitches, _("Pitches")) %}
+  {{ ui.item_main(row.title, row.summary | truncate(120), pitches_link ~ "/" ~ row.id) }}
+  {% call ui.item_side() %}
+    {{ ui.badge(_(pitch_status_labels[row.status]), pitch_status_tones[row.status]) }}
+  {% endcall %}
+{% endcall %}
+{% if next_cursor %}{{ ui.pager(pitches_link ~ "?cursor=" ~ next_cursor ~ ("&status=" ~ status_filter if status_filter else ""), _("More pitches")) }}{% endif %}
+{% else %}
+{% call ui.empty(_("No pitches yet"), _("Add the first pitch below. It starts as an idea.") if can("write_content") else _("Nobody has added a pitch yet.")) %}{% endcall %}
+{% endif %}
+{% if can("write_content") %}
+{% call ui.panel(_("New pitch"), id="new-pitch") %}
+  {% call ui.form(pitches_link, csrf_field, csrf_token) %}
+    {{ ui.field("title", _("Title"), errors, value=sent.title if sent else "", maxlength=title_limit) }}
+    {{ ui.textarea("summary", _("Summary"), errors, value=sent.summary if sent else "", limit=summary_limit, rows=3, hint=_("The story in a few lines: what it is and why it matters.")) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Add pitch")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% endif %}
+{% endblock %}

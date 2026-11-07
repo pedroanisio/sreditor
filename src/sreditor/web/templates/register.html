@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}{{ _("Create your account") }}{% endblock %}
+{% block main %}
+{% call ui.card() %}
+  <h1>{{ _("Create your account") }}</h1>
+  <p class="muted">{{ _("Already have an account?") }} <a href="/login">{{ _("Sign in") }}</a></p>
+  {{ ui.form_error(errors) }}
+  {% call ui.form("/register", csrf_field, csrf_token) %}
+    {{ ui.field("display_name", _("Your name"), errors, value=values.get("display_name", ""), autocomplete="name") }}
+    {{ ui.field("email", _("Email"), errors, type="email", value=values.get("email", ""), autocomplete="email") }}
+    {{ ui.field("password", _("Password"), errors, type="password", autocomplete="new-password", hint=_("At least 12 characters."), minlength=12) }}
+    {% call ui.checkbox("consent", errors) %}{{ _("I agree to the") }} <a href="/terms" target="_blank">{{ _("terms of service") }}</a> {{ _("and the") }} <a href="/privacy" target="_blank">{{ _("privacy policy") }}</a>.{% endcall %}
+    {{ ui.button(_("Create account"), wide=true) }}
+  {% endcall %}
+{% endcall %}
+{% endblock %}
