@@ -77,11 +77,12 @@ from sreditor.library_operations import Cast, EntryChange
 from sreditor.mcp_aliases import RENAMED_TOOLS, AliasingServer, ToolRename
 from sreditor.mcp_idempotency import IdempotencyKey, IdempotentCall, run_once
 from sreditor.mcp_principal import PRINCIPAL, Principal, principal
-from sreditor.media import MediaFile, MediaNotFound
+from sreditor.media import MediaFile, MediaKind, MediaNotFound
 from sreditor.media_operations import MediaChange, MediaQuery
 from sreditor.members import Invitation, Member, Permission, minimum_role
 from sreditor.pagination import DEFAULT_LIMIT, Page, ToolLimit, page_after
 from sreditor.pitch_operations import PitchResearch
+from sreditor.pitches import EpisodePitches
 from sreditor.problems import ProblemError
 from sreditor.repository import AccountTaken, ChannelExists, ChannelNotFound, RevisionMismatch
 from sreditor.research import (
@@ -193,11 +194,12 @@ class Effect(StrEnum):
     REMOVE = "remove"  # deletes or retires something people may still need
 
 
-def tool_annotations(title: str, effect: Effect) -> ToolAnnotations:
+def tool_annotations(title: str, effect: Effect, *, is_open_world: bool = False) -> ToolAnnotations:
     """All four hints, set explicitly (rule agentic.mcp.annotations).
 
     An unset hint means the worst case to a client: destructive, not idempotent and reaching
-    outside the server. Every tool acts only inside sreditor, so none is open-world.
+    outside the server. Tools act inside sreditor, so only those that call ElevenLabs are
+    open-world.
     """
     is_read = effect is Effect.READ
     return ToolAnnotations(
@@ -205,7 +207,7 @@ def tool_annotations(title: str, effect: Effect) -> ToolAnnotations:
         readOnlyHint=is_read,
         destructiveHint=effect is Effect.REMOVE,
         idempotentHint=effect is not Effect.CREATE,
-        openWorldHint=False,
+        openWorldHint=is_open_world,
     )
 
 
@@ -677,6 +679,7 @@ class Research(BaseModel):
 
     notes: ResearchNotes
     sources: Page[Source]
+    pitch_list: EpisodePitches
     pitches: list[PitchResearch] = Field(default_factory=list)
 
 
@@ -798,15 +801,18 @@ def add_research_tools(server: MCPServer, services: Services) -> None:
     ) -> Research:
         """Read an episode's research notes and the sources it cites, before writing about it,
         and the notes and sources of each pitch it is built on (`pitches`, main one first, as
-        they are now). Notes at revision 0 were never written. Pass `sources.next_cursor` as
-        `cursor` for more sources."""
+        they are now). `pitch_list` holds the pitch ids in order and the list's `revision`,
+        which set_episode_pitches and set_episode_pitch take as `expected_revision`. Notes at
+        revision 0 were never written. Pass `sources.next_cursor` as `cursor` for more
+        sources."""
 
         def read() -> Research:
             channel = access(context, slug)
             notes = research_operations.get_notes(services, channel, number)
             sources = research_operations.list_sources(services, channel, number, cursor, limit)
-            shown = pitch_operations.episode_pitch_research(services, channel, number)
-            return Research(notes=notes, sources=sources, pitches=shown)
+            listed = pitch_operations.get_episode_pitches(services, channel, number)
+            shown = pitch_operations.research_of_pitches(services, channel, listed)
+            return Research(notes=notes, sources=sources, pitch_list=listed, pitches=shown)
 
         return reported(read)
 
@@ -1046,19 +1052,23 @@ def add_media_tools(server: MCPServer, services: Services) -> None:
         who = principal(context)
         return access_for(services, slug, who.user, who.token)
 
+    # An episode list with a filter needs six arguments: cursor and limit stay top-level like the
+    # API's (agentic.mcp.results), and context is how the SDK hands over the caller.
     @server.tool(annotations=tool_annotations("List an episode's media", Effect.READ))
-    def list_media(
+    def list_media(  # noqa: PLR0913
         context: Context,
         slug: str,
         number: int,
+        kind: MediaKind | None = None,
         cursor: str | None = None,
         limit: ToolLimit = DEFAULT_LIMIT,
     ) -> Page[MediaFile]:
-        """List an episode's voice-over, sound effect, score and visual effect files, each with
-        its kind, name, note, media type and size. To get a file's bytes call get_file_link with
-        source episode_media and the `id` listed here; to add a file call create_upload_link.
-        Pass `next_cursor` as `cursor` for more."""
-        query = MediaQuery(number=number, cursor=cursor, limit=limit)
+        """List an episode's media files (voice-over, sound effect, score, visual effect,
+        cover, render and final video), each with its kind, name, note, media type and size.
+        Pass `kind` to list only one kind, such as cover or final_video for write_delivery. To
+        get a file's bytes call get_file_link with source episode_media and the `id` listed
+        here; to add a file call create_upload_link. Pass `next_cursor` as `cursor` for more."""
+        query = MediaQuery(number=number, kind=kind, cursor=cursor, limit=limit)
         return reported(lambda: media_operations.list_media(services, access(context, slug), query))
 
     @server.tool(annotations=tool_annotations("Remove a media file", Effect.REMOVE))
@@ -1098,8 +1108,10 @@ def add_waiver_tools(server: MCPServer, services: Services) -> None:
     ) -> Page[Waiver]:
         """List the signed waivers (image, voice or location releases) behind an episode: who
         signed, when and what each covers. Use it to check that everyone who appears agreed.
-        Waivers hold personal data: needs an owner or editor and the waivers:read scope. Files
-        are uploaded and downloaded through the API (upload_waiver, download_waiver)."""
+        Waivers hold personal data: needs an owner or editor and the waivers:read scope. Their
+        files never travel through MCP or its links (rule agentic.mcp.files): a person uploads
+        or opens them on the episode's waivers page, or a script with an API token calls the
+        API's upload_waiver and download_waiver operations."""
         return reported(
             lambda: waiver_operations.list_waivers(
                 services, access(context, slug), number, cursor, limit

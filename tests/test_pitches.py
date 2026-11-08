@@ -587,3 +587,16 @@ def test_pitch_error_message_in_use_names_set_episode_pitches() -> None:
 
 def test_pitch_error_message_other_error_is_none() -> None:
     assert pitch_error_message(ValueError("x")) is None
+
+
+def test_mcp_get_research_pitch_list_revision_lets_set_episode_pitches_succeed(
+    mcp: TestClient,
+) -> None:
+    first, second = created_pitch(mcp, "First"), created_pitch(mcp, "Second")
+    episode = {"slug": "funny-memes", "number": 1}
+    tool(mcp, "set_episode_pitches", {**episode, "pitch_ids": [first["id"]]})
+    listed = tool(mcp, "get_research", episode)["structuredContent"]["pitch_list"]
+    assert listed["pitch_ids"] == [first["id"]]
+    arguments = {**episode, "pitch_ids": [second["id"]], "expected_revision": listed["revision"]}
+    result = tool(mcp, "set_episode_pitches", arguments)
+    assert not result.get("isError") and result["structuredContent"]["pitch_ids"] == [second["id"]]

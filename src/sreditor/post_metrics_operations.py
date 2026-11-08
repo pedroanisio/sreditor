@@ -17,7 +17,7 @@ from sreditor.deps import ChannelAccess, Services
 from sreditor.episode_operations import episode_access
 from sreditor.members import Permission
 from sreditor.operations import gated
-from sreditor.pagination import Page, decode_cursor, encode_cursor
+from sreditor.pagination import INVALID_CURSOR, Page, decode_cursor, encode_cursor
 from sreditor.post_metrics import (
     ChannelPost,
     Metric,
@@ -29,8 +29,6 @@ from sreditor.post_metrics import (
 )
 from sreditor.problems import ProblemError
 from sreditor.retention_csv import MAX_CSV_CHARS, parse_retention_csv
-
-INVALID_CURSOR = "Invalid cursor"
 
 
 class PostMetricsOperation:

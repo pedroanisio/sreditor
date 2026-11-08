@@ -98,13 +98,14 @@ def add_file_tools(server: MCPServer, services: Services) -> None:
             )
         )
 
-    @server.tool(annotations=tool_annotations("Check an srstudio export", Effect.READ))
+    @server.tool(annotations=tool_annotations("Check an srstudio export", Effect.CREATE))
     def check_srstudio_export(context: Context, slug: str, number: int) -> ExportCheck:
         """Check whether an episode can be exported for srstudio: `ready`, the `missing` pieces
         in plain words (such as a voice-over take or a visual style), the episode's srstudio
         `slug` and `seed` and, when ready, a download link `file_link` to the zip, built when
         you open it. Use it before rendering locally with srstudio; fix each missing piece and
-        call it again. Needs an owner or editor and, for a token, the channels:write scope."""
+        call it again. Each ready check issues a new single-use link. Needs an owner or editor
+        and, for a token, the channels:write scope."""
         return file_reported(
             lambda: files.check_export(services, channel_access(services, context, slug), number)
         )

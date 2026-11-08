@@ -1,8 +1,8 @@
 """MCP tools for rendering an episode into video (rules agentic.render.mcp and project.render).
 
 Task-sized tools (agentic.mcp.tools.outcomes): request a render and get an answer at once, then
-follow it until the video is done. A video never travels in a tool result: the agent downloads
-it through the API with the same token.
+follow it until the video is done. A video never travels in a tool result: the agent fetches it
+through get_file_link, whose single-use link needs no credentials (rule agentic.mcp.files).
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ def render_error_message(error: Exception) -> str | None:
         pieces = "; ".join(item.english() for item in error.missing)
         return (
             f"The episode cannot render yet; srstudio lacks: {pieces}. Fix each piece (for "
-            "example write_short_script, generate_voice_over or choose_episode_style), then "
+            "example write_short_script, generate_voice_over or set_episode_style), then "
             "call request_render again."
         )
     if isinstance(error, RenderNotFound):
@@ -75,9 +75,10 @@ def add_render_tools(server: MCPServer, services: Services) -> None:
     def get_render(context: Context, slug: str, number: int, render_id: UUID) -> RenderView:
         """Read a render's status (queued, building, rendering, encoding, done, failed,
         canceled), progress from 0 to 1, place in the queue and scene-render's findings. When
-        done, `video` is the episode's media file and `download_path` is the API path that
-        downloads it with the same token; a person signed in can open it from the episode's
-        media. Use the render id request_render or list_renders returned."""
+        done, `video` is the episode's media file; fetch its bytes with get_file_link (source
+        render and this render's id), since `download_path` is an API path that only an API
+        token can open, not an MCP connection's. A person signed in can open it from the
+        episode's media. Use the render id request_render or list_renders returned."""
         return render_reported(
             lambda: renders.get_render(services, access(context, slug), number, render_id)
         )

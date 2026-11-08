@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
+
 from sreditor.pagination import decode_cursor, encode_cursor, page_after
+from sreditor.problems import ProblemError
 
 NAMES = ["carol", "alice", "bob"]
 
@@ -21,3 +24,9 @@ def test_page_after_with_cursor_continues_after_it() -> None:
     rest = page_after(NAMES, encode_cursor("bob"), 2, same)
     assert rest.items == ["carol"]
     assert rest.next_cursor is None
+
+
+def test_decode_cursor_invalid_names_the_fix() -> None:
+    with pytest.raises(ProblemError) as refused:
+        decode_cursor("not a cursor!")
+    assert "next_cursor" in refused.value.detail

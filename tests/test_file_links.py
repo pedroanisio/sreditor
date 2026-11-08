@@ -696,7 +696,7 @@ def test_file_tools_declare_their_annotations(mcp: TestClient) -> None:
         for item in listed
         if item["name"] in {"get_file_link", "create_upload_link", "check_srstudio_export"}
     }
-    assert hints["check_srstudio_export"]["readOnlyHint"] is True
+    assert hints["check_srstudio_export"]["readOnlyHint"] is False
     assert hints["get_file_link"]["readOnlyHint"] is False
     assert hints["create_upload_link"]["idempotentHint"] is False
     assert all(item["openWorldHint"] is False for item in hints.values())

@@ -775,6 +775,7 @@ CHANNEL_TOOL_EFFECTS = {
     "list_members": Effect.READ,
 }
 ANNOTATION_HINTS = ("readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint")
+OPEN_WORLD_TOOLS = {"list_voices", "generate_voice_over"}  # they call ElevenLabs
 
 
 @pytest.mark.parametrize(
@@ -806,4 +807,5 @@ def test_mcp_every_tool_declares_title_and_every_hint(mcp: TestClient) -> None:
         annotations = listed.get("annotations", {})
         missing = [hint for hint in ("title", *ANNOTATION_HINTS) if hint not in annotations]
         assert not missing, f"{listed['name']} lacks {missing}"
-        assert annotations["openWorldHint"] is False, listed["name"]
+        is_open_world = listed["name"] in OPEN_WORLD_TOOLS
+        assert annotations["openWorldHint"] is is_open_world, listed["name"]

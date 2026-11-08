@@ -337,7 +337,8 @@ def test_mcp_every_tool_that_creates_takes_a_key_or_is_listed(mcp: TestClient) -
         for name, item in registered(mcp).items()
         if "idempotency_key" in item["inputSchema"]["properties"]
     }
-    assert creating - keyed == {"get_file_link"}  # a link issued again is a fresh, usable link
+    # A link issued again is a fresh, usable link, so these need no key.
+    assert creating - keyed == {"get_file_link", "check_srstudio_export"}
 
 
 # Renames: aliases

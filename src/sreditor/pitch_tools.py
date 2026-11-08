@@ -203,7 +203,8 @@ def add_pitch_writes(server: MCPServer, services: Services) -> None:
     ) -> EpisodePitch:
         """Set an episode's pitches to this one pitch of the channel (from list_pitches), or
         pass pitch_id null for none. It replaces any pitches the episode had; to build an
-        episode on several pitches, use set_episode_pitches instead. Needs content:write."""
+        episode on several pitches, use set_episode_pitches instead. Pass get_research's
+        `pitch_list.revision` (0 when never set) as `expected_revision`. Needs content:write."""
         choice = PitchChoice(pitch_id=pitch_id)
         return pitch_reported(
             lambda: pitches.choose_episode_pitch(
@@ -222,8 +223,8 @@ def add_pitch_writes(server: MCPServer, services: Services) -> None:
         """Set the pitches (from list_pitches) an episode is built on, in order: the first is
         its main pitch, and an empty list clears them. This replaces the whole list, so send
         every pitch you want to keep. The episode shows each pitch's notes and sources as they
-        are, never a copy. Pass the list's `revision` from an earlier call (0 when never set) as
-        `expected_revision`. Needs content:write."""
+        are, never a copy. Pass the list's `revision` (get_research's `pitch_list.revision`, 0
+        when never set) as `expected_revision`. Needs content:write."""
         chosen = pitch_list(pitch_ids)
         return pitch_reported(
             lambda: pitches.set_episode_pitches(

@@ -14,6 +14,10 @@ from sreditor.problems import ProblemError
 
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 200
+# Names the fix, since an agent reads the detail as a tool error (rule agentic.mcp.errors).
+INVALID_CURSOR = (
+    "Invalid cursor: pass the previous page's next_cursor unchanged, or omit cursor to start over"
+)
 
 Limit = Annotated[
     int, Query(ge=1, le=MAX_LIMIT, description=f"Items per page, at most {MAX_LIMIT}.")
@@ -50,7 +54,7 @@ def decode_cursor(cursor: str | None) -> str | None:
         return base64.b64decode(padded, altchars=b"-_", validate=True).decode()
     except (binascii.Error, UnicodeDecodeError) as invalid:
         raise ProblemError(
-            status.HTTP_400_BAD_REQUEST, "Invalid cursor", "invalid-cursor"
+            status.HTTP_400_BAD_REQUEST, INVALID_CURSOR, "invalid-cursor"
         ) from invalid
 
 

@@ -332,6 +332,18 @@ class ContextStore:
             ).fetchall()
         return [(row["position"], self.to_link(channel, row)) for row in rows]
 
+    def existing_link(
+        self, channel: str, source: ItemRef, target: ItemRef, question: str
+    ) -> Link | None:
+        """The link from `source` to `target` under `question`, or None when there is none."""
+        with self.database.connect() as connection:
+            row = connection.execute(
+                f"SELECT {LINK_COLUMNS} FROM item_links WHERE channel_slug = ? AND source_kind = ?"
+                " AND source_id = ? AND target_kind = ? AND target_id = ? AND question = ?",
+                (channel, source.kind, source.id, target.kind, target.id, question),
+            ).fetchone()
+        return None if row is None else self.to_link(channel, row)
+
     def link(self, channel: str, link_id: UUID) -> Link:
         """One link of the channel; LinkNotFound when there is none."""
         with self.database.connect() as connection:

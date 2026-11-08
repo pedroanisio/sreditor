@@ -23,7 +23,6 @@ from sreditor.context import (
     Link,
     LinkDirection,
     LinkedItem,
-    LinkExists,
     LinkInput,
     LinkNotFound,
     SelfLink,
@@ -85,6 +84,11 @@ def context_error_message(error: Exception) -> str | None:
         return f"Link {error} not found; call get_context for the item's link ids"
     if isinstance(error, SelfLink):
         return f"links.to: {error}"
+    if isinstance(error, LinkChanged):
+        return (
+            f"{error} with another note, and nothing was written. To change its note, call "
+            f"unlink_items with link_id {error.link.id}, then write_context again"
+        )
     return None
 
 
@@ -94,7 +98,7 @@ def context_reported[T](action: Callable[[], T]) -> T:
     def guarded() -> T:
         try:
             return action()
-        except (ItemNotFound, LinkNotFound, SelfLink) as refusal:
+        except (ItemNotFound, LinkNotFound, SelfLink, LinkChanged) as refusal:
             raise ToolError(context_error_message(refusal) or str(refusal)) from refusal
 
     return reported(guarded)
@@ -123,23 +127,55 @@ def context_view(
     )
 
 
+class LinkChanged(ValueError):
+    """A link the write asks for exists already with another note, which a write never edits."""
+
+    def __init__(self, link: Link) -> None:
+        super().__init__(
+            f"links: a {link.question} link to {link.target.kind} {link.target.id} exists"
+        )
+        self.link = link
+
+
+def new_links(
+    services: Services, access: ChannelAccess, item: ItemRef, update: ContextUpdate
+) -> list[LinkInput]:
+    """The links the write still has to add, after checking every one of them.
+
+    A link already there with the same note is skipped, so a retried call changes nothing more;
+    with another note it is refused, as the API refuses it, before anything is written.
+    """
+    slug = access.channel.slug
+    source = services.contexts.find(slug, item)
+    missing: list[LinkInput] = []
+    seen: set[tuple[str, str, str]] = set()
+    for wanted in update.links:
+        try:
+            target = services.contexts.find(slug, wanted.to)
+        except ItemNotFound as absent:
+            raise TargetNotFound(absent.item) from absent
+        if (source.kind, source.id) == (target.kind, target.id):
+            raise SelfLink(f"{source.kind} {source.id} cannot link to itself")
+        found = services.contexts.existing_link(slug, source, target, wanted.question)
+        if found is not None and found.note != wanted.note:
+            raise LinkChanged(found)
+        key = (target.kind, target.id, wanted.question)
+        if found is None and key not in seen:
+            seen.add(key)
+            missing.append(wanted)
+    return missing
+
+
 def apply_update(
     services: Services, access: ChannelAccess, item: ItemRef, update: ContextUpdate
 ) -> None:
-    """Check every link's target first, then write the answers and add the missing links."""
-    for wanted in update.links:
-        try:
-            services.contexts.find(access.channel.slug, wanted.to)
-        except ItemNotFound as missing:
-            raise TargetNotFound(missing.item) from missing
+    """Check every link first, then write the answers and add the links not there yet."""
+    adding = new_links(services, access, item, update)
     if update.answers is not None:
         change = ContextChange(item=item, expected_revision=update.expected_revision)
         contexts.write_context(services, access, change, update.answers)
-    for wanted in update.links:
-        try:
-            contexts.add_link(services, access, item, wanted)
-        except LinkExists:
-            continue  # already there: a retried call changes nothing more
+    for wanted in adding:
+        contexts.add_link(services, access, item, wanted)
 
 
 def add_context_tools(server: MCPServer, services: Services) -> None:
@@ -195,10 +231,11 @@ def add_context_writes(server: MCPServer, services: Services) -> None:
     ) -> ContextView:
         """Set an item's answers to what, who, where, when, why and how, and link it to other
         items of the channel, in one call. `answers` replaces all six (leave one empty when it
-        does not apply); answers may use Markdown. `links` are added, and a link that already exists is kept as it is.
+        does not apply); answers may use Markdown. `links` are added; one that already exists
+        with the same note is kept, and one with another note is refused.
         Point `who` at characters and `where` at locations of the library when they exist; a
-        person or place outside the library stays a name in the answer. Every link's target is
-        checked before anything is written. Pass `revision` from get_context as
+        person or place outside the library stays a name in the answer. Every link is checked
+        before anything is written, so a refused call changes nothing. Pass `revision` from get_context as
         `expected_revision` (0 when unwritten). Needs content:write."""
 
         def write() -> ContextView:
