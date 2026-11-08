@@ -17,9 +17,12 @@ from sreditor.deps import ChannelAccess, Services, access_for
 from sreditor.library import LibraryKind
 from sreditor.library_operations import EntryChange
 from sreditor.mcp_principal import principal
-from sreditor.mcp_server import Effect, reported, tool_annotations
+from sreditor.mcp_server import Effect, tool_annotations
 from sreditor.srstudio import SheetInput, Slug, SlugTaken, StyleSheet
 from sreditor.srstudio_operations import LibrarySheet, get_sheet, save_sheet
+from sreditor.srstudio_tools import srstudio_reported
+
+STYLE_SLUG_FIELD = "data.style_slug"
 
 
 class VisualStyleData(StyleSheet):
@@ -41,7 +44,7 @@ def style_reported[T](action: Callable[[], T]) -> T:
                 "choose another style_slug"
             ) from taken
 
-    return reported(guarded)
+    return srstudio_reported(guarded, STYLE_SLUG_FIELD)
 
 
 def style_input(data: VisualStyleData, current_slug: str) -> SheetInput:

@@ -23,9 +23,12 @@ from sreditor.library import EntryDescription, EntryInput, EntryName, LibraryEnt
 from sreditor.library_operations import EntryChange
 from sreditor.mcp_idempotency import IdempotencyKey, IdempotentCall, run_once
 from sreditor.mcp_principal import principal
-from sreditor.mcp_server import Effect, reported, tool_annotations
+from sreditor.mcp_server import Effect, tool_annotations
 from sreditor.srstudio import PropSheet, Rig, SheetInput, Slug, SlugTaken
 from sreditor.srstudio_operations import LibrarySheet, get_sheet, library_sheets, save_sheet
+from sreditor.srstudio_tools import srstudio_reported
+
+PROP_SLUG_FIELD = "prop.prop_slug"
 
 
 class PropData(BaseModel):
@@ -92,7 +95,7 @@ def prop_reported[T](action: Callable[[], T]) -> T:
                 "call list_library with kind prop to see them, or choose another prop_slug"
             ) from taken
 
-    return reported(guarded)
+    return srstudio_reported(guarded, PROP_SLUG_FIELD)
 
 
 def add_prop_tools(server: MCPServer, services: Services) -> None:
