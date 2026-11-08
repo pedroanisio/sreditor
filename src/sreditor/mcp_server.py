@@ -108,8 +108,10 @@ LOCAL_HOSTS = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
 LOCAL_ORIGINS = ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"]
 INSTRUCTIONS = (
     "sreditor manages social media channels (platform accounts, brand kit, Editorial) and "
-    "produces their episodes. Start with list_channels and get_channel; create_channel, "
-    "update_channel (name or language) and put_account change them, list_members and invite_member "
+    "produces their episodes. Start with list_channels and get_channel; whoami says which user "
+    "and token you act as and your role on each channel. create_channel, update_channel (name or "
+    "language), set_channel_status (draft, active, paused, archived), put_account and "
+    "remove_account change them; list_members, invite_member, change_role and remove_member "
     "manage who belongs. Read get_editorial before writing content for a channel, and change "
     "it with write_guideline and retire_guideline. get_brand and update_brand read and set "
     "its colors (with roles), fonts and default narrator voice. "
@@ -120,8 +122,8 @@ INSTRUCTIONS = (
     "write_research_notes, add_source, update_source and remove_source change it. Pitches are story ideas "
     "with their own research: list_pitches, get_pitch, create_pitch, update_pitch, "
     "write_pitch_notes, add_pitch_source and remove_pitch_source (update_source edits either "
-    "kind of source in place); set_episode_pitches picks "
-    "the ones an episode uses. Record each figure or fact an episode states with list_claims, "
+    "kind of source in place); set_episode_pitches picks the ones an episode uses and "
+    "delete_pitch removes one no episode uses. Record each figure or fact an episode states with list_claims, "
     "add_claim, update_claim, check_claim_source and remove_claim; claims without a checked "
     "primary source only warn. "
     "get_screenplay reads the Fountain screenplay and which names the channel's library still "
@@ -146,12 +148,15 @@ INSTRUCTIONS = (
     "file; check_srstudio_export shows what an srstudio export lacks. list_waivers shows an "
     "episode's signed waivers to owners and editors; waivers are not sent through links. "
     "Media made by others lives in the third-party library: list_external_media, "
-    "add_external_media and update_external_media; record each use with use_external_media, change it with "
-    "update_external_media_use or drop it with remove_external_media_use and read get_episode_credits for credits and rights warnings. "
+    "add_external_media and update_external_media; record each use with use_external_media, "
+    "change it with update_external_media_use or drop it with remove_external_media_use and "
+    "read get_episode_credits for credits and rights warnings; list_external_media_episodes "
+    "shows which episodes use an item, and delete_external_media removes one that none uses. "
     "Propose a classification with classify_episode (values from "
     "get_classification_vocabulary; a person confirms it), read it with "
     "get_episode_classification and compare the channel's declared and observed profile with "
-    "get_channel_profile. Episodes, pitches, sources, media and library entries each keep a "
+    "get_channel_profile, and set the declared one with declare_channel_profile. Episodes, "
+    "pitches, sources, media and library entries each keep a "
     "context (what, who, where, when, why, how) and links: list_linkable_items finds ids, "
     "get_context reads and write_context sets them, unlink_items removes a link. "
     "Owners and editors render an episode with request_render, which answers at once; follow "
@@ -159,7 +164,8 @@ INSTRUCTIONS = (
     "with get_file_link. "
     "An episode's delivery package (cuts and posts) is get_delivery and write_delivery; "
     "record_post adds a post's link, record_post_metrics and import_retention_csv enter its "
-    "numbers, and compare_posts ranks the channel's posts. "
+    "numbers, compare_posts ranks the channel's posts and list_post_snapshots shows one post's "
+    "numbers day by day. "
     "Tools that create something or spend credits take an optional idempotency_key: retry with "
     "the same key and arguments after a timeout and you get the first result, marked replayed "
     "in the result's _meta, never a second copy. A call your token or role may not make says "
@@ -422,6 +428,7 @@ def build(
     """
     # Imported here: pitch_tools builds on this module's helpers, so a top-level import
     # would be circular.
+    from sreditor.account_tools import add_account_tools
     from sreditor.brand_tools import add_brand_tools
     from sreditor.claims_tools import add_claim_tools
     from sreditor.classification_tools import add_classification_tools
@@ -429,6 +436,7 @@ def build(
     from sreditor.delivery_tools import add_delivery_tools
     from sreditor.external_media_tools import add_external_media_tools
     from sreditor.file_tools import add_file_tools
+    from sreditor.member_tools import add_member_change_tools
     from sreditor.pitch_tools import add_pitch_tools
     from sreditor.prop_tools import add_prop_tools
     from sreditor.render_tools import add_render_tools
@@ -440,6 +448,7 @@ def build(
     server = AliasingServer(name="sreditor", instructions=INSTRUCTIONS)
     # Registration order is the order clients list the tools in.
     add_channel_tools(server, services)
+    add_account_tools(server, services)
     add_brand_tools(server, services)
     add_editorial_tools(server, services)
     add_episode_tools(server, services)
@@ -463,6 +472,7 @@ def build(
     add_context_tools(server, services)
     add_waiver_tools(server, services)
     add_member_tools(server, services)
+    add_member_change_tools(server, services)
     server.add_aliases(renames, today())
     return server
 

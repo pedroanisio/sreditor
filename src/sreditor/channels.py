@@ -286,18 +286,19 @@ class ChannelRename(BaseModel):
 
 
 class ChannelIdentity(BaseModel):
-    """A new display name, language or both for a channel; what is left out stays."""
+    """A new display name, language, status or any of them for a channel; the rest stays."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: Text | None = None
     language: LanguageTag | None = None
+    status: Status | None = None
 
     @model_validator(mode="after")
     def changes_something(self) -> Self:
         """Refuse an empty change, which would only bump the revision."""
-        if self.name is None and self.language is None:
-            raise ValueError("Pass a new name, a new language or both")
+        if self.name is None and self.language is None and self.status is None:
+            raise ValueError("Pass a new name, a new language, a new status or any of them")
         return self
 
 

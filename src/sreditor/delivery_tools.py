@@ -13,6 +13,7 @@ from typing import Annotated
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult
+from pydantic import BaseModel, ConfigDict
 
 from sreditor import delivery_operations as deliveries
 from sreditor import post_metrics_operations as metrics
@@ -92,6 +93,15 @@ class PlatformPost(deliveries.PostInput):
 class PlatformSnapshot(SnapshotInput):
     """A post's numbers for one day, naming the platform of the post."""
 
+    platform: Platform
+
+
+class PostOnPlatform(BaseModel):
+    """One post: the episode's number and the platform it was published on."""
+
+    model_config = ConfigDict(frozen=True)
+
+    number: int
     platform: Platform
 
 
@@ -237,6 +247,26 @@ def add_metrics_tools(server: MCPServer, services: Services) -> None:
                 Snapshot,
             )
         )
+
+    @server.tool(annotations=tool_annotations("List post snapshots", Effect.READ))
+    def list_post_snapshots(
+        context: Context,
+        slug: str,
+        post: PostOnPlatform,
+        cursor: str | None = None,
+        limit: ToolLimit = DEFAULT_LIMIT,
+    ) -> Page[Snapshot]:
+        """List one post's dated snapshots, newest day first, each with its numbers and
+        retention curve, to see how a post grew; compare_posts shows only the latest of each
+        post. `post` names the episode `number` and the `platform` of its post (record_post adds it). Enter
+        numbers with record_post_metrics. Pass `next_cursor` as `cursor` for more."""
+
+        def read() -> Page[Snapshot]:
+            found = channel_access(services, context, slug)
+            target = metrics.post_of(services, found, post.number, post.platform)
+            return metrics.list_snapshots(services, found, target, cursor, limit)
+
+        return delivery_reported(read)
 
     @server.tool(annotations=tool_annotations("Compare posts", Effect.READ))
     def compare_posts(

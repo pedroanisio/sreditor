@@ -240,6 +240,7 @@ def delete_account(
     app: Services, access: ChannelAccess, platform: Platform, expected_revision: int | None
 ) -> Revised:
     """Remove the channel's account on a platform."""
+    access.require(Permission.WRITE_CHANNEL)
     channel = access.channel
     if channel.account(platform) is None:
         raise ProblemError(

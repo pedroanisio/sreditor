@@ -37,15 +37,18 @@ class ProfileComparison(BaseModel):
     observed: ObservedProfile
 
 
-def classification_reported[T](action: Callable[[], T]) -> T:
-    """Run a tool's action; a rule break lists each field at fault and how to fix it."""
+def classification_reported[T](action: Callable[[], T], retry: str = "classify_episode") -> T:
+    """Run a tool's action; a rule break lists each field at fault and how to fix it.
+
+    `retry` is the tool to call again once the fields are fixed.
+    """
 
     def guarded() -> T:
         try:
             return action()
         except ClassificationRefused as refusal:
             raise ToolError(
-                f"{refusal}. Fix those fields and call classify_episode again; "
+                f"{refusal}. Fix those fields and call {retry} again; "
                 "get_classification_vocabulary lists the allowed values"
             ) from refusal
 
@@ -93,6 +96,28 @@ def add_classification_tools(server: MCPServer, services: Services) -> None:
             lambda: classifying.write_classification(
                 services, access(context, slug), number, classification, expected_revision
             )
+        )
+
+    @server.tool(annotations=tool_annotations("Declare the channel's profile", Effect.REPLACE))
+    def declare_channel_profile(
+        context: Context,
+        slug: str,
+        profile: Classification,
+        expected_revision: int | None = None,
+    ) -> ChannelProfile:
+        """Replace the profile a channel declares for itself: what it is meant to be, in the
+        same dimensions and rules as an episode's classification (each dimension a state and,
+        when present, one primary and up to two secondary values; comedy needs a humor device,
+        a satirical approach `satire`, a parodic one `parody_references`), from the values
+        get_classification_vocabulary lists. get_channel_profile then compares it with what
+        the channel's classified episodes show. Not for one episode: use classify_episode.
+        Needs owner or editor role and the editorial:write scope. Pass the `revision` of
+        `declared` from get_channel_profile (0 when never declared) as `expected_revision`."""
+        return classification_reported(
+            lambda: classifying.write_profile(
+                services, access(context, slug), profile, expected_revision
+            ),
+            retry="declare_channel_profile",
         )
 
     @server.tool(annotations=tool_annotations("Read the channel's profile", Effect.READ))

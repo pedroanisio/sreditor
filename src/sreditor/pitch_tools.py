@@ -1,7 +1,7 @@
 """MCP tools for a channel's pitches (pautas) and the pitch an episode uses (rule agentic.mcp).
 
 A few task-sized tools (agentic.mcp.tools.outcomes): find pitches, read one with its research,
-create or update one, write its notes, cite or drop a source, and point an episode at its pitches.
+create, update or delete one, write its notes, cite or drop a source, and point an episode at its pitches.
 """
 
 from __future__ import annotations
@@ -58,8 +58,8 @@ def pitch_error_message(error: Exception) -> str | None:
     if isinstance(error, PitchInUse):
         numbers = ", ".join(str(number) for number in error.episodes)
         return (
-            f"Pitch {error} is used by episodes {numbers}; call set_episode_pitches without "
-            "this pitch for each of them first"
+            f"Pitch {error} is used by episodes {numbers}; call get_pitch to list them again, "
+            "then set_episode_pitches without this pitch for each of them first"
         )
     if isinstance(error, SourceNotFound):
         return f"Source {error} not found; call get_pitch for the pitch's source ids"
@@ -192,6 +192,24 @@ def add_pitch_writes(server: MCPServer, services: Services) -> None:
         return pitch_reported(
             lambda: pitches.replace_pitch(services, access(context, slug), change, pitch)
         )
+
+    @server.tool(annotations=tool_annotations("Delete a pitch", Effect.REMOVE))
+    def delete_pitch(
+        context: Context, slug: str, pitch_id: UUID, expected_revision: int | None = None
+    ) -> Removed:
+        """Delete a pitch for good with its notes and sources. Refused while episodes still
+        use it: get_pitch lists their numbers in `episodes`, and set_episode_pitches without this
+        pitch (or set_episode_pitch with pitch_id null) drops it from each; to keep the idea
+        without deleting it, update_pitch to status discarded instead. Needs owner or editor
+        role and the channels:write scope. Pass the pitch's `revision` from get_pitch as
+        `expected_revision` to refuse the delete if the pitch changed."""
+        change = PitchChange(pitch_id=pitch_id, expected_revision=expected_revision)
+
+        def delete() -> Removed:
+            pitches.delete_pitch(services, access(context, slug), change)
+            return Removed(kind="pitch", id=pitch_id)
+
+        return pitch_reported(delete)
 
     @server.tool(annotations=tool_annotations("Set an episode's pitch", Effect.REPLACE))
     def set_episode_pitch(
