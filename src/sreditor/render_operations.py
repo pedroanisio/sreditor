@@ -215,20 +215,25 @@ def request_render(app: Services, access: ChannelAccess, request: RenderRequest)
         earlier = app.renders.reusable(wanted)
         if earlier is not None:
             return view(app, earlier, is_reused=True)
-        return view(
-            app, gated(app, access, RenderOperation.REQUEST, lambda: queue(app, wanted, archive))
+        job, is_reused = gated(
+            app, access, RenderOperation.REQUEST, lambda: queue(app, wanted, archive)
         )
+        return view(app, job, is_reused=is_reused)
     finally:
         shutil.rmtree(folder, ignore_errors=True)
 
 
-def queue(app: Services, wanted: NewJob, archive: Path) -> RenderJob:
-    """Keep the export where workers can fetch it, then queue the job."""
+def queue(app: Services, wanted: NewJob, archive: Path) -> tuple[RenderJob, bool]:
+    """Keep the export where workers can fetch it, then queue the job.
+
+    The answer is the earlier job, marked reused, when a request that raced this one queued it
+    first (rule project.render: one job per export, preset, engine and srstudio commit).
+    """
     with archive.open("rb") as source:
         stored = app.assets.save_stream(
             wanted.channel, (ZIP,), source, app.settings.render.max_render_bytes
         )
-    return app.renders.add(wanted.model_copy(update={"export_path": stored.path}))
+    return app.renders.add_or_reuse(wanted.model_copy(update={"export_path": stored.path}))
 
 
 def episode_job(app: Services, access: ChannelAccess, number: int, job_id: UUID) -> RenderJob:

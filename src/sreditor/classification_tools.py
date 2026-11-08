@@ -21,8 +21,7 @@ from sreditor.classification import (
     EpisodeClassification,
     ObservedProfile,
 )
-from sreditor.classification_routes import Vocabulary
-from sreditor.classification_routes import get_classification_vocabulary as vocabulary
+from sreditor.classification_operations import Vocabulary, classification_vocabulary
 from sreditor.deps import ChannelAccess, Services
 from sreditor.mcp_server import Effect, reported, tool_annotations
 from sreditor.pitch_tools import channel_access
@@ -66,7 +65,7 @@ def add_classification_tools(server: MCPServer, services: Services) -> None:
         """List the values each of the twelve classification dimensions accepts (audience,
         domains, purposes, genres, approaches, formats, visual techniques and styles, tones,
         emotional targets, creative and humor devices). Read it before classify_episode."""
-        return vocabulary()
+        return classification_vocabulary()
 
     @server.tool(annotations=tool_annotations("Read an episode's classification", Effect.READ))
     def get_episode_classification(

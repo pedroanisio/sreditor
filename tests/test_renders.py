@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import hashlib
 import io
+import threading
 import zipfile
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -151,6 +153,64 @@ def test_request_render_same_export_reuses_queued_job(owner: TestClient) -> None
     first = requested(owner)
     again = requested(owner)
     assert again["job"]["id"] == first["job"]["id"] and again["is_reused"]
+
+
+def test_request_render_other_srstudio_commit_queues_new_job(
+    app: FastAPI, owner: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = requested(owner)
+    services: Services = app.state.services
+    other_render = services.settings.render.model_copy(update={"builder_version": "0123abc"})
+    other = services.settings.model_copy(update={"render": other_render})
+    monkeypatch.setattr(services, "settings", other)
+    again = requested(owner)
+    assert again["job"]["id"] != first["job"]["id"] and not again["is_reused"]
+    assert again["job"]["builder_version"] == "0123abc"
+
+
+def count_jobs(app: FastAPI) -> int:
+    database: Database = app.state.services.renders.database
+    with database.connect() as connection:
+        return int(connection.execute("SELECT COUNT(*) FROM render_jobs").fetchone()[0])
+
+
+def test_request_render_racing_request_queues_one_job(
+    app: FastAPI, owner: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = requested(owner)
+    # Both requests passed the look-up before either queued: the second sees nothing earlier.
+    monkeypatch.setattr(app.state.services.renders, "reusable", lambda new: None)
+    again = requested(owner)
+    assert again["job"]["id"] == first["job"]["id"] and again["is_reused"]
+    assert count_jobs(app) == 1
+
+
+def test_add_or_reuse_concurrent_identical_jobs_queue_one(app: FastAPI, owner: TestClient) -> None:
+    wanted = NewJob(
+        channel="funny-memes",
+        number=1,
+        preset=RenderPreset.MASTER,
+        export_sha256="0" * 64,
+        export_path="exports/x.zip",
+        engine_version="0.9.0",
+        builder_version=DEFAULT_RENDER_BUILDER_VERSION,
+        requested_by="test",
+    )
+    renders = app.state.services.renders
+    threads = 8
+    start = threading.Barrier(threads)
+
+    def race() -> tuple[UUID, bool]:
+        start.wait()
+        job, is_reused = renders.add_or_reuse(wanted)
+        return job.id, is_reused
+
+    with ThreadPoolExecutor(max_workers=threads) as pool:
+        outcomes = [pool.submit(race) for _ in range(threads)]
+        answers = [outcome.result() for outcome in outcomes]
+    assert len({job_id for job_id, _ in answers}) == 1
+    assert sorted(is_reused for _, is_reused in answers) == [False] + [True] * (threads - 1)
+    assert count_jobs(app) == 1
 
 
 def test_request_render_changed_episode_queues_new_job(

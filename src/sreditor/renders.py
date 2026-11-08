@@ -278,6 +278,55 @@ def to_worker(row: sqlite3.Row) -> RenderWorker:
     )
 
 
+def insert_job(connection: sqlite3.Connection, new: NewJob, now: str) -> RenderJob:
+    """Insert a queued job within the caller's transaction."""
+    row = connection.execute(
+        "INSERT INTO render_jobs (id, channel_slug, number, preset, status, export_sha256,"
+        " export_path, engine_version, builder_version, requested_by, revision, created_at,"
+        f" updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?) RETURNING {JOB_COLUMNS}",
+        (
+            str(uuid4()),
+            new.channel,
+            new.number,
+            new.preset,
+            RenderStatus.QUEUED,
+            new.export_sha256,
+            new.export_path,
+            new.engine_version,
+            new.builder_version,
+            new.requested_by,
+            now,
+            now,
+        ),
+    ).fetchone()
+    return to_job(row)
+
+
+def find_reusable(connection: sqlite3.Connection, new: NewJob) -> RenderJob | None:
+    """The newest job with the new job's reuse key: export, preset, engine and srstudio commit.
+
+    A failed or canceled job never answers, nor does a finished one whose video was removed.
+    """
+    row = connection.execute(
+        f"SELECT {JOB_COLUMNS} FROM render_jobs WHERE channel_slug = ? AND number = ?"
+        " AND export_sha256 = ? AND preset = ? AND engine_version = ? AND builder_version = ?"
+        " AND status NOT IN (?, ?) AND (status != ? OR media_id IN"
+        " (SELECT id FROM episode_media)) ORDER BY position DESC LIMIT 1",
+        (
+            new.channel,
+            new.number,
+            new.export_sha256,
+            new.preset,
+            new.engine_version,
+            new.builder_version,
+            RenderStatus.FAILED,
+            RenderStatus.CANCELED,
+            RenderStatus.DONE,
+        ),
+    ).fetchone()
+    return to_job(row) if row else None
+
+
 class RenderStore:
     """Render jobs and workers in the application database."""
 
@@ -290,28 +339,21 @@ class RenderStore:
 
     def add(self, new: NewJob) -> RenderJob:
         """Queue a job."""
-        now = self.database.now()
         with self.database.connect() as connection:
-            row = connection.execute(
-                "INSERT INTO render_jobs (id, channel_slug, number, preset, status, export_sha256,"
-                " export_path, engine_version, builder_version, requested_by, revision, created_at,"
-                f" updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?) RETURNING {JOB_COLUMNS}",
-                (
-                    str(uuid4()),
-                    new.channel,
-                    new.number,
-                    new.preset,
-                    RenderStatus.QUEUED,
-                    new.export_sha256,
-                    new.export_path,
-                    new.engine_version,
-                    new.builder_version,
-                    new.requested_by,
-                    now,
-                    now,
-                ),
-            ).fetchone()
-        return to_job(row)
+            return insert_job(connection, new, self.database.now())
+
+    def add_or_reuse(self, new: NewJob) -> tuple[RenderJob, bool]:
+        """Queue the job unless an earlier one answers it; True when that one was reused.
+
+        The look-up and the insert share one write transaction, which SQLite grants to one
+        connection at a time, so two identical requests never both queue a job.
+        """
+        with self.database.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            earlier = find_reusable(connection, new)
+            if earlier is not None:
+                return earlier, True
+            return insert_job(connection, new, self.database.now()), False
 
     def get(self, job_id: UUID) -> RenderJob:
         """One job by id."""
@@ -371,24 +413,7 @@ class RenderStore:
         """A job for the same export, preset, engine and srstudio that is running or done with its
         video."""
         with self.database.connect() as connection:
-            row = connection.execute(
-                f"SELECT {JOB_COLUMNS} FROM render_jobs WHERE channel_slug = ? AND number = ?"
-                " AND export_sha256 = ? AND preset = ? AND engine_version = ? AND builder_version = ?"
-                " AND status NOT IN (?, ?) AND (status != ? OR media_id IN"
-                " (SELECT id FROM episode_media)) ORDER BY position DESC LIMIT 1",
-                (
-                    new.channel,
-                    new.number,
-                    new.export_sha256,
-                    new.preset,
-                    new.engine_version,
-                    new.builder_version,
-                    RenderStatus.FAILED,
-                    RenderStatus.CANCELED,
-                    RenderStatus.DONE,
-                ),
-            ).fetchone()
-        return to_job(row) if row else None
+            return find_reusable(connection, new)
 
     def claim(self, lease: Lease, pinned: Pinned) -> RenderJob | None:
         """Give the worker the oldest job it can run: queued, or one whose lease lapsed, built for
