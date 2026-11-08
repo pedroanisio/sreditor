@@ -27,7 +27,7 @@ from sreditor.elevenlabs import (
     Alignment,
 )
 from sreditor.field_types import ChannelSlug, LanguageTag, VoiceIdOrEmpty
-from sreditor.voice_markup import TtsModel
+from sreditor.voice_markup import SpeechPause, TtsModel
 from sreditor.voice_tuning import VoiceTuning
 
 KEY_LENGTH = 16
@@ -91,14 +91,17 @@ class BlockTake(BaseModel):
     license: VoiceLicense | None = None
 
 
-def block_take_key(text: str, voice: BlockVoice) -> str:
-    """The hash that makes two requests for the same block the same take."""
+def block_take_key(text: str, voice: BlockVoice, pauses: tuple[SpeechPause, ...] = ()) -> str:
+    """The hash that makes two requests for the same block the same take.
+
+    Pauses put into the audio afterwards change the take without changing its text, so they
+    are part of the key; a block without them keeps the key it always had.
+    """
     tuning = voice.tuning.model_dump() if voice.tuning else None
-    payload = json.dumps(
-        [text, MODEL_IDS[voice.model], voice.voice_id, voice.language, tuning],
-        ensure_ascii=False,
-        sort_keys=True,
-    )
+    parts: list[object] = [text, MODEL_IDS[voice.model], voice.voice_id, voice.language, tuning]
+    if pauses:
+        parts.append([[pause.after_words, pause.seconds] for pause in pauses])
+    payload = json.dumps(parts, ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(payload.encode()).hexdigest()[:KEY_LENGTH]
 
 

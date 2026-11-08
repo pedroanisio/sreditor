@@ -1,7 +1,7 @@
 """MCP tools for a channel's identity: its display name and its brand colors and fonts.
 
-Two task-sized tools (agentic.mcp.tools.outcomes, project.brand): rename the channel, and set
-its palette and fonts. Reading the kit is get_brand. Files (logo, avatar, stings, font files)
+Two task-sized tools (agentic.mcp.tools.outcomes, project.brand): rename the channel or change
+its language, and set its palette and fonts. Reading the kit is get_brand. Files (logo, avatar, stings, font files)
 are not sent through these tools: they are uploaded on the brand page.
 """
 
@@ -13,13 +13,17 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from sreditor import operations
 from sreditor.brand import BrandPatch
-from sreditor.channels import ChannelRename, Color, FontInput, FontRole, Platform
+from sreditor.channels import ChannelIdentity, Color, FontInput, FontRole, Platform, Text
 from sreditor.deps import ChannelAccess, Services, access_for
+from sreditor.field_types import LanguageTag
 from sreditor.mcp_principal import principal
 from sreditor.mcp_server import BrandView, ChannelView, Effect, reported, tool_annotations
 
 # What pydantic puts before the message of a ValueError raised by one of our validators.
 VALUE_ERROR_PREFIX = "Value error, "
+NO_IDENTITY_CHANGE = (
+    "Pass a new `name`, a new `language` or both; get_channel shows the current ones"
+)
 NOTHING_TO_CHANGE = "Pass colors, fonts or both in `brand`; call get_brand to see the colors and fonts the kit has now"
 
 
@@ -56,26 +60,37 @@ def brand_patch(changes: BrandChanges) -> BrandPatch:
 
 
 def add_brand_tools(server: MCPServer, services: Services) -> None:
-    """Tools to rename a channel and to set its brand colors and fonts."""
+    """Tools to rename a channel or change its language, and to set its brand colors and fonts."""
 
     def access(context: Context, slug: str) -> ChannelAccess:
         who = principal(context)
         return access_for(services, slug, who.user, who.token)
 
-    @server.tool(annotations=tool_annotations("Rename channel", Effect.REPLACE))
+    @server.tool(
+        annotations=tool_annotations("Rename channel or change its language", Effect.REPLACE)
+    )
     def update_channel(
-        context: Context, slug: str, name: str, expected_revision: int | None = None
+        context: Context,
+        slug: str,
+        name: Text | None = None,
+        language: LanguageTag | None = None,
+        expected_revision: int | None = None,
     ) -> ChannelView:
         """Change a channel's display name, such as "Bater pra Cima" for the slug
-        baterparacima. The slug, which addresses the channel everywhere, never changes. Use it
-        only to rename; set colors and fonts with update_brand, accounts with put_account.
-        Needs owner or editor role and the channels:write scope; pass the `revision` from
-        get_channel as `expected_revision` to refuse the change if the channel moved on."""
+        baterparacima, its language as a BCP 47 tag such as pt-BR or en, or both; what you
+        leave out stays. The language is what new short scripts speak and invitations are
+        written in; scripts already written keep theirs. The slug, which addresses the channel
+        everywhere, never changes. Set colors and fonts with update_brand, accounts with
+        put_account. Needs owner or editor role and the channels:write scope; pass the
+        `revision` from get_channel as `expected_revision` to refuse the change if the channel
+        moved on."""
 
         def write() -> ChannelView:
-            rename = ChannelRename(name=name)
-            done = operations.rename_channel(
-                services, access(context, slug), rename, expected_revision
+            if name is None and language is None:
+                raise ToolError(NO_IDENTITY_CHANGE)
+            identity = ChannelIdentity(name=name, language=language)
+            done = operations.change_identity(
+                services, access(context, slug), identity, expected_revision
             )
             return ChannelView(channel=done.channel, revision=done.revision)
 

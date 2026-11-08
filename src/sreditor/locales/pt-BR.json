@@ -16,6 +16,7 @@
   "%(seconds)s s": "%(seconds)s s",
   "%(words)s words do not fit in %(seconds)s s of speech (about %(most)s at most).": "%(words)s palavras não cabem em %(seconds)s s de fala (cerca de %(most)s no máximo).",
   "%(words)s words in %(seconds)s s of speech is at the limit (best %(least)s to %(most)s).": "%(words)s palavras em %(seconds)s s de fala estão no limite (o ideal é de %(least)s a %(most)s).",
+  "The recorded voice lasts %(voice)s s, longer than the video's %(duration)s s.": "A voz gravada dura %(voice)s s, mais que os %(duration)s s do vídeo.",
   "2D animation": "Animação 2D",
   "3D animation": "Animação 3D",
   "3D model": "Modelo 3D",

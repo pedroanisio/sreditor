@@ -426,6 +426,23 @@ def test_mcp_update_channel_with_blank_name_is_a_tool_error(mcp: TestClient) -> 
     assert tool(mcp, "update_channel", {"slug": "funny-memes", "name": " "})["isError"]
 
 
+def test_mcp_update_channel_language_changes_it_and_keeps_the_name(mcp: TestClient) -> None:
+    done = tool(mcp, "update_channel", {"slug": "funny-memes", "language": "en"})
+    channel = done["structuredContent"]["channel"]
+    assert (channel["language"], channel["name"]) == ("en", "Funny Memes")
+
+
+def test_mcp_update_channel_without_name_or_language_is_a_tool_error(mcp: TestClient) -> None:
+    done = tool(mcp, "update_channel", {"slug": "funny-memes"})
+    assert done["isError"] and "get_channel" in done["content"][0]["text"]
+
+
+def test_mcp_update_channel_invalid_language_is_a_tool_error(mcp: TestClient) -> None:
+    assert tool(mcp, "update_channel", {"slug": "funny-memes", "language": "portuguese!"})[
+        "isError"
+    ]
+
+
 def test_mcp_update_brand_sets_colors_and_fonts(mcp: TestClient) -> None:
     done = update_brand(mcp, colors=PALETTE, fonts=FONTS)
     view = done["structuredContent"]

@@ -108,7 +108,7 @@ LOCAL_ORIGINS = ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"]
 INSTRUCTIONS = (
     "sreditor manages social media channels (platform accounts, brand kit, Editorial) and "
     "produces their episodes. Start with list_channels and get_channel; create_channel, "
-    "update_channel (rename) and put_account change them, list_members and invite_member "
+    "update_channel (name or language) and put_account change them, list_members and invite_member "
     "manage who belongs. Read get_editorial before writing content for a channel, and change "
     "it with write_guideline and retire_guideline. get_brand and update_brand read and set "
     "its colors (with roles) and fonts. "
@@ -126,7 +126,8 @@ INSTRUCTIONS = (
     "lacks; write_screenplay replaces it. The library of characters, locations and visual "
     "styles is list_library, save_library_entry and remove_library_entry; get_episode_style "
     "and set_episode_style pick a style, get_visual_style and save_visual_style read and set "
-    "its palette, fonts, cut rhythm, smallest text and safe zone. "
+    "its palette, fonts, cut rhythm, smallest text and safe zone; save_prop adds a prop with "
+    "the srstudio rig that draws it. "
     "A vertical cut lives in the short script: get_short_script and write_short_script. "
     "Owners and editors speak it with generate_voice_over, which spends ElevenLabs credits: "
     "see list_voices and estimate_voice_over first, then read the timed words with "
@@ -411,6 +412,7 @@ def build(
     from sreditor.external_media_tools import add_external_media_tools
     from sreditor.file_tools import add_file_tools
     from sreditor.pitch_tools import add_pitch_tools
+    from sreditor.prop_tools import add_prop_tools
     from sreditor.render_tools import add_render_tools
     from sreditor.short_script_tools import add_short_script_tools
     from sreditor.style_tools import add_style_data_tools
@@ -429,6 +431,7 @@ def build(
     add_library_tools(server, services)
     add_style_tools(server, services)
     add_style_data_tools(server, services)
+    add_prop_tools(server, services)
     add_media_tools(server, services)
     add_render_tools(server, services)
     add_delivery_tools(server, services)
@@ -657,7 +660,7 @@ class DeletedEpisode(BaseModel):
 
 
 class EntryEdit(EntryInput):
-    """A character or location to add, or, with its entry_id, to change."""
+    """A library entry to add, or, with its entry_id, to change."""
 
     entry_id: UUID | None = Field(
         default=None, description="The entry to change, from list_library; omit to add one."
@@ -922,7 +925,7 @@ def add_screenplay_tools(server: MCPServer, services: Services) -> None:
 
 
 def add_library_tools(server: MCPServer, services: Services) -> None:
-    """Tools for the channel's library of characters and locations."""
+    """Tools for the channel's library of characters, locations, styles and props."""
 
     def access(context: Context, slug: str) -> ChannelAccess:
         who = principal(context)
@@ -936,7 +939,7 @@ def add_library_tools(server: MCPServer, services: Services) -> None:
         cursor: str | None = None,
         limit: ToolLimit = DEFAULT_LIMIT,
     ) -> Page[LibraryEntry]:
-        """List the channel's characters, locations or visual styles, with the ids
+        """List the channel's characters, locations, visual styles or props, with the ids
         save_library_entry, remove_library_entry and set_episode_style take. Pass `next_cursor`
         as `cursor` for more."""
         return reported(
@@ -955,10 +958,11 @@ def add_library_tools(server: MCPServer, services: Services) -> None:
         entry: EntryEdit,
         idempotency_key: IdempotencyKey = None,
     ) -> Annotated[CallToolResult, LibraryEntry]:
-        """Add a character, location or visual style (no `entry_id`), or rename or describe one
+        """Add a character, location, visual style or prop (no `entry_id`), or rename or describe one
         (its `entry_id` from list_library, with its `revision` as `expected_revision`). Write a
         character's or location's name as the screenplay does; a style's description says how
-        episodes look. Names are unique per kind ignoring case. Needs content:write. Pass an
+        episodes look. For a prop, prefer save_prop, which also sets the rig that draws it.
+        Names are unique per kind ignoring case. Needs content:write. Pass an
         `idempotency_key` when adding, so a retry returns the first entry instead of "exists"."""
         data = EntryInput(name=entry.name, description=entry.description)
 
@@ -986,7 +990,7 @@ def add_library_tools(server: MCPServer, services: Services) -> None:
         entry_id: UUID,
         expected_revision: int | None = None,
     ) -> Removed:
-        """Remove a character, location or style by its id from list_library; screenplays that
+        """Remove a character, location, style or prop by its id from list_library; screenplays that
         name it no longer match anything, and episodes that picked the style have none. Needs an
         owner or editor."""
         change = EntryChange(kind=kind, entry_id=entry_id, expected_revision=expected_revision)

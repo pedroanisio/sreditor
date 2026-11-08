@@ -14,7 +14,14 @@ from fastapi import status
 from pydantic import BaseModel, ConfigDict
 
 from sreditor.brand import BrandPatch, own_brand, with_brand, with_patch
-from sreditor.channels import BrandKit, Channel, ChannelRename, Platform, PlatformAccount
+from sreditor.channels import (
+    BrandKit,
+    Channel,
+    ChannelIdentity,
+    ChannelRename,
+    Platform,
+    PlatformAccount,
+)
 from sreditor.deps import ChannelAccess, ScopeMissing, Services, author
 from sreditor.editorial import Editorial, Guideline, GuidelineInput
 from sreditor.members import Permission
@@ -204,8 +211,17 @@ def rename_channel(
     app: Services, access: ChannelAccess, rename: ChannelRename, expected_revision: int | None
 ) -> Revised:
     """Change the channel's display name; the slug stays (rule project.brand)."""
-    updated = access.channel.model_copy(update={"name": rename.name})
-    return replace_channel(app, access, updated, expected_revision)
+    return change_identity(app, access, ChannelIdentity(name=rename.name), expected_revision)
+
+
+def change_identity(
+    app: Services, access: ChannelAccess, identity: ChannelIdentity, expected_revision: int | None
+) -> Revised:
+    """Change the channel's display name, language or both; the slug stays."""
+    changes = identity.model_dump(exclude_none=True)
+    return replace_channel(
+        app, access, access.channel.model_copy(update=changes), expected_revision
+    )
 
 
 def put_account(

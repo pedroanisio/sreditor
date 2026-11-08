@@ -16,28 +16,38 @@ from pydantic import BaseModel, ConfigDict
 
 from sreditor.assets import AssetMissing
 from sreditor.audio_finish import finish
+from sreditor.audio_pauses import spaced
 from sreditor.block_takes import (
     BlockTake,
     BlockTakeRecord,
     BlockVoice,
     VoiceLicense,
+    WordTiming,
     audio_seconds,
     block_take_key,
     words_of,
 )
 from sreditor.channels import NarratorVoice
 from sreditor.deps import ChannelAccess, Services
-from sreditor.elevenlabs import MODEL_IDS, PROVIDER, ElevenLabs, SpeechRequest, Voice
+from sreditor.elevenlabs import MODEL_IDS, PROVIDER, ElevenLabs, Speech, SpeechRequest, Voice
 from sreditor.episode_operations import episode_access
 from sreditor.i18n import N_
-from sreditor.library import LibraryKind
+from sreditor.library import EntryNotFound, LibraryKind
 from sreditor.media import KIND_FORMATS, MediaInput, MediaKind, MediaNotFound, NewMedia
 from sreditor.members import Permission
 from sreditor.operations import gated
-from sreditor.short_script import ShortScript, ShortScriptInput, speech_language_for
+from sreditor.screen_retiming import moved_screen_texts
+from sreditor.short_script import (
+    ShortScript,
+    ShortScriptInput,
+    WarningKind,
+    speech_language_for,
+    warning,
+)
 from sreditor.srstudio import CharacterSheet
 from sreditor.srstudio_operations import check_cast
 from sreditor.voice_generation import (
+    TIME_DECIMALS,
     Take,
     TakeRecord,
     joined_timings,
@@ -46,6 +56,7 @@ from sreditor.voice_generation import (
     suggested_times,
     take_key,
 )
+from sreditor.voice_markup import SpeechPause, TtsModel, timed_pauses
 from sreditor.voice_report import VoiceOverTake, voice_over_of
 from sreditor.voice_tuning import VoiceTuning
 
@@ -58,6 +69,8 @@ class BlockPlan(BaseModel):
     text: str
     voice: BlockVoice
     key: str
+    # v3 cannot time a pause, so its pauses are put into the audio afterwards.
+    pauses: tuple[SpeechPause, ...] = ()
 
 
 class ScriptOperation:
@@ -83,6 +96,8 @@ class TimingsDoNotFit(ValueError):
     """The take was made from a script with a different number of blocks."""
 
 
+# Warnings that guess the speech's length from its words; a recorded voice replaces them.
+ESTIMATED_PACE = frozenset({WarningKind.TOO_MANY_WORDS, WarningKind.WORDS_AT_LIMIT})
 NO_VOICE = N_("Choose a voice for the short script first.")
 NO_VOICE_OVER = "This episode has no voice-over yet."
 NO_SPEECH = N_("Write at least one block with speech first.")
@@ -96,6 +111,37 @@ NO_TIMESTAMPS = "ElevenLabs gave no timestamps for this take, so its times are u
 GENERATION_OFF = N_("Voice-over generation is off: SREDITOR_ELEVENLABS_API_KEY is not set.")
 
 
+def recorded_take(app: Services, script: ShortScript) -> Take | None:
+    """The voice-over already made from the script exactly as it is now, if there is one."""
+    try:
+        plans = block_plans(app, script.channel, script)
+    except (ScriptNotReady, EntryNotFound):
+        return None  # a block without a voice has never been spoken, so nothing was recorded
+    if not any(plans):
+        return None
+    keys = [plan.key if plan else None for plan in plans]
+    record = TakeRecord(channel=script.channel, number=script.number, key=take_key(keys))
+    return app.takes.find(record)
+
+
+def with_recorded_pace(app: Services, script: ShortScript) -> ShortScript:
+    """The script's warnings, judging its pace by the recorded voice when there is one.
+
+    The words-per-second estimate only guesses how long the speech will run; once the voice of
+    this very text exists, its length is the answer.
+    """
+    take = recorded_take(app, script)
+    if take is None:
+        return script
+    kept = [found for found in script.warnings if found.kind not in ESTIMATED_PACE]
+    voice_seconds = round(take.duration_s, TIME_DECIMALS)
+    if voice_seconds > script.duration_s:
+        kept.append(
+            warning(WarningKind.VOICE_TOO_LONG, voice=voice_seconds, duration=script.duration_s)
+        )
+    return script.model_copy(update={"warnings": kept})
+
+
 def get_short_script(app: Services, access: ChannelAccess, number: int) -> ShortScript:
     """The episode's short script, with its warnings and revision.
 
@@ -105,7 +151,7 @@ def get_short_script(app: Services, access: ChannelAccess, number: int) -> Short
     slug = episode_access(app, access, number, Permission.READ)
     script = app.short_scripts.short_script(slug, number)
     if script.revision:
-        return script
+        return with_recorded_pace(app, script)
     language = speech_language_for(access.channel.language)
     voice = script.voice.model_copy(update={"language": language})
     return script.model_copy(update={"voice": voice})
@@ -130,12 +176,13 @@ def write_short_script(
     slug = episode_access(app, access, number, Permission.WRITE_CONTENT)
     written = in_channel_language(data, access.channel.language)
     check_cast(app, slug, written.blocks)
-    return gated(
+    saved = gated(
         app,
         access,
         ScriptOperation.WRITE,
         lambda: app.short_scripts.write(slug, number, written, expected_revision),
     )
+    return with_recorded_pace(app, saved)
 
 
 def voice_service(app: Services) -> ElevenLabs:
@@ -228,7 +275,9 @@ def block_plans(app: Services, channel: str, script: ShortScriptInput) -> list[B
             voice = narrator_voice(script, default)
         else:
             voice = character_voice(app, channel, block.speaker, script)
-        plans.append(BlockPlan(text=text, voice=voice, key=block_take_key(text, voice)))
+        pauses = tuple(timed_pauses(block.speech)) if voice.model == TtsModel.V3 else ()
+        key = block_take_key(text, voice, pauses)
+        plans.append(BlockPlan(text=text, voice=voice, key=key, pauses=pauses))
     return plans
 
 
@@ -248,9 +297,10 @@ def spoken_take(app: Services, record: TakeRecord, plan: BlockPlan) -> BlockTake
             tuning=voice.tuning,
         )
     )
+    voiced = with_pauses(speech, plan.pauses)
     accepted = KIND_FORMATS[MediaKind.VOICE_OVER]
     stored = app.assets.save_stream(
-        record.channel, accepted, BytesIO(speech.audio), app.media.max_bytes
+        record.channel, accepted, BytesIO(voiced.audio), app.media.max_bytes
     )
     made_at = app.takes.now()
     take = BlockTake(
@@ -258,14 +308,40 @@ def spoken_take(app: Services, record: TakeRecord, plan: BlockPlan) -> BlockTake
         text=plan.text,
         voice=voice,
         file=stored,
-        # The larger of the two: tags or a variable bitrate can make the size alone too short.
-        duration_s=max(audio_seconds(len(speech.audio)), speech.duration_s),
-        words=words_of(speech.alignment),
+        duration_s=voiced.duration_s,
+        words=voiced.words,
         created_at=made_at,
         license=voice_license(voice, voice_service(app).plan(), made_at),
     )
     app.block_takes.save(record.channel, record.number, take)
     return take
+
+
+class VoicedAudio(BaseModel):
+    """A block take's audio as stored, with its words and length."""
+
+    model_config = ConfigDict(frozen=True)
+
+    audio: bytes
+    words: list[WordTiming]
+    duration_s: float
+
+
+def with_pauses(speech: Speech, pauses: tuple[SpeechPause, ...]) -> VoicedAudio:
+    """ElevenLabs' audio with the pauses it could not time put in, when there are any."""
+    words = words_of(speech.alignment)
+    # The larger of the two: tags or a variable bitrate can make the size alone too short.
+    duration = max(audio_seconds(len(speech.audio)), speech.duration_s)
+    spaced_speech = spaced(speech.audio, words, list(pauses), duration) if pauses else None
+    if spaced_speech is None:
+        return VoicedAudio(audio=speech.audio, words=words, duration_s=duration)
+    return VoicedAudio(
+        audio=spaced_speech.audio,
+        words=spaced_speech.words,
+        duration_s=max(
+            audio_seconds(len(spaced_speech.audio)), round(duration + spaced_speech.added_s, 3)
+        ),
+    )
 
 
 def voice_license(voice: BlockVoice, plan: str, made_at: datetime) -> VoiceLicense:
@@ -407,7 +483,8 @@ def latest_take(app: Services, access: ChannelAccess, number: int) -> Take | Non
 
 
 def timed_script(script: ShortScript, take: Take) -> ShortScriptInput:
-    """The script with the take's measured times and the audio's length."""
+    """The script with the take's measured times and the audio's length; on-screen texts move
+    with their blocks."""
     if not take.suggested:
         raise TimingsDoNotFit(NO_TIMESTAMPS)
     suggested = take.suggested
@@ -421,7 +498,7 @@ def timed_script(script: ShortScript, take: Take) -> ShortScriptInput:
         duration_s=suggested[-1].end_s,
         voice=script.voice,
         blocks=blocks,
-        screen_texts=script.screen_texts,
+        screen_texts=moved_screen_texts(script.screen_texts, script.blocks, blocks),
     )
 
 
@@ -433,9 +510,10 @@ def apply_take_timings(
     take = app.takes.get(TakeRecord(channel=slug, number=number, key=key))
     script = app.short_scripts.short_script(slug, number)
     timed = timed_script(script, take)
-    return gated(
+    saved = gated(
         app,
         access,
         ScriptOperation.WRITE,
         lambda: app.short_scripts.write(slug, number, timed, expected_revision),
     )
+    return with_recorded_pace(app, saved)

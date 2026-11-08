@@ -3,7 +3,9 @@
 A tag marks a point, [pause:0.3], or a span, [irony]official term[/irony]. The vocabulary below
 is the only definition of the tags: each says what it does and how ElevenLabs renders it in
 each model. v2 models take SSML <break> pauses and nothing else; v3 takes audio tags, which
-have no closing form and last until the next tag. Camera, sound and edit cues render in no
+have no closing form and last until the next tag. v3 has no pause of a given length (its [pause]
+lasts what the model decides), so v3 receives none: `timed_pauses` says where each one goes and
+the silence is put into the audio afterwards (audio_pauses.py). Camera, sound and edit cues render in no
 model: they stay in the script for the editor and are never spoken.
 """
 
@@ -111,7 +113,6 @@ TAGS: tuple[Tag, ...] = (
         value=ValueKind.SECONDS,
         effect=N_("A breath before the information, giving weight to what follows."),
         v2=BREAK,
-        v3="[pause]",
     ),
     Tag(
         name="silence",
@@ -120,7 +121,6 @@ TAGS: tuple[Tag, ...] = (
         value=ValueKind.SECONDS,
         effect=N_("Total silence that lets the last sentence echo."),
         v2=BREAK,
-        v3="[pause]",
     ),
     span("fast", TagClass.RHYTHM, N_("Rushes the span, like a contract's fine print."), "[rushed]"),
     span("slow", TagClass.RHYTHM, N_("Spells out the absurd."), "[slowly]"),
@@ -319,15 +319,38 @@ def plain_text(speech: str) -> str:
     return tidy(TAG_PATTERN.sub(" ", speech))
 
 
-def pause_seconds(speech: str) -> float:
-    """The seconds of pause and silence the speech asks for."""
-    total = 0.0
+class SpeechPause(BaseModel):
+    """A pause or silence the speech asks for: how many spoken words come before it, and how long."""
+
+    model_config = ConfigDict(frozen=True)
+
+    after_words: int
+    seconds: float
+
+
+def spoken_word_count(text: str) -> int:
+    """Words as the speech's timestamps count them: runs between spaces holding a letter or digit."""
+    return sum(1 for run in text.split() if any(character.isalnum() for character in run))
+
+
+def timed_pauses(speech: str) -> list[SpeechPause]:
+    """Each pause and silence of the speech, placed by the spoken words before it."""
+    found: list[SpeechPause] = []
+    words = 0
+    position = 0
     for match in TAG_PATTERN.finditer(speech):
+        words += spoken_word_count(speech[position : match.start()])
+        position = match.end()
         tag = VOCABULARY.get(match.group(2))
         value = match.group(3)
         if tag and tag.value == ValueKind.SECONDS and value and is_pause_length(value):
-            total += float(value)
-    return total
+            found.append(SpeechPause(after_words=words, seconds=float(value)))
+    return found
+
+
+def pause_seconds(speech: str) -> float:
+    """The seconds of pause and silence the speech asks for."""
+    return sum(pause.seconds for pause in timed_pauses(speech))
 
 
 def upper_case_outside_tags(span_text: str) -> str:
