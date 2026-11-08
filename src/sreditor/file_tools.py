@@ -69,11 +69,15 @@ def add_file_tools(server: MCPServer, services: Services) -> None:
         idempotency_key: IdempotencyKey = None,
     ) -> Annotated[CallToolResult, UploadOffer]:
         """Get a single-use link to upload a file into an episode as media, such as the finished
-        MP4 or a voice-over take. `upload` gives the episode `number`, the `kind`, a `name` and
+        MP4 master or a voice-over take. `upload` gives the episode `number`, the `kind`, a `name` and
         an optional `note`. Your sandbox sends the file's bytes with `method` (PUT) to `url`,
         with no credentials; the answer is the new media file. `kind` is voice_over,
-        sound_effect, score or visual_effect (a render is made with request_render, never
-        uploaded). The type is read from the file's content, and `accepted_types` and
+        sound_effect, score, visual_effect (MP4 or WebM), cover (PNG, JPEG or WebP) or
+        final_video (a finished MP4 or WebM master made outside sreditor, which is measured
+        on arrival: duration, resolution and loudness, shown by list_media; use its id as a
+        cut's `video_id` in write_delivery). A render is made with request_render, never
+        uploaded. To record a master without sending its bytes, give the cut an
+        `external_video` in write_delivery instead. The type is read from the file's content, and `accepted_types` and
         `max_bytes` say what is allowed; a refused file leaves the link usable. The link works
         once and expires in 15 minutes. Needs content:write. Each call issues another link
         unless you pass an `idempotency_key`: a retry with the same key and arguments returns the

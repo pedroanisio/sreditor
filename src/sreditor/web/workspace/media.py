@@ -78,6 +78,7 @@ KIND_PATHS = {
     "score": MediaKind.SCORE,
     "visual-effects": MediaKind.VISUAL_EFFECT,
     "covers": MediaKind.COVER,
+    "final-videos": MediaKind.FINAL_VIDEO,
 }
 PATH_OF = {kind: path for path, kind in KIND_PATHS.items()}
 NO_STYLE = N_("No style")
@@ -114,6 +115,12 @@ KIND_TEXT: dict[MediaKind, dict[str, str]] = {
         "upload": N_("Upload cover"),
         "empty": N_("No covers yet. Upload the image each cut is posted with."),
         "more": N_("More covers"),
+    },
+    MediaKind.FINAL_VIDEO: {
+        "title": N_("Final videos"),
+        "upload": N_("Upload final video"),
+        "empty": N_("No final videos yet. Upload a master made outside sreditor."),
+        "more": N_("More final videos"),
     },
 }
 

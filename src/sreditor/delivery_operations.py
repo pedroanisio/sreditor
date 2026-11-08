@@ -24,6 +24,7 @@ from sreditor.delivery import (
 from sreditor.deps import ChannelAccess, Services
 from sreditor.episode_operations import episode_access
 from sreditor.media import MediaFile
+from sreditor.media_operations import measured
 from sreditor.members import Permission
 from sreditor.operations import gated
 
@@ -58,7 +59,7 @@ class PostInput(BaseModel):
 
 NO_VIDEO = (
     "%(id)s is not a video of this episode; list_media shows the episode's files, and a video is"
-    " a visual_effect or render file."
+    " a final_video, visual_effect or render file."
 )
 NO_COVER = (
     "%(id)s is not an image of this episode; upload one with the API's upload_media as kind cover,"
@@ -82,8 +83,11 @@ def episode_images(app: Services, slug: str, number: int) -> list[MediaFile]:
 
 def with_warnings(app: Services, delivery: Delivery) -> Delivery:
     """The package with the gaps that weaken it, for a person or agent to read."""
-    video_ids = {video.id for video in episode_videos(app, delivery.channel, delivery.number)}
-    found = warnings_of(delivery, video_ids)
+    durations = {}
+    for video in episode_videos(app, delivery.channel, delivery.number):
+        measures = measured(app, video).measures
+        durations[video.id] = None if measures is None else measures.duration_seconds
+    found = warnings_of(delivery, durations, app.settings.delivery)
     return delivery.model_copy(update={"warnings": found})
 
 

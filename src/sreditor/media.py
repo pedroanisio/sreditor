@@ -14,7 +14,7 @@ from pathlib import PurePath
 from typing import Annotated, BinaryIO
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from sreditor.assets import (
     JPEG,
@@ -55,6 +55,7 @@ class MediaKind(StrEnum):
     VISUAL_EFFECT = "visual_effect"
     RENDER = "render"  # a finished video from a render worker, never uploaded by hand
     COVER = "cover"  # a still for a delivery cut (rule project.delivery), checked by content
+    FINAL_VIDEO = "final_video"  # a master made outside sreditor, measured when it arrives
 
 
 KIND_FORMATS: dict[MediaKind, tuple[FileFormat, ...]] = {
@@ -64,6 +65,7 @@ KIND_FORMATS: dict[MediaKind, tuple[FileFormat, ...]] = {
     MediaKind.VISUAL_EFFECT: VIDEO_FORMATS,
     MediaKind.RENDER: VIDEO_FORMATS,
     MediaKind.COVER: IMAGE_FORMATS,
+    MediaKind.FINAL_VIDEO: VIDEO_FORMATS,
 }
 # Kinds a person or agent may upload; a render arrives only from a worker (rule project.render).
 UPLOADABLE_KINDS = tuple(kind for kind in MediaKind if kind is not MediaKind.RENDER)
@@ -97,6 +99,19 @@ class MediaInput(BaseModel):
     note: MediaNote = ""
 
 
+class MediaMeasures(BaseModel):
+    """What was measured in a video's content when it arrived (rule project.media)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    duration_seconds: float = Field(ge=0)
+    width: int | None = Field(default=None, ge=1)
+    height: int | None = Field(default=None, ge=1)
+    loudness_lufs: float | None = Field(
+        default=None, description="Integrated loudness (EBU R128); null when there is no audio."
+    )
+
+
 class MediaFile(BaseModel):
     """A media file of an episode, with the revision to send back when changing it."""
 
@@ -114,6 +129,10 @@ class MediaFile(BaseModel):
     revision: int
     created_at: datetime
     updated_at: datetime
+    measures: MediaMeasures | None = Field(
+        default=None,
+        description="Duration, resolution and loudness of a video, measured on arrival.",
+    )
 
     def stored(self) -> StoredFile:
         """Where the file sits in the assets directory."""
@@ -219,6 +238,31 @@ class MediaStore:
         if row is None:
             raise MediaNotFound(str(media_id))
         return to_media(row)
+
+    def measures_of(self, sha256: str) -> MediaMeasures | None:
+        """What was measured in the content with this hash, if anything."""
+        with self.database.connect() as connection:
+            row = connection.execute(
+                "SELECT duration_seconds, width, height, loudness_lufs FROM media_measures"
+                " WHERE sha256 = ?",
+                (sha256,),
+            ).fetchone()
+        return None if row is None else MediaMeasures(**dict(row))
+
+    def save_measures(self, sha256: str, measures: MediaMeasures) -> None:
+        """Keep the measures of a content hash; the same content measures the same."""
+        with self.database.connect() as connection:
+            connection.execute(
+                "INSERT OR REPLACE INTO media_measures (sha256, duration_seconds, width, height,"
+                " loudness_lufs) VALUES (?, ?, ?, ?, ?)",
+                (
+                    sha256,
+                    measures.duration_seconds,
+                    measures.width,
+                    measures.height,
+                    measures.loudness_lufs,
+                ),
+            )
 
     def add(self, new: NewMedia, source: BinaryIO) -> MediaFile:
         """Check and store the file, then add it to the episode; AssetRejected when unfit."""
