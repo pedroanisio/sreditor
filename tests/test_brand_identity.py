@@ -403,7 +403,8 @@ def mcp(app: FastAPI, owner: TestClient) -> Iterator[TestClient]:
 
 
 def update_brand(mcp: TestClient, **arguments: Any) -> dict[str, Any]:
-    brand = {name: arguments.pop(name) for name in ("colors", "fonts") if name in arguments}
+    names = ("colors", "fonts", "narrator_voice")
+    brand = {name: arguments.pop(name) for name in names if name in arguments}
     return tool(mcp, "update_brand", {"slug": "funny-memes", "brand": brand, **arguments})
 
 
@@ -467,6 +468,68 @@ def test_mcp_update_brand_for_platform_changes_only_that_account(mcp: TestClient
     update_brand(mcp, platform="tiktok", colors=PALETTE)
     channel_kit = tool(mcp, "get_brand", {"slug": "funny-memes"})["structuredContent"]["brand"]
     assert channel_kit["colors"] == []
+
+
+NARRATOR = {
+    "voice_id": "brand1",
+    "voice_name": "Brand Voice",
+    "tuning": {
+        "stability": 0.4,
+        "similarity_boost": 0.8,
+        "style": 0.1,
+        "speed": 1.0,
+        "use_speaker_boost": True,
+    },
+}
+
+
+def test_mcp_update_brand_sets_the_narrator_voice(mcp: TestClient) -> None:
+    done = update_brand(mcp, narrator_voice=NARRATOR)
+    assert done["structuredContent"]["brand"]["narrator_voice"] == NARRATOR
+
+
+def test_mcp_update_brand_narrator_voice_alone_keeps_colors(mcp: TestClient) -> None:
+    update_brand(mcp, colors=PALETTE)
+    done = update_brand(mcp, narrator_voice=NARRATOR)
+    assert len(done["structuredContent"]["brand"]["colors"]) == 2
+
+
+def test_mcp_update_brand_without_narrator_voice_keeps_it(mcp: TestClient) -> None:
+    update_brand(mcp, narrator_voice=NARRATOR)
+    done = update_brand(mcp, colors=PALETTE)
+    assert done["structuredContent"]["brand"]["narrator_voice"]["voice_id"] == "brand1"
+
+
+def test_mcp_update_brand_null_narrator_voice_clears_it(mcp: TestClient) -> None:
+    update_brand(mcp, narrator_voice=NARRATOR)
+    done = update_brand(mcp, narrator_voice=None)
+    assert done["structuredContent"]["brand"]["narrator_voice"] is None
+
+
+def test_mcp_get_brand_shows_the_narrator_voice(mcp: TestClient) -> None:
+    update_brand(mcp, narrator_voice=NARRATOR)
+    view = tool(mcp, "get_brand", {"slug": "funny-memes"})["structuredContent"]
+    assert view["brand"]["narrator_voice"]["voice_name"] == "Brand Voice"
+
+
+def test_mcp_update_brand_narrator_voice_with_speed_out_of_range_is_a_tool_error(
+    mcp: TestClient,
+) -> None:
+    fast = {**NARRATOR, "tuning": {**NARRATOR["tuning"], "speed": 2.0}}
+    assert update_brand(mcp, narrator_voice=fast)["isError"]
+
+
+def test_api_patch_brand_sets_and_clears_the_narrator_voice(owner: TestClient) -> None:
+    owner.patch(BRAND, json={"narrator_voice": NARRATOR})
+    set_voice = owner.get(BRAND).json()["narrator_voice"]
+    cleared = owner.patch(BRAND, json={"narrator_voice": None}).json()["narrator_voice"]
+    assert (set_voice["voice_id"], cleared) == ("brand1", None)
+
+
+def test_mcp_update_brand_description_points_files_to_get_file_link(mcp: TestClient) -> None:
+    listed = {item["name"]: item for item in mcp_call(mcp, "tools/list", {})["result"]["tools"]}
+    description = listed["update_brand"]["description"]
+    assert "get_file_link" in description and "signed upload links" not in description
 
 
 def test_mcp_update_brand_without_changes_names_the_fix(mcp: TestClient) -> None:

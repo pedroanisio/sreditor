@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from typing import Annotated
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from sreditor.srstudio_vocabulary import MAX_SPEED, MIN_SPEED
+
+# ElevenLabs takes these three settings as ratios.
+Ratio = Annotated[float, Field(ge=0, le=1)]
 
 
 class VoiceTuning(BaseModel):
@@ -10,8 +17,8 @@ class VoiceTuning(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    stability: float
-    similarity_boost: float
-    style: float
-    speed: float
+    stability: Ratio
+    similarity_boost: Ratio
+    style: Ratio
+    speed: Annotated[float, Field(ge=MIN_SPEED, le=MAX_SPEED)]
     use_speaker_boost: bool

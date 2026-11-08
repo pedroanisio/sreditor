@@ -458,3 +458,22 @@ def test_mcp_update_episode_to_published_repeats_the_claims_warning(
     }
     result = tool(mcp, "update_episode", arguments)["structuredContent"]
     assert "no checked primary source" in result["claims_warning"]
+
+
+def test_mcp_update_source_keeps_the_link_of_a_claim_that_cites_it(
+    mcp: TestClient, source: str
+) -> None:
+    made = add_claim_tool(mcp, source)["structuredContent"]["claim"]
+    arguments = {
+        "slug": "funny-memes",
+        "target": {"number": 1, "source_id": source},
+        "source": {**STUDY, "url": "https://example.com/mondays-fixed"},
+    }
+    assert not tool(mcp, "update_source", arguments).get("isError")
+    listed = tool(mcp, "list_claims", {"slug": "funny-memes", "number": 1})["structuredContent"]
+    claim = next(item for item in listed["claims"]["items"] if item["id"] == made["id"])
+    assert [(link["source_id"], link["url"]) for link in claim["sources"]] == [
+        (source, "https://example.com/mondays-fixed")
+    ]
+    research = tool(mcp, "get_research", {"slug": "funny-memes", "number": 1})["structuredContent"]
+    assert research["sources"]["items"][0]["url"] == "https://example.com/mondays-fixed"

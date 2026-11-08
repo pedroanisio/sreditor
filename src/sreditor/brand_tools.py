@@ -1,8 +1,9 @@
-"""MCP tools for a channel's identity: its display name and its brand colors and fonts.
+"""MCP tools for a channel's identity: its display name, brand colors, fonts and narrator voice.
 
 Two task-sized tools (agentic.mcp.tools.outcomes, project.brand): rename the channel or change
-its language, and set its palette and fonts. Reading the kit is get_brand. Files (logo, avatar, stings, font files)
-are not sent through these tools: they are uploaded on the brand page.
+its language, and set its palette, fonts and default narrator voice. Reading the kit is
+get_brand. Files (logo, avatar, stings, font files) are read with get_file_link and uploaded
+on the brand page, not through these tools.
 """
 
 from __future__ import annotations
@@ -13,7 +14,15 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from sreditor import operations
 from sreditor.brand import BrandPatch
-from sreditor.channels import ChannelIdentity, Color, FontInput, FontRole, Platform, Text
+from sreditor.channels import (
+    ChannelIdentity,
+    Color,
+    FontInput,
+    FontRole,
+    NarratorVoice,
+    Platform,
+    Text,
+)
 from sreditor.deps import ChannelAccess, Services, access_for
 from sreditor.field_types import LanguageTag
 from sreditor.mcp_principal import principal
@@ -24,11 +33,14 @@ VALUE_ERROR_PREFIX = "Value error, "
 NO_IDENTITY_CHANGE = (
     "Pass a new `name`, a new `language` or both; get_channel shows the current ones"
 )
-NOTHING_TO_CHANGE = "Pass colors, fonts or both in `brand`; call get_brand to see the colors and fonts the kit has now"
+NOTHING_TO_CHANGE = (
+    "Pass colors, fonts, narrator_voice or several in `brand`; call get_brand to see what the "
+    "kit has now"
+)
 
 
 class BrandChanges(BaseModel):
-    """The colors and fonts update_brand sets; what is left out stays as it is."""
+    """The colors, fonts and narrator voice update_brand sets; what is left out stays as it is."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -40,14 +52,20 @@ class BrandChanges(BaseModel):
         default=None,
         description="Fonts by role (heading, body, caption); null removes a role's font.",
     )
+    narrator_voice: NarratorVoice | None = Field(
+        default=None,
+        description=(
+            "The voice that narrates a short script that names none: a voice_id from "
+            "list_voices, an optional voice_name and tuning (stability, similarity_boost and "
+            "style from 0 to 1, speed from 0.7 to 1.2, use_speaker_boost). null clears it."
+        ),
+    )
 
 
 def brand_patch(changes: BrandChanges) -> BrandPatch:
     """The patch the arguments describe, or a tool error naming what to fix."""
-    if changes.colors is None and changes.fonts is None:
-        raise ToolError(NOTHING_TO_CHANGE)
     try:
-        return BrandPatch(colors=changes.colors, fonts=changes.fonts)
+        patch = BrandPatch.model_validate(changes.model_dump(exclude_unset=True))
     except ValidationError as invalid:
         reasons = "; ".join(
             str(error["msg"]).removeprefix(VALUE_ERROR_PREFIX) for error in invalid.errors()
@@ -57,6 +75,9 @@ def brand_patch(changes: BrandChanges) -> BrandPatch:
             "role (primary, secondary, text, background) on one color and unique names; "
             "get_brand shows the current one"
         ) from invalid
+    if patch.is_empty:
+        raise ToolError(NOTHING_TO_CHANGE)
+    return patch
 
 
 def add_brand_tools(server: MCPServer, services: Services) -> None:
@@ -104,19 +125,24 @@ def add_brand_tools(server: MCPServer, services: Services) -> None:
         platform: Platform | None = None,
         expected_revision: int | None = None,
     ) -> BrandView:
-        """Set the brand's colors and fonts, as data, inside `brand`.
+        """Set the brand's colors, fonts and default narrator voice, as data, inside `brand`.
 
         `colors` is the WHOLE palette, replacing the old one: each is a name, a #RRGGBB hex and
         a role (primary, secondary, accent, text, background); each role is used once, only
         accent may repeat. `fonts` sets the roles it
         names (heading, body, caption) with a family and a weight from 100 to 900, and removes a
-        role whose value is null; roles it leaves out stay. What you leave out stays as it is.
+        role whose value is null; roles it leaves out stay. `narrator_voice` is the voice a short
+        script speaks with when it names none: a `voice_id` from list_voices with an optional
+        `voice_name` and `tuning` (all of stability, similarity_boost and style from 0 to 1,
+        speed from 0.7 to 1.2 and use_speaker_boost; leave `tuning` out to keep the voice's own
+        settings); set it to null to clear it. Short scripts use the channel's narrator voice,
+        so set it without `platform`. What you leave out stays as it is.
         With `platform`, only that account's overrides change (it needs that account first,
         put_account). Read the current kit and its `revision` with get_brand first; pass the
         revision as `expected_revision` to refuse the change if someone else changed the
-        channel. Not for the logo, avatar, stings or font files: those are uploaded on the
-        brand page (signed upload links are for agents). Needs owner or editor role and the
-        channels:write scope."""
+        channel. Not for the logo, avatar, stings or font files: read them with get_file_link and
+        upload them on the brand page; this tool cannot upload files. Needs owner or editor role
+        and the channels:write scope."""
 
         def write() -> BrandView:
             patch = brand_patch(brand)

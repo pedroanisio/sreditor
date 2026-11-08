@@ -285,3 +285,53 @@ def test_mcp_refused_research_call_names_the_cause(
 ) -> None:
     result = tool(mcp, name, arguments)
     assert result["isError"] and message in result["content"][0]["text"]
+
+
+def cited(mcp: TestClient) -> dict[str, Any]:
+    added = tool(mcp, "add_source", {"slug": "funny-memes", "number": 1, "source": STUDY})
+    found: dict[str, Any] = added["structuredContent"]
+    return found
+
+
+def update_source(mcp: TestClient, found: dict[str, Any], **extra: Any) -> dict[str, Any]:
+    arguments = {
+        "slug": "funny-memes",
+        "target": {"number": 1, "source_id": found["id"]},
+        "source": {**STUDY, "title": "Mondays study, 2nd ed."},
+        **extra,
+    }
+    return tool(mcp, "update_source", arguments)
+
+
+def test_mcp_update_source_of_episode_replaces_it_in_place(mcp: TestClient) -> None:
+    found = cited(mcp)
+    done = update_source(mcp, found, expected_revision=found["revision"])["structuredContent"]
+    assert done["id"] == found["id"] and done["title"] == "Mondays study, 2nd ed."
+    assert done["revision"] == found["revision"] + 1
+
+
+def test_mcp_update_source_with_stale_revision_names_the_current_one(mcp: TestClient) -> None:
+    found = cited(mcp)
+    update_source(mcp, found)
+    result = update_source(mcp, found, expected_revision=found["revision"])
+    assert result["isError"] and "revision 2" in result["content"][0]["text"]
+
+
+def test_mcp_update_source_unknown_source_points_at_get_research(mcp: TestClient) -> None:
+    found = {"id": "00000000-0000-0000-0000-000000000000"}
+    result = update_source(mcp, found)
+    assert result["isError"] and "call get_research" in result["content"][0]["text"]
+
+
+def test_mcp_update_source_without_an_owner_is_a_tool_error(mcp: TestClient) -> None:
+    found = cited(mcp)
+    arguments = {"slug": "funny-memes", "target": {"source_id": found["id"]}, "source": STUDY}
+    assert tool(mcp, "update_source", arguments)["isError"]
+
+
+def test_mcp_update_source_with_two_owners_is_a_tool_error(mcp: TestClient) -> None:
+    found = cited(mcp)
+    target = {"source_id": found["id"], "number": 1, "pitch_id": found["id"]}
+    assert tool(mcp, "update_source", {"slug": "funny-memes", "target": target, "source": STUDY})[
+        "isError"
+    ]

@@ -36,7 +36,7 @@ from sreditor.external_media_tools import external_media_error_message
 from sreditor.settings import AppSettings
 from tests import media_samples as sample
 from tests.conftest import RecordingMailer
-from tests.test_agentic import PUBLIC_URL, agent, block, new_token, tool
+from tests.test_agentic import PUBLIC_URL, agent, block, mcp_call, new_token, tool
 from tests.test_api import FUNNY_MEMES
 from tests.test_episodes import joined
 
@@ -521,3 +521,63 @@ def test_external_media_error_message_in_use_names_remove_tool() -> None:
 
 def test_external_media_error_message_other_error_is_none() -> None:
     assert external_media_error_message(ValueError("x")) is None
+
+
+def used(mcp: TestClient, **fields: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+    """A paper and its use in episode 1, as the tools return them."""
+    item = added(mcp, PAPER)
+    use = {"media_id": item["id"], "pages": "3-4", "purpose": "quote", **fields}
+    made = tool(mcp, "use_external_media", {"slug": "funny-memes", "number": 1, "use": use})
+    return item, made["structuredContent"]
+
+
+def update_use(mcp: TestClient, made: dict[str, Any], use: dict[str, Any], **extra: Any) -> Any:
+    target = {"number": 1, "use_id": made["id"]}
+    return tool(
+        mcp,
+        "update_external_media_use",
+        {"slug": "funny-memes", "target": target, "use": use, **extra},
+    )
+
+
+def test_mcp_update_external_media_use_fixes_its_warning(mcp: TestClient) -> None:
+    item, made = used(mcp)
+    fixed = {"media_id": item["id"], "pages": "3-4", "purpose": "quote", "credit": "Silva, 2025"}
+    done = update_use(mcp, made, fixed, expected_revision=made["revision"])["structuredContent"]
+    found = tool(mcp, "get_episode_credits", {"slug": "funny-memes", "number": 1})
+    problems = [warning["problem"] for warning in found["structuredContent"]["credits"]["warnings"]]
+    assert done["id"] == made["id"] and "no_credit" not in problems
+
+
+def test_mcp_update_external_media_use_with_stale_revision_is_a_tool_error(
+    mcp: TestClient,
+) -> None:
+    item, made = used(mcp)
+    use = {"media_id": item["id"], "pages": "5", "purpose": "quote"}
+    update_use(mcp, made, use)
+    result = update_use(mcp, made, use, expected_revision=made["revision"])
+    assert result["isError"] and "revision 2" in result["content"][0]["text"]
+
+
+def test_mcp_update_external_media_use_unknown_use_points_at_get_episode_credits(
+    mcp: TestClient,
+) -> None:
+    item, _ = used(mcp)
+    use = {"media_id": item["id"], "pages": "5", "purpose": "quote"}
+    result = update_use(mcp, {"id": str(uuid4())}, use)
+    assert result["isError"] and "call get_episode_credits" in result["content"][0]["text"]
+
+
+def test_mcp_update_external_media_use_unknown_item_points_at_list_external_media(
+    mcp: TestClient,
+) -> None:
+    _, made = used(mcp)
+    result = update_use(mcp, made, {"media_id": str(uuid4()), "purpose": "quote"})
+    assert result["isError"] and "call list_external_media" in result["content"][0]["text"]
+
+
+def test_mcp_get_episode_credits_description_points_use_warnings_at_update_use(
+    mcp: TestClient,
+) -> None:
+    listed = {item["name"]: item for item in mcp_call(mcp, "tools/list", {})["result"]["tools"]}
+    assert "update_external_media_use" in listed["get_episode_credits"]["description"]

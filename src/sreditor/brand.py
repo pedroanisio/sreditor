@@ -19,6 +19,7 @@ from sreditor.channels import (
     FontInput,
     FontRole,
     FontSpec,
+    NarratorVoice,
     Platform,
     check_palette,
 )
@@ -93,7 +94,9 @@ class BrandPatch(BaseModel):
     """A change to the colors and fonts of a kit; what is left out stays as it is.
 
     `colors` replaces the whole palette. `fonts` sets the fonts of the roles it names and
-    removes the role whose value is null; other roles stay.
+    removes the role whose value is null; other roles stay. `narrator_voice` sets the voice a
+    short script speaks with when it names none, and an explicit null clears it (rule
+    project.voice.estimate); left out, it stays.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -106,6 +109,19 @@ class BrandPatch(BaseModel):
         default=None,
         description="Fonts by role (heading, body, caption); null removes a role's font.",
     )
+    narrator_voice: NarratorVoice | None = Field(
+        default=None,
+        description="The default narrator voice; null clears it, leaving it out keeps it.",
+    )
+
+    @property
+    def is_empty(self) -> bool:
+        """Whether the patch changes nothing: no palette, no fonts and no narrator voice named."""
+        return (
+            self.colors is None
+            and self.fonts is None
+            and "narrator_voice" not in self.model_fields_set
+        )
 
     @field_validator("colors")
     @classmethod
@@ -147,6 +163,8 @@ def with_patch(brand: BrandKit, patch: BrandPatch) -> BrandKit:
         updated = with_fonts(updated, patch.fonts)
     if patch.colors is not None:
         updated = BrandKit.model_validate({**updated.model_dump(), "colors": patch.colors})
+    if "narrator_voice" in patch.model_fields_set:
+        updated = updated.model_copy(update={"narrator_voice": patch.narrator_voice})
     return updated
 
 
