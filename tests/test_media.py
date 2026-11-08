@@ -334,3 +334,35 @@ def test_mcp_remove_unknown_media_says_how_to_fix_it(mcp: TestClient) -> None:
     arguments = {"slug": "funny-memes", "number": 1, "media_id": str(uuid4())}
     result = tool(mcp, "remove_media", arguments)
     assert result["isError"] and "call list_media" in result["content"][0]["text"]
+
+
+def update_media(mcp: TestClient, media_id: str, **extra: Any) -> dict[str, Any]:
+    arguments = {
+        "slug": "funny-memes",
+        "target": {"number": 1, "media_id": media_id},
+        "media": {"name": "Intro", "note": "Second take"},
+        **extra,
+    }
+    return tool(mcp, "update_media", arguments)
+
+
+def test_mcp_update_media_renames_it_and_keeps_the_file(
+    mcp: TestClient, intro: dict[str, Any]
+) -> None:
+    done = update_media(mcp, intro["id"], expected_revision=intro["revision"])
+    media = done["structuredContent"]
+    assert (media["name"], media["note"]) == ("Intro", "Second take")
+    assert media["sha256"] == intro["sha256"] and media["revision"] == intro["revision"] + 1
+
+
+def test_mcp_update_media_with_stale_revision_is_a_tool_error(
+    mcp: TestClient, intro: dict[str, Any]
+) -> None:
+    update_media(mcp, intro["id"])
+    result = update_media(mcp, intro["id"], expected_revision=intro["revision"])
+    assert result["isError"] and "revision 2" in result["content"][0]["text"]
+
+
+def test_mcp_update_unknown_media_says_how_to_fix_it(mcp: TestClient) -> None:
+    result = update_media(mcp, str(uuid4()))
+    assert result["isError"] and "call list_media" in result["content"][0]["text"]

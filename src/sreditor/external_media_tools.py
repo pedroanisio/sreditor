@@ -37,6 +37,15 @@ from sreditor.pagination import DEFAULT_LIMIT, Page, ToolLimit
 from sreditor.pitch_tools import channel_access
 
 
+class UseTarget(BaseModel):
+    """One use of third-party media: the episode's number and the use's id from get_episode_credits."""
+
+    model_config = ConfigDict(frozen=True)
+
+    number: int
+    use_id: UUID
+
+
 class EpisodeExternalMedia(BaseModel):
     """An episode's credits and rights warnings, with a page of its uses."""
 
@@ -183,6 +192,28 @@ def add_episode_uses(server: MCPServer, services: Services) -> None:
             )
         )
 
+    @server.tool(annotations=tool_annotations("Update a third-party media use", Effect.REPLACE))
+    def update_external_media_use(
+        context: Context,
+        slug: str,
+        target: UseTarget,
+        use: MediaUseInput,
+        expected_revision: int | None = None,
+    ) -> MediaUse:
+        """Replace one use of a library item in an episode, in place: its item, time range or
+        pages, purpose, scene, credit and note. Use it to fix the warnings get_episode_credits
+        lists for a use (a missing reason, range or credit) instead of removing the use and
+        adding it again. `target` is the episode `number` and the `use_id` from
+        get_episode_credits. Send the whole use, as use_external_media takes it; what you leave
+        out is cleared. Needs content:write. Pass the use's `revision` as `expected_revision`
+        so you never overwrite a change you have not read."""
+        change = UseChange(
+            number=target.number, use_id=target.use_id, expected_revision=expected_revision
+        )
+        return external_reported(
+            lambda: external.replace_use(services, access(context, slug), change, use)
+        )
+
     @server.tool(annotations=tool_annotations("Remove a third-party media use", Effect.REMOVE))
     def remove_external_media_use(
         context: Context,
@@ -211,7 +242,9 @@ def add_episode_uses(server: MCPServer, services: Services) -> None:
     ) -> EpisodeExternalMedia:
         """Read the credit lines an episode owes for third-party media, its rights warnings
         (unknown rights, a citation with no reason or time range, a missing credit) and a page
-        of its uses. Warnings never block a status; fix them with update_external_media."""
+        of its uses. Warnings never block a status; fix a use's warning with
+        update_external_media_use, and an item's rights or credit line with
+        update_external_media."""
 
         def read() -> EpisodeExternalMedia:
             channel = access(context, slug)

@@ -336,4 +336,5 @@ class Channel(BaseModel):
             assets={**self.brand.assets, **override.assets},
             colors=override.colors or self.brand.colors,
             fonts={**self.brand.fonts, **override.fonts},
+            narrator_voice=override.narrator_voice or self.brand.narrator_voice,
         )

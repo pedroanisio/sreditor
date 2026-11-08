@@ -77,7 +77,7 @@ from sreditor.library_operations import Cast, EntryChange
 from sreditor.mcp_aliases import RENAMED_TOOLS, AliasingServer, ToolRename
 from sreditor.mcp_idempotency import IdempotencyKey, IdempotentCall, run_once
 from sreditor.mcp_principal import PRINCIPAL, Principal, principal
-from sreditor.media import MediaFile, MediaKind, MediaNotFound
+from sreditor.media import MediaFile, MediaInput, MediaKind, MediaNotFound
 from sreditor.media_operations import MediaChange, MediaQuery
 from sreditor.members import Invitation, Member, Permission, minimum_role
 from sreditor.pagination import DEFAULT_LIMIT, Page, ToolLimit, page_after
@@ -112,14 +112,15 @@ INSTRUCTIONS = (
     "update_channel (name or language) and put_account change them, list_members and invite_member "
     "manage who belongs. Read get_editorial before writing content for a channel, and change "
     "it with write_guideline and retire_guideline. get_brand and update_brand read and set "
-    "its colors (with roles) and fonts. "
+    "its colors (with roles), fonts and default narrator voice. "
     "Episodes are numbered from 1: list_episodes, get_episode, create_episode and "
     "update_episode (status idea, research, script, production, published); "
     "delete_episode removes one for good after get_episode gives its revision. Research: "
     "get_research shows an episode's notes, sources and its pitches' research; "
-    "write_research_notes, add_source and remove_source change it. Pitches are story ideas "
+    "write_research_notes, add_source, update_source and remove_source change it. Pitches are story ideas "
     "with their own research: list_pitches, get_pitch, create_pitch, update_pitch, "
-    "write_pitch_notes, add_pitch_source and remove_pitch_source; set_episode_pitches picks "
+    "write_pitch_notes, add_pitch_source and remove_pitch_source (update_source edits either "
+    "kind of source in place); set_episode_pitches picks "
     "the ones an episode uses. Record each figure or fact an episode states with list_claims, "
     "add_claim, update_claim, check_claim_source and remove_claim; claims without a checked "
     "primary source only warn. "
@@ -138,14 +139,15 @@ INSTRUCTIONS = (
     "Owners and editors speak it with generate_voice_over, which spends ElevenLabs credits: "
     "see list_voices and estimate_voice_over first, then read the timed words with "
     "get_voice_over and use them with apply_take_timings. "
-    "Episode media files are listed with list_media and removed with remove_media. Files move "
+    "Episode media files are listed with list_media, renamed with update_media and removed "
+    "with remove_media. Files move "
     "through single-use links valid 15 minutes: get_file_link downloads a brand file, media "
     "file, render, third-party copy or srstudio export, and create_upload_link uploads a media "
     "file; check_srstudio_export shows what an srstudio export lacks. list_waivers shows an "
     "episode's signed waivers to owners and editors; waivers are not sent through links. "
     "Media made by others lives in the third-party library: list_external_media, "
-    "add_external_media and update_external_media; record each use with use_external_media or "
-    "remove_external_media_use and read get_episode_credits for credits and rights warnings. "
+    "add_external_media and update_external_media; record each use with use_external_media, change it with "
+    "update_external_media_use or drop it with remove_external_media_use and read get_episode_credits for credits and rights warnings. "
     "Propose a classification with classify_episode (values from "
     "get_classification_vocabulary; a person confirms it), read it with "
     "get_episode_classification and compare the channel's declared and observed profile with "
@@ -400,6 +402,15 @@ class BrandView(BaseModel):
     brand: BrandKit
 
 
+class MediaTarget(BaseModel):
+    """One media file: the episode's number and the file's id from list_media."""
+
+    model_config = ConfigDict(frozen=True)
+
+    number: int
+    media_id: UUID
+
+
 def build(
     services: Services,
     renames: Sequence[ToolRename] = RENAMED_TOOLS,
@@ -422,6 +433,7 @@ def build(
     from sreditor.prop_tools import add_prop_tools
     from sreditor.render_tools import add_render_tools
     from sreditor.short_script_tools import add_short_script_tools
+    from sreditor.source_tools import add_source_tools
     from sreditor.srstudio_tools import add_srstudio_tools
     from sreditor.style_tools import add_style_data_tools
 
@@ -433,6 +445,7 @@ def build(
     add_episode_tools(server, services)
     add_research_tools(server, services)
     add_pitch_tools(server, services)
+    add_source_tools(server, services)
     add_claim_tools(server, services)
     add_screenplay_tools(server, services)
     add_short_script_tools(server, services)
@@ -1077,6 +1090,26 @@ def add_media_tools(server: MCPServer, services: Services) -> None:
         here; to add a file call create_upload_link. Pass `next_cursor` as `cursor` for more."""
         query = MediaQuery(number=number, kind=kind, cursor=cursor, limit=limit)
         return reported(lambda: media_operations.list_media(services, access(context, slug), query))
+
+    @server.tool(annotations=tool_annotations("Rename a media file", Effect.REPLACE))
+    def update_media(
+        context: Context,
+        slug: str,
+        target: MediaTarget,
+        media: MediaInput,
+        expected_revision: int | None = None,
+    ) -> MediaFile:
+        """Rename an episode's media file or change its note, in place; the file itself never
+        changes, so a new take is a new file. `target` is the episode `number` and the
+        `media_id` from list_media. Send the `name` and the `note` you want: a note left out is
+        cleared. Needs content:write. Pass the file's `revision` from list_media as
+        `expected_revision` so you never overwrite a change you have not read."""
+        change = MediaChange(
+            number=target.number, media_id=target.media_id, expected_revision=expected_revision
+        )
+        return reported(
+            lambda: media_operations.rename_media(services, access(context, slug), change, media)
+        )
 
     @server.tool(annotations=tool_annotations("Remove a media file", Effect.REMOVE))
     def remove_media(

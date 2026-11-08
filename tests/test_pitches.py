@@ -600,3 +600,35 @@ def test_mcp_get_research_pitch_list_revision_lets_set_episode_pitches_succeed(
     arguments = {**episode, "pitch_ids": [second["id"]], "expected_revision": listed["revision"]}
     result = tool(mcp, "set_episode_pitches", arguments)
     assert not result.get("isError") and result["structuredContent"]["pitch_ids"] == [second["id"]]
+
+
+def test_mcp_update_source_of_pitch_replaces_it_in_place(mcp: TestClient) -> None:
+    pitch = created_pitch(mcp)
+    ids = {"slug": "funny-memes", "pitch_id": pitch["id"]}
+    added = tool(mcp, "add_pitch_source", {**ids, "source": STUDY})["structuredContent"]
+    arguments = {
+        "slug": "funny-memes",
+        "target": {"pitch_id": pitch["id"], "source_id": added["id"]},
+        "source": {**STUDY, "claim": "Most people dread Mondays a lot."},
+        "expected_revision": added["revision"],
+    }
+    done = tool(mcp, "update_source", arguments)["structuredContent"]
+    assert done["id"] == added["id"] and done["claim"] == "Most people dread Mondays a lot."
+
+
+def test_mcp_update_source_of_pitch_with_stale_revision_is_a_tool_error(mcp: TestClient) -> None:
+    pitch = created_pitch(mcp)
+    ids = {"slug": "funny-memes", "pitch_id": pitch["id"]}
+    added = tool(mcp, "add_pitch_source", {**ids, "source": STUDY})["structuredContent"]
+    target = {"pitch_id": pitch["id"], "source_id": added["id"]}
+    arguments = {"slug": "funny-memes", "target": target, "source": STUDY}
+    tool(mcp, "update_source", arguments)
+    result = tool(mcp, "update_source", {**arguments, "expected_revision": added["revision"]})
+    assert result["isError"] and "revision 2" in result["content"][0]["text"]
+
+
+def test_mcp_update_source_of_pitch_unknown_source_points_at_get_pitch(mcp: TestClient) -> None:
+    pitch = created_pitch(mcp)
+    target = {"pitch_id": pitch["id"], "source_id": ZERO_ID}
+    result = tool(mcp, "update_source", {"slug": "funny-memes", "target": target, "source": STUDY})
+    assert result["isError"] and "call get_pitch" in result["content"][0]["text"]
