@@ -53,7 +53,7 @@ def package(video_id: str | None = None, cover_id: str | None = None) -> dict[st
                 "name": "main",
                 "video_id": video_id,
                 "cover_id": cover_id,
-                "caption": "Oi, gente!",
+                "caption": "Oi, gente! Feito com IA.",
                 "alt_text": "A dog waving.",
                 "hashtags": ["#Dogs", "funny"],
             }

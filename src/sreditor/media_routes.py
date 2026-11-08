@@ -49,7 +49,7 @@ class MediaUpload(BaseModel):
     kind: MediaKind = Field(description="What the file is for in the episode.")
     file: UploadFile = Field(
         description="Audio (MP3, WAV, M4A) for voice_over, sound_effect and score; "
-        "video (MP4, WebM) for visual_effect."
+        "video (MP4, WebM) for visual_effect and final_video; images (PNG, JPEG, WebP) for cover."
     )
     name: UploadName = Field(default="", description="Defaults to the file's name.")
     note: MediaNote = ""

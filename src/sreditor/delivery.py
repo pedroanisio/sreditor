@@ -8,6 +8,8 @@ own, with its own revision for the ETag. Missing pieces only warn, never block a
 
 from __future__ import annotations
 
+import re
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Annotated, Self
@@ -27,9 +29,10 @@ from pydantic import (
 from sreditor.channels import Platform
 from sreditor.database import Database
 from sreditor.episode_texts import EpisodeTexts, PartChanged, TextKey, TextPart
-from sreditor.field_types import SLUG_PATTERN, ChannelSlug
+from sreditor.field_types import SLUG_PATTERN, ChannelSlug, Sha256
 from sreditor.i18n import N_
 from sreditor.media import MediaStore
+from sreditor.settings import DeliveryRules
 
 CAPTION_LENGTH = 1000
 ALT_TEXT_LENGTH = 1000
@@ -39,6 +42,7 @@ MAX_CUTS = 10
 MAX_HASHTAGS = 30
 HASHTAG_SIGIL = "#"
 VIDEO_FAMILY = "video"  # the media-type family of a cut's final video
+LOCATION_LENGTH = 500
 CUT_NAME_PATTERN = SLUG_PATTERN
 # Letters, digits and underscores of any language: "#cachorrinho" and "#açaí" are valid.
 HASHTAG_PATTERN = r"^\w+$"
@@ -65,6 +69,24 @@ def in_utc(moment: datetime) -> datetime:
     return moment.replace(tzinfo=UTC) if moment.tzinfo is None else moment.astimezone(UTC)
 
 
+class ExternalVideo(BaseModel):
+    """A master kept outside sreditor, such as in a Drive: where it is and what it measures.
+
+    sreditor never opens the location, so the measures are as the caller declares them.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    location: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=LOCATION_LENGTH)
+    ] = Field(description="Where the file lives, such as a Drive path or an https link.")
+    sha256: Sha256 = Field(description="The SHA-256 of the file, to tell masters apart.")
+    duration_seconds: float | None = Field(default=None, ge=0)
+    width: int | None = Field(default=None, ge=1)
+    height: int | None = Field(default=None, ge=1)
+    loudness_lufs: float | None = None
+
+
 class Cut(BaseModel):
     """One version of the episode, with the files and texts it is posted with."""
 
@@ -74,7 +96,13 @@ class Cut(BaseModel):
         description="A slug such as main, vertical or teaser; unique per episode."
     )
     video_id: UUID | None = Field(
-        default=None, description="The id of a video media file of this episode (list_media)."
+        default=None,
+        description="The id of a video media file of this episode (list_media), such as a "
+        "final_video uploaded with create_upload_link.",
+    )
+    external_video: ExternalVideo | None = Field(
+        default=None,
+        description="A master registered by reference, with no upload; not with video_id.",
     )
     cover_id: UUID | None = Field(
         default=None, description="The id of an image media file of this episode (kind cover)."
@@ -82,6 +110,13 @@ class Cut(BaseModel):
     caption: Caption = ""
     alt_text: AltText = ""
     hashtags: list[Hashtag] = Field(default_factory=list, max_length=MAX_HASHTAGS)
+
+    @model_validator(mode="after")
+    def has_one_video(self) -> Self:
+        """Refuse an uploaded video and a referenced one on the same cut."""
+        if self.video_id is not None and self.external_video is not None:
+            raise ValueError(N_("A cut has an uploaded video or a referenced one, not both"))
+        return self
 
     @model_validator(mode="after")
     def has_distinct_hashtags(self) -> Self:
@@ -132,6 +167,9 @@ class DeliveryWarningKind(StrEnum):
     NO_VIDEO = "no_video"
     VIDEO_REMOVED = "video_removed"
     NO_LINK = "no_link"
+    TOO_LONG = "too_long"
+    TOO_MANY_HASHTAGS = "too_many_hashtags"
+    NO_AI_NOTICE = "no_ai_notice"
 
 
 WARNING_MESSAGES: dict[DeliveryWarningKind, str] = {
@@ -140,6 +178,13 @@ WARNING_MESSAGES: dict[DeliveryWarningKind, str] = {
         "The final video of the cut %(cut)s is no longer among the episode's media."
     ),
     DeliveryWarningKind.NO_LINK: N_("The post on %(platform)s has no link."),
+    DeliveryWarningKind.TOO_LONG: N_(
+        "The video of the cut %(cut)s runs %(seconds)s s, over the %(limit)s s limit."
+    ),
+    DeliveryWarningKind.TOO_MANY_HASHTAGS: N_(
+        "The cut %(cut)s has %(count)s hashtags, over the limit of %(limit)s."
+    ),
+    DeliveryWarningKind.NO_AI_NOTICE: N_("The caption of the cut %(cut)s has no AI notice line."),
 }
 
 
@@ -159,14 +204,51 @@ def warning(kind: DeliveryWarningKind, **values: object) -> DeliveryWarning:
     return DeliveryWarning(kind=kind, message=WARNING_MESSAGES[kind] % shown, values=shown)
 
 
-def warnings_of(delivery: DeliveryInput, video_ids: set[UUID]) -> list[DeliveryWarning]:
-    """Cuts without a usable video and posts without a link; `video_ids` are the episode's videos."""
+def duration_of(cut: Cut, durations: Mapping[UUID, float | None]) -> float | None:
+    """How long the cut's video runs, when known: measured if uploaded, declared if referenced."""
+    if cut.external_video is not None:
+        return cut.external_video.duration_seconds
+    return None if cut.video_id is None else durations.get(cut.video_id)
+
+
+def cut_warnings(
+    cut: Cut, durations: Mapping[UUID, float | None], rules: DeliveryRules
+) -> list[DeliveryWarning]:
+    """The gaps of one cut: its video, and the channel rules for length, hashtags and notice."""
     found: list[DeliveryWarning] = []
-    for cut in delivery.cuts:
-        if cut.video_id is None:
-            found.append(warning(DeliveryWarningKind.NO_VIDEO, cut=cut.name))
-        elif cut.video_id not in video_ids:
-            found.append(warning(DeliveryWarningKind.VIDEO_REMOVED, cut=cut.name))
+    if cut.video_id is None and cut.external_video is None:
+        found.append(warning(DeliveryWarningKind.NO_VIDEO, cut=cut.name))
+    elif cut.video_id is not None and cut.video_id not in durations:
+        found.append(warning(DeliveryWarningKind.VIDEO_REMOVED, cut=cut.name))
+    seconds = duration_of(cut, durations)
+    if seconds is not None and seconds > rules.max_seconds:
+        found.append(
+            warning(
+                DeliveryWarningKind.TOO_LONG,
+                cut=cut.name,
+                seconds=f"{seconds:.1f}",
+                limit=f"{rules.max_seconds:g}",
+            )
+        )
+    if len(cut.hashtags) > rules.max_hashtags:
+        found.append(
+            warning(
+                DeliveryWarningKind.TOO_MANY_HASHTAGS,
+                cut=cut.name,
+                count=len(cut.hashtags),
+                limit=rules.max_hashtags,
+            )
+        )
+    if rules.ai_notice_pattern and not re.search(rules.ai_notice_pattern, cut.caption):
+        found.append(warning(DeliveryWarningKind.NO_AI_NOTICE, cut=cut.name))
+    return found
+
+
+def warnings_of(
+    delivery: DeliveryInput, durations: Mapping[UUID, float | None], rules: DeliveryRules
+) -> list[DeliveryWarning]:
+    """Gaps in cuts and posts; `durations` maps each of the episode's videos to its length."""
+    found = [item for cut in delivery.cuts for item in cut_warnings(cut, durations, rules)]
     found.extend(
         warning(DeliveryWarningKind.NO_LINK, platform=post.platform.value)
         for post in delivery.posts
@@ -220,9 +302,12 @@ class DeliveryStore:
 
 
 def delivery_gaps(
-    deliveries: DeliveryStore, media: MediaStore, channel: str, number: int
+    deliveries: DeliveryStore, media: MediaStore, rules: DeliveryRules, channel: str, number: int
 ) -> list[DeliveryWarning]:
     """What the episode's package lacks now; shown when the episode moves to published."""
     package = deliveries.delivery(channel, number)
-    videos = {video.id for video in media.of_family(channel, number, VIDEO_FAMILY)}
-    return warnings_of(package, videos)
+    durations = {
+        video.id: (found.duration_seconds if (found := media.measures_of(video.sha256)) else None)
+        for video in media.of_family(channel, number, VIDEO_FAMILY)
+    }
+    return warnings_of(package, durations, rules)

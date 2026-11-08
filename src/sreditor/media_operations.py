@@ -12,12 +12,16 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
+from sreditor.assets import AssetMissing
 from sreditor.deps import ChannelAccess, Services
 from sreditor.episode_operations import after_number, episode_access
 from sreditor.media import MediaFile, MediaInput, MediaKind, NewMedia
 from sreditor.members import Permission
 from sreditor.operations import gated
 from sreditor.pagination import Page, encode_cursor
+from sreditor.video_probe import probe_video
+
+VIDEO_PREFIX = "video/"
 
 
 class MediaOperation:
@@ -54,7 +58,7 @@ def list_media(app: Services, access: ChannelAccess, query: MediaQuery) -> Page[
     slug = episode_access(app, access, query.number, Permission.READ)
     after = after_number(query.cursor)
     rows = app.media.files(slug, query.number, query.kind, after, query.limit + 1)
-    items = rows[: query.limit]
+    items = [with_stored_measures(app, row) for row in rows[: query.limit]]
     has_more = len(rows) > query.limit
     cursor_out = encode_cursor(str(app.media.position(items[-1].id))) if has_more else None
     return Page[MediaFile](items=items, next_cursor=cursor_out)
@@ -63,7 +67,28 @@ def list_media(app: Services, access: ChannelAccess, query: MediaQuery) -> Page[
 def get_media(app: Services, access: ChannelAccess, number: int, media_id: UUID) -> MediaFile:
     """One media file of the episode."""
     slug = episode_access(app, access, number, Permission.READ)
-    return app.media.get(slug, number, media_id)
+    return measured(app, app.media.get(slug, number, media_id))
+
+
+def with_stored_measures(app: Services, media: MediaFile) -> MediaFile:
+    """The file with the measures kept for its content, if any."""
+    return media.model_copy(update={"measures": app.media.measures_of(media.sha256)})
+
+
+def measured(app: Services, media: MediaFile) -> MediaFile:
+    """The file with its measures; a video not measured yet is measured now and kept."""
+    known = with_stored_measures(app, media)
+    if known.measures is not None or not media.media_type.startswith(VIDEO_PREFIX):
+        return known
+    try:
+        path = app.assets.path_of(media.stored())
+    except AssetMissing:
+        return known
+    found = probe_video(path)
+    if found is None:
+        return known
+    app.media.save_measures(media.sha256, found)
+    return known.model_copy(update={"measures": found})
 
 
 class RenderNotUploadable(ValueError):
@@ -81,7 +106,8 @@ def add_media(app: Services, access: ChannelAccess, new: NewMedia, source: Binar
         raise RenderNotUploadable
     episode_access(app, access, new.number, Permission.WRITE_CONTENT)
     placed = new.model_copy(update={"channel": access.channel.slug})
-    return gated(app, access, MediaOperation.CREATE, lambda: app.media.add(placed, source))
+    added = gated(app, access, MediaOperation.CREATE, lambda: app.media.add(placed, source))
+    return measured(app, added)
 
 
 def rename_media(
@@ -90,12 +116,13 @@ def rename_media(
     """Rename a file or change its note."""
     slug = episode_access(app, access, change.number, Permission.WRITE_CONTENT)
     media = app.media.get(slug, change.number, change.media_id)
-    return gated(
+    renamed = gated(
         app,
         access,
         MediaOperation.WRITE,
         lambda: app.media.replace(media, data, change.expected_revision),
     )
+    return with_stored_measures(app, renamed)
 
 
 def remove_media(app: Services, access: ChannelAccess, change: MediaChange) -> MediaFile:

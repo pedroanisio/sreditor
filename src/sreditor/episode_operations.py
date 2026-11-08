@@ -106,7 +106,7 @@ def replace_episode(
         return revised
     # Warn, never refuse: neither a delivery gap nor an unchecked claim holds back a status
     # (rules project.delivery and project.claims).
-    gaps = delivery_gaps(app.deliveries, app.media, slug, number)
+    gaps = delivery_gaps(app.deliveries, app.media, app.settings.delivery, slug, number)
     warning = warning_text(app.claims.unchecked(slug, number).count)
     return revised.model_copy(update={"warnings": gaps, "claims_warning": warning})
 

@@ -189,6 +189,13 @@ CREATE TABLE IF NOT EXISTS episode_media (
 );
 CREATE INDEX IF NOT EXISTS episode_media_by_episode
     ON episode_media (channel_slug, number, kind, position);
+CREATE TABLE IF NOT EXISTS media_measures (
+    sha256 TEXT PRIMARY KEY,
+    duration_seconds REAL NOT NULL,
+    width INTEGER,
+    height INTEGER,
+    loudness_lufs REAL
+);
 CREATE TABLE IF NOT EXISTS episode_waivers (
     position INTEGER PRIMARY KEY AUTOINCREMENT,
     id TEXT NOT NULL UNIQUE,

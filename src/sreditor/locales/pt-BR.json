@@ -1435,5 +1435,13 @@
   "Font file": "Arquivo da fonte",
   "Remove this font?": "Remover esta fonte?",
   "Remove font": "Remover fonte",
-  "Choose this font's family first, then upload its file.": "Escolha primeiro a família desta fonte e depois envie o arquivo."
+  "Choose this font's family first, then upload its file.": "Escolha primeiro a família desta fonte e depois envie o arquivo.",
+  "Final videos": "Vídeos finais",
+  "Upload final video": "Enviar vídeo final",
+  "No final videos yet. Upload a master made outside sreditor.": "Nenhum vídeo final ainda. Envie um master feito fora do sreditor.",
+  "More final videos": "Mais vídeos finais",
+  "A cut has an uploaded video or a referenced one, not both": "Um corte tem um vídeo enviado ou um vídeo por referência, não os dois",
+  "The video of the cut %(cut)s runs %(seconds)s s, over the %(limit)s s limit.": "O vídeo do corte %(cut)s dura %(seconds)s s, acima do limite de %(limit)s s.",
+  "The cut %(cut)s has %(count)s hashtags, over the limit of %(limit)s.": "O corte %(cut)s tem %(count)s hashtags, acima do limite de %(limit)s.",
+  "The caption of the cut %(cut)s has no AI notice line.": "A legenda do corte %(cut)s não tem a linha de aviso de IA."
 }

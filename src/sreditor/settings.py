@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import re
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 from sreditor.elevenlabs import DEFAULT_ELEVENLABS_URL, VoiceSettings
 from sreditor.mail import DEFAULT_SMTP2GO_URL, MailSettings
@@ -60,6 +61,15 @@ DEFAULT_RENDER_ENGINE_VERSION = "0.9.0"
 DEFAULT_RENDER_BUILDER_VERSION = "41a43948fc9c600ea5c38462b90c93cf0871adcf"
 
 
+# Our channels' short vertical videos: at most 24 s, at most 5 hashtags and a caption line that
+# says AI was used ("IA" or "AI", or the words in Portuguese or English).
+DEFAULT_DELIVERY_MAX_SECONDS = 24.0
+DEFAULT_DELIVERY_MAX_HASHTAGS = 5
+DEFAULT_AI_NOTICE_PATTERN = (
+    r"\b(?:IA|AI)\b|[Ii]nteligência [Aa]rtificial|[Aa]rtificial [Ii]ntelligence"
+)
+
+
 class RenderSettings(BaseModel):
     """Rendering on GPU workers (rule project.render.workers)."""
 
@@ -69,6 +79,27 @@ class RenderSettings(BaseModel):
     lease_seconds: int = Field(default=DEFAULT_RENDER_LEASE_SECONDS, ge=10)
     engine_version: str = DEFAULT_RENDER_ENGINE_VERSION
     builder_version: str = DEFAULT_RENDER_BUILDER_VERSION
+
+
+class DeliveryRules(BaseModel):
+    """The limits a delivery cut is checked against; a breach only warns (rule project.delivery)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    max_seconds: float = Field(default=DEFAULT_DELIVERY_MAX_SECONDS, gt=0)
+    max_hashtags: int = Field(default=DEFAULT_DELIVERY_MAX_HASHTAGS, ge=0)
+    # A caption must match this regular expression; empty turns the check off.
+    ai_notice_pattern: str = DEFAULT_AI_NOTICE_PATTERN
+
+    @field_validator("ai_notice_pattern")
+    @classmethod
+    def is_pattern(cls, value: str) -> str:
+        """Refuse a pattern that is not a regular expression, at startup and not per request."""
+        try:
+            re.compile(value)
+        except re.error as broken:
+            raise ValueError(f"not a regular expression: {broken}") from broken
+        return value
 
 
 class AppSettings(BaseModel):
@@ -90,6 +121,7 @@ class AppSettings(BaseModel):
     mail: MailSettings = MailSettings()
     voice: VoiceSettings = VoiceSettings()
     render: RenderSettings = RenderSettings()
+    delivery: DeliveryRules = DeliveryRules()
     # Requests one API token may make per minute, counted across the API and /mcp.
     agent_requests_per_minute: int = Field(default=DEFAULT_AGENT_REQUESTS_PER_MINUTE, ge=1)
     # Proxies trusted to report the client's address, such as the Cloudflare tunnel; without
@@ -126,6 +158,7 @@ class AppSettings(BaseModel):
             mail=mail_settings(environ),
             voice=voice_settings(environ),
             render=render_settings(environ, project),
+            delivery=delivery_rules(environ, project),
             agent_requests_per_minute=int(
                 environ.get("SREDITOR_AGENT_REQUESTS_PER_MINUTE")
                 or DEFAULT_AGENT_REQUESTS_PER_MINUTE
@@ -157,6 +190,21 @@ def render_settings(environ: Mapping[str, str], project: Mapping[str, str]) -> R
         lease_seconds=int(lease) if lease else DEFAULT_RENDER_LEASE_SECONDS,
         engine_version=str(engine) if engine else DEFAULT_RENDER_ENGINE_VERSION,
         builder_version=str(builder) if builder else DEFAULT_RENDER_BUILDER_VERSION,
+    )
+
+
+def delivery_rules(environ: Mapping[str, str], project: Mapping[str, str]) -> DeliveryRules:
+    """SREDITOR_DELIVERY_MAX_SECONDS, SREDITOR_DELIVERY_MAX_HASHTAGS and
+    SREDITOR_DELIVERY_AI_NOTICE_PATTERN, then [tool.sreditor], then the defaults."""
+    seconds = environ.get("SREDITOR_DELIVERY_MAX_SECONDS") or project.get("delivery_max_seconds")
+    hashtags = environ.get("SREDITOR_DELIVERY_MAX_HASHTAGS") or project.get("delivery_max_hashtags")
+    pattern = environ.get("SREDITOR_DELIVERY_AI_NOTICE_PATTERN")
+    if pattern is None:
+        pattern = project.get("delivery_ai_notice_pattern")
+    return DeliveryRules(
+        max_seconds=float(seconds) if seconds else DEFAULT_DELIVERY_MAX_SECONDS,
+        max_hashtags=int(hashtags) if hashtags else DEFAULT_DELIVERY_MAX_HASHTAGS,
+        ai_notice_pattern=DEFAULT_AI_NOTICE_PATTERN if pattern is None else str(pattern),
     )
 
 

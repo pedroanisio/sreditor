@@ -108,8 +108,9 @@ def add_package_tools(server: MCPServer, services: Services) -> None:
     def get_delivery(context: Context, slug: str, number: int) -> Delivery:
         """Read an episode's delivery package: its cuts (final video, cover, caption, alt text,
         hashtags) and the post on each platform account (cut, link, publish time), plus
-        `warnings` for a cut without a video and a post without a link. They never block a
-        status. Revision 0 means nobody wrote it yet. For the files themselves use list_media."""
+        `warnings` for a cut without a video, a video over the length limit (24 s by default),
+        more than 5 hashtags, a caption with no AI notice line, and a post without a link. They
+        never block a status. Revision 0 means nobody wrote it yet. For the files themselves use list_media."""
         return delivery_reported(
             lambda: deliveries.get_delivery(
                 services, channel_access(services, context, slug), number
@@ -127,7 +128,10 @@ def add_package_tools(server: MCPServer, services: Services) -> None:
         """Replace an episode's whole delivery package. Needs content:write.
 
         A cut is a slug name (main, vertical, teaser) with `video_id` (a video file of the
-        episode from list_media, a render included), `cover_id` (an image of kind cover),
+        episode from list_media: a final_video, a render...) or `external_video` (a master kept
+        outside sreditor, registered by `location` such as a Drive path, with its `sha256` and,
+        as you declare them, duration_seconds, width, height and loudness_lufs; sreditor never
+        opens the location; give one of the two, not both), `cover_id` (an image of kind cover),
         caption and alt_text up to 1000 characters and hashtags (typed with or without #).
         A post names a platform the channel has an account on and a cut of the same package,
         with the post's link and publish time. To add only a link, use record_post. Pass
