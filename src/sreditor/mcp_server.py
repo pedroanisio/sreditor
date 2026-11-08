@@ -128,7 +128,12 @@ INSTRUCTIONS = (
     "styles is list_library, save_library_entry and remove_library_entry; get_episode_style "
     "and set_episode_style pick a style, get_visual_style and save_visual_style read and set "
     "its palette, fonts, cut rhythm, smallest text and safe zone; save_prop adds a prop with "
-    "the srstudio rig that draws it. "
+    "the srstudio rig that draws it. What srstudio needs beyond that, which "
+    "check_srstudio_export and request_render report as missing: get_library_sheet and "
+    "save_library_sheet fill a character's, location's or prop's sheet (world, kind, rig); "
+    "set_episode_slug sets the episode's slug and seed; list_relationships, save_relationship "
+    "and remove_relationship keep how characters relate. Slugs are fixed once an srstudio "
+    "export carried them. "
     "A vertical cut lives in the short script: get_short_script and write_short_script. "
     "Owners and editors speak it with generate_voice_over, which spends ElevenLabs credits: "
     "see list_voices and estimate_voice_over first, then read the timed words with "
@@ -417,6 +422,7 @@ def build(
     from sreditor.prop_tools import add_prop_tools
     from sreditor.render_tools import add_render_tools
     from sreditor.short_script_tools import add_short_script_tools
+    from sreditor.srstudio_tools import add_srstudio_tools
     from sreditor.style_tools import add_style_data_tools
 
     server = AliasingServer(name="sreditor", instructions=INSTRUCTIONS)
@@ -434,6 +440,7 @@ def build(
     add_style_tools(server, services)
     add_style_data_tools(server, services)
     add_prop_tools(server, services)
+    add_srstudio_tools(server, services)
     add_media_tools(server, services)
     add_render_tools(server, services)
     add_delivery_tools(server, services)

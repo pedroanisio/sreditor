@@ -29,8 +29,9 @@ def render_error_message(error: Exception) -> str | None:
         pieces = "; ".join(item.english() for item in error.missing)
         return (
             f"The episode cannot render yet; srstudio lacks: {pieces}. Fix each piece (for "
-            "example write_short_script, generate_voice_over or set_episode_style), then "
-            "call request_render again."
+            "example write_short_script, generate_voice_over, set_episode_style, or "
+            "save_library_sheet for a character or place with no world or kind), then call "
+            "request_render again."
         )
     if isinstance(error, RenderNotFound):
         return f"Render {error} not found; call list_renders for the episode's render ids."
