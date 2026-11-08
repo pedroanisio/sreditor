@@ -27,7 +27,7 @@ from sreditor.pitches import (
 )
 from sreditor.research import SourceInput, SourceNotFound
 from sreditor.settings import AppSettings
-from tests.conftest import RecordingMailer
+from tests.conftest import RecordingMailer, forget_schema_version
 from tests.test_agentic import PUBLIC_URL, agent, block, new_token, tool
 from tests.test_api import FUNNY_MEMES
 from tests.test_episodes import joined
@@ -219,6 +219,7 @@ def test_database_single_pitch_references_move_to_position_zero(pitch_store: Pit
             "INSERT INTO episode_pitches VALUES ('funny-memes', 1, ?, 4, '2026-01-01')",
             (str(pitch.id),),
         )
+        forget_schema_version(connection)
     reopened = PitchStore(Database(database.path))
     chosen = reopened.episode_pitches("funny-memes", 1)
     assert (chosen.pitch_ids, chosen.revision) == ([pitch.id], 4)

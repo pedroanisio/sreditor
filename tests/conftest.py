@@ -4,6 +4,7 @@ import json
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 import tarfile
 from collections.abc import Callable, Sequence
@@ -19,6 +20,14 @@ from sreditor.api import create_app
 from sreditor.security import Passwords
 from sreditor.settings import AppSettings
 from sreditor.store import Owner, StoreSettings
+
+
+def forget_schema_version(connection: sqlite3.Connection) -> None:
+    """Make a database look unversioned, as one made before numbered migrations does.
+
+    Tests that put an old table shape back call it so the next Database(path) migrates again.
+    """
+    connection.execute("DELETE FROM schema_version")
 
 
 def statement(

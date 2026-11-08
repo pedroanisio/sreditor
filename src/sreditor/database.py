@@ -1,4 +1,15 @@
-"""The application database: channels, episodes, users, sessions, memberships and invitations."""
+"""The application database: channels, episodes, users, sessions, memberships and invitations.
+
+Source of truth for the schema (rule code.data.migrations): `SCHEMA` below is the baseline,
+migration 1, a snapshot of every table, index and trigger that existed when numbered migrations
+began. It stays as `CREATE ... IF NOT EXISTS` statements because that is idempotent, so the
+baseline can adopt any database that has no `schema_version` yet: a new one gets the whole
+schema; one made by a release before the baseline is first brought up by the older, hand-written
+checks `upgrade_legacy_schema` still holds; one already at the current schema (the deployed
+databases) passes through unchanged and is only stamped version 1. SCHEMA is frozen: every later
+change to the schema is a numbered migration appended to `MIGRATIONS`, never an edit to SCHEMA,
+so there is one place to read what changed after the baseline and one order it happened in.
+"""
 
 from __future__ import annotations
 
@@ -11,6 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from sreditor.channels import normalized_handle
+from sreditor.migrations import Migration, MigrationError, execute_script, run_migrations
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS channels (
@@ -668,10 +680,6 @@ CHANNEL_SCOPED_LINKS = {
 LEGACY_SUFFIX = "_legacy"
 
 
-class MigrationError(RuntimeError):
-    """Stored rows break a constraint the new schema adds, so the database cannot be upgraded."""
-
-
 def table_definitions(table: str) -> list[str]:
     """The CREATE TABLE and CREATE INDEX statements SCHEMA holds for one table."""
     created = re.search(rf"CREATE TABLE IF NOT EXISTS {table} \(.*?\n\);", SCHEMA, re.DOTALL)
@@ -735,8 +743,12 @@ def scope_links_to_channel(connection: sqlite3.Connection) -> None:
         rebuild_table(connection, "file_links")
 
 
-def migrate(connection: sqlite3.Connection) -> None:
-    """Bring databases created by earlier versions up to the current schema."""
+def upgrade_legacy_schema(connection: sqlite3.Connection) -> None:
+    """Bring databases created before numbered migrations up to the baseline schema.
+
+    These checks run only inside migration 1; they are idempotent, so a database that is already
+    current passes through them untouched.
+    """
     columns = {row["name"] for row in connection.execute("PRAGMA table_info(channels)")}
     if "revision" not in columns:
         # Databases created before channels had an ETag (rule agentic.concurrency.etag).
@@ -813,6 +825,32 @@ def index_handles(connection: sqlite3.Connection) -> None:
             )
 
 
+def apply_baseline(connection: sqlite3.Connection) -> None:
+    """Migration 1: create the baseline schema, adopting a database that already has some of it."""
+    retire_single_pitch_table(connection)
+    execute_script(connection, SCHEMA)
+    upgrade_legacy_schema(connection)
+    index_handles(connection)
+
+
+BASELINE = Migration(version=1, name="baseline schema", apply=apply_baseline)
+# Append new migrations here, numbered in order; never change one that has been released.
+MIGRATIONS = (BASELINE,)
+
+
+def open_connection(path: Path, *, is_autocommit: bool = False) -> sqlite3.Connection:
+    """A connection to the database file with rows by name and foreign keys enforced.
+
+    Autocommit leaves every transaction to the caller; otherwise Python opens one before a write.
+    """
+    connection = sqlite3.connect(
+        path, timeout=5, isolation_level=None if is_autocommit else "DEFERRED"
+    )
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
+    return connection
+
+
 class Database:
     """The SQLite database shared by the stores, created and migrated on first use."""
 
@@ -820,11 +858,12 @@ class Database:
         self.path = path
         self.clock = clock
         path.parent.mkdir(parents=True, exist_ok=True)
-        with self.connect() as connection:
-            retire_single_pitch_table(connection)
-            connection.executescript(SCHEMA)
-            migrate(connection)
-            index_handles(connection)
+        # Autocommit, because run_migrations opens one transaction per migration itself.
+        connection = open_connection(path, is_autocommit=True)
+        try:
+            run_migrations(connection, MIGRATIONS, self.now())
+        finally:
+            connection.close()
 
     def now(self) -> str:
         """The current time from the database's clock, as a stored timestamp."""
@@ -833,9 +872,7 @@ class Database:
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
         """A connection whose block commits on success and rolls back on error."""
-        connection = sqlite3.connect(self.path, timeout=5)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
+        connection = open_connection(self.path)
         try:
             with connection:
                 yield connection

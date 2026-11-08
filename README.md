@@ -131,6 +131,7 @@ Raw values live only as tokens in `src/sreditor/web/static/tokens.css`; componen
 - Never use a bare except or swallow an exception silently: catch specific exceptions and either handle them or re-raise with context. (`code.errors.explicit`)
 - Format and lint all Python with Ruff; CI fails on any ruff format or ruff check violation. (`code.style.ruff`)
 - Type-annotate every function signature; the code must pass a strict type check (mypy --strict). (`code.types.strict`)
+- Change the database schema only through numbered migrations (migrations.py), each run once in a transaction that also records it in schema_version, so a failure leaves the version unchanged. A database without a version is adopted by migration 1, never rebuilt. SQLite stays; the app refuses a database newer than its code. (`code.data.migrations`)
 - Keep the relational schema in Boyce-Codd normal form: a column never repeats what another table already holds, unless a constraint keeps both in step. A row that links two items of a channel names the channel in each foreign key, so the database refuses a link across channels; JSON columns hold only a part stored and revised on its own (project.episodes). (`code.data.normalized`)
 - Commit no dead code: no commented-out code, unused imports or unreachable branches. (`code.dead.none`)
 - Give a function at most 5 parameters; group related parameters into a Pydantic model. (`code.functions.args`)
