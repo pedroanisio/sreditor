@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sreditor.voice_markup import (
     ProblemKind,
+    SpeechPause,
     TtsModel,
     for_speech,
     leaks_in_v3,
@@ -9,6 +10,7 @@ from sreditor.voice_markup import (
     pause_seconds,
     plain_text,
     problems,
+    timed_pauses,
 )
 
 
@@ -97,3 +99,15 @@ def test_leaks_in_v3_flags_span_followed_by_plain_words() -> None:
 
 def test_leaks_in_v3_with_next_tag_right_after_finds_none() -> None:
     assert leaks_in_v3(["[irony]a[/irony] [happy]b[/happy]", "[laugh]"]) == []
+
+
+def test_for_speech_in_v3_leaves_timed_pauses_out() -> None:
+    assert for_speech("Wait [pause:0.5] for it.", TtsModel.V3) == "Wait for it."
+
+
+def test_timed_pauses_count_the_spoken_words_before_each() -> None:
+    found = timed_pauses("Wait [pause:0.5] for [emphasis]it[/emphasis] [silence:1]")
+    assert found == [
+        SpeechPause(after_words=1, seconds=0.5),
+        SpeechPause(after_words=3, seconds=1.0),
+    ]

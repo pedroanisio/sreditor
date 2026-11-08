@@ -11,14 +11,19 @@
 # git: srstudio installs some of its dependencies from git.
 # The engine comes from its own image, as srstudio's ADR 0224 does: SCENE_RENDER_VERSION must be the
 # version the instance pins (SREDITOR_RENDER_ENGINE_VERSION), or sreditor refuses the worker's claims.
-# srstudio comes from SRSTUDIO_GIT at SRSTUDIO_REF; pin a release tag once srstudio ships the command
-# that builds a scene from sreditor's export.
+# The image is named by its digest too, because a tag can be pushed again: change both together
+# (docker buildx imagetools inspect pedroanisio/scene-render:VERSION prints the digest).
+# srstudio comes from SRSTUDIO_GIT at SRSTUDIO_REF, a commit, because a branch moves and the same
+# export would build another scene; it must be the commit the instance pins
+# (SREDITOR_RENDER_BUILDER_VERSION). Pin a release tag's commit once srstudio ships the command that
+# builds a scene from sreditor's export. tests/test_worker_image.py checks all of this.
 
 ARG SCENE_RENDER_VERSION=0.9.0
+ARG SCENE_RENDER_DIGEST=sha256:87f196b5e5ce4630403840f33db1709949e06dfa98923d218b81e3da5e2dfe25
 ARG SRSTUDIO_GIT=https://github.com/pedroanisio/srstudio.git
-ARG SRSTUDIO_REF=main
+ARG SRSTUDIO_REF=41a43948fc9c600ea5c38462b90c93cf0871adcf
 
-FROM pedroanisio/scene-render:${SCENE_RENDER_VERSION}
+FROM pedroanisio/scene-render:${SCENE_RENDER_VERSION}@${SCENE_RENDER_DIGEST}
 ARG SRSTUDIO_GIT
 ARG SRSTUDIO_REF
 USER root
@@ -44,6 +49,7 @@ ENV NVIDIA_VISIBLE_DEVICES=all \
     SREDITOR_SCENE_RENDER=/usr/local/bin/scene-render \
     SREDITOR_WORKER_DIR=/work/jobs \
     SRSTUDIO_GPU_LOCK=/run/lock/srstudio-gpu.lock \
+    SREDITOR_WORKER_BUILDER_VERSION=${SRSTUDIO_REF} \
     PYTHONUNBUFFERED=1
 USER render
 WORKDIR /work

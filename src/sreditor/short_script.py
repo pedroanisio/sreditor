@@ -240,6 +240,7 @@ class WarningKind(StrEnum):
     PUNCH_WITHOUT_IMPACT = "punch_without_impact"
     TOO_MANY_WORDS = "too_many_words"
     WORDS_AT_LIMIT = "words_at_limit"
+    VOICE_TOO_LONG = "voice_too_long"
     TEXT_UNTIMED = "text_untimed"
     TEXT_OUTSIDE = "text_outside"
     LOST_IN_V2 = "lost_in_v2"
@@ -262,6 +263,9 @@ WARNING_MESSAGES: dict[WarningKind, str] = {
     ),
     WarningKind.WORDS_AT_LIMIT: N_(
         "%(words)s words in %(seconds)s s of speech is at the limit (best %(least)s to %(most)s)."
+    ),
+    WarningKind.VOICE_TOO_LONG: N_(
+        "The recorded voice lasts %(voice)s s, longer than the video's %(duration)s s."
     ),
     WarningKind.TEXT_UNTIMED: N_(
         'On-screen text "%(text)s" has no time and is not shown throughout.'

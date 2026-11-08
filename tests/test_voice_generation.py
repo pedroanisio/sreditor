@@ -22,7 +22,7 @@ from sreditor.voice_generation import (
     suggested_times,
     take_key,
 )
-from sreditor.voice_markup import TtsModel
+from sreditor.voice_markup import SpeechPause, TtsModel
 from sreditor.voice_tuning import VoiceTuning
 
 NARRATOR = BlockVoice(voice_id="abc", voice_name="", model=TtsModel.V3, language="pt-BR")
@@ -102,6 +102,16 @@ def test_block_take_key_changes_with_voice_tuning_model_and_text() -> None:
     assert len(keys) == 5
 
 
+def test_block_take_key_without_pauses_keeps_its_old_value() -> None:
+    assert block_take_key("Oi.", NARRATOR, ()) == block_take_key("Oi.", NARRATOR)
+
+
+def test_block_take_key_changes_with_pause_length() -> None:
+    short = (SpeechPause(after_words=1, seconds=0.5),)
+    long = (SpeechPause(after_words=1, seconds=2.0),)
+    assert block_take_key("Oi.", NARRATOR, short) != block_take_key("Oi.", NARRATOR, long)
+
+
 def test_block_take_key_is_stable_for_same_block() -> None:
     assert block_take_key("Ab", NARRATOR) == block_take_key("Ab", NARRATOR)
 
@@ -142,7 +152,7 @@ def test_suggested_times_without_timings_is_none() -> None:
 
 
 def test_spoken_blocks_render_for_chosen_model() -> None:
-    assert spoken_blocks(script()) == ["Ab [pause] cd.", "[sarcastically] Ef."]
+    assert spoken_blocks(script()) == ["Ab cd.", "[sarcastically] Ef."]
     assert spoken_blocks(script(model="v2")) == ['Ab <break time="0.2s" /> cd.', "Ef."]
 
 

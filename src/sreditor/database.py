@@ -509,6 +509,7 @@ CREATE TABLE IF NOT EXISTS render_jobs (
     export_sha256 TEXT NOT NULL,
     export_path TEXT NOT NULL,
     engine_version TEXT NOT NULL,
+    builder_version TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL,
     progress REAL NOT NULL DEFAULT 0,
     worker_id TEXT REFERENCES render_workers (id) ON DELETE SET NULL,
@@ -746,6 +747,9 @@ def migrate(connection: sqlite3.Connection) -> None:
         add_column(connection, table, "exported_at TEXT")
     # Takes from before license records get theirs when BlockTakeStore opens.
     add_column(connection, "voice_block_takes", "license TEXT")
+    # Jobs queued before the srstudio commit was pinned name none, so no worker claims them and an
+    # export requested again renders anew.
+    add_column(connection, "render_jobs", "builder_version TEXT NOT NULL DEFAULT ''")
     move_single_pitches(connection)
     scope_links_to_channel(connection)
 

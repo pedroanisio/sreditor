@@ -55,6 +55,9 @@ DEFAULT_MAX_RENDER_BYTES = 8 * 1024 * 1024 * 1024
 DEFAULT_RENDER_LEASE_SECONDS = 120
 # The scene-render version workers must run, so one export renders to the same file everywhere.
 DEFAULT_RENDER_ENGINE_VERSION = "0.9.0"
+# The srstudio commit that builds scenes on workers: a branch moves, so the same export would build
+# a different scene with nothing to say so. Dockerfile.worker's SRSTUDIO_REF must be this commit.
+DEFAULT_RENDER_BUILDER_VERSION = "41a43948fc9c600ea5c38462b90c93cf0871adcf"
 
 
 class RenderSettings(BaseModel):
@@ -65,6 +68,7 @@ class RenderSettings(BaseModel):
     max_render_bytes: int = Field(default=DEFAULT_MAX_RENDER_BYTES, ge=1)
     lease_seconds: int = Field(default=DEFAULT_RENDER_LEASE_SECONDS, ge=10)
     engine_version: str = DEFAULT_RENDER_ENGINE_VERSION
+    builder_version: str = DEFAULT_RENDER_BUILDER_VERSION
 
 
 class AppSettings(BaseModel):
@@ -140,15 +144,19 @@ def max_media_bytes(environ: Mapping[str, str], project: Mapping[str, str]) -> i
 
 
 def render_settings(environ: Mapping[str, str], project: Mapping[str, str]) -> RenderSettings:
-    """SREDITOR_MAX_RENDER_BYTES, SREDITOR_RENDER_LEASE_SECONDS and SREDITOR_RENDER_ENGINE_VERSION,
-    then [tool.sreditor] in pyproject.toml, then the defaults."""
+    """SREDITOR_MAX_RENDER_BYTES, SREDITOR_RENDER_LEASE_SECONDS, SREDITOR_RENDER_ENGINE_VERSION and
+    SREDITOR_RENDER_BUILDER_VERSION, then [tool.sreditor] in pyproject.toml, then the defaults."""
     max_bytes = environ.get("SREDITOR_MAX_RENDER_BYTES") or project.get("max_render_bytes")
     lease = environ.get("SREDITOR_RENDER_LEASE_SECONDS") or project.get("render_lease_seconds")
     engine = environ.get("SREDITOR_RENDER_ENGINE_VERSION") or project.get("render_engine_version")
+    builder = environ.get("SREDITOR_RENDER_BUILDER_VERSION") or project.get(
+        "render_builder_version"
+    )
     return RenderSettings(
         max_render_bytes=int(max_bytes) if max_bytes else DEFAULT_MAX_RENDER_BYTES,
         lease_seconds=int(lease) if lease else DEFAULT_RENDER_LEASE_SECONDS,
         engine_version=str(engine) if engine else DEFAULT_RENDER_ENGINE_VERSION,
+        builder_version=str(builder) if builder else DEFAULT_RENDER_BUILDER_VERSION,
     )
 
 

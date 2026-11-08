@@ -58,14 +58,33 @@ class RenderPreset(StrEnum):
     PREVIEW = "preview"
 
 
+class FindingSeverity(StrEnum):
+    """How much a finding of scene-render matters; information never fails anything."""
+
+    ERROR = "error"
+    WARNING = "warning"
+    INFO = "info"
+
+
 class ReportFinding(BaseModel):
-    """One finding of scene-render's render report (scene-render-report/1)."""
+    """One finding of scene-render's render report (scene-render-report/1): what, where and how
+    far from its limit. Jobs stored before the report was read in full keep only code, severity
+    and message."""
 
     model_config = ConfigDict(frozen=True)
 
     code: str = Field(max_length=120)
-    severity: str = Field(max_length=20)
+    severity: FindingSeverity
     message: str = Field(default="", max_length=2000)
+    # The XPath of the element concerned; /scene when nothing narrower applies.
+    path: str = Field(default="", max_length=1000)
+    node: str | None = Field(default=None, max_length=200)
+    node_name: str | None = Field(default=None, max_length=200)
+    # Composition seconds [start, end] when the finding concerns a time.
+    time: tuple[float, float] | None = None
+    measured: float | None = None
+    limit: float | None = None
+    unit: str | None = Field(default=None, max_length=40)
 
 
 class Gpu(BaseModel):
@@ -91,6 +110,7 @@ class RenderJob(BaseModel):
     progress: float
     export_sha256: str
     engine_version: str
+    builder_version: str
     worker_id: UUID | None
     attempts: int
     failure: str | None
@@ -138,7 +158,17 @@ class NewJob(BaseModel):
     export_sha256: str
     export_path: str
     engine_version: str
+    builder_version: str
     requested_by: str
+
+
+class Pinned(BaseModel):
+    """The scene-render version and srstudio commit an instance renders with."""
+
+    model_config = ConfigDict(frozen=True)
+
+    engine_version: str
+    builder_version: str
 
 
 class Lease(BaseModel):
@@ -196,8 +226,8 @@ class RenderFinished(ValueError):
 
 JOB_COLUMNS = (
     "id, channel_slug, number, preset, status, progress, export_sha256, export_path,"
-    " engine_version, worker_id, lease_expires_at, attempts, failure, findings, media_id,"
-    " scene_path, requested_by, revision, created_at, updated_at"
+    " engine_version, builder_version, worker_id, lease_expires_at, attempts, failure, findings,"
+    " media_id, scene_path, requested_by, revision, created_at, updated_at"
 )
 WORKER_COLUMNS = (
     "id, name, prefix, created_by, created_at, last_seen_at, engine_version, gpus, revoked_at"
@@ -220,6 +250,7 @@ def to_job(row: sqlite3.Row) -> RenderJob:
         progress=row["progress"],
         export_sha256=row["export_sha256"],
         engine_version=row["engine_version"],
+        builder_version=row["builder_version"],
         worker_id=optional_uuid(row["worker_id"]),
         attempts=row["attempts"],
         failure=row["failure"],
@@ -263,8 +294,8 @@ class RenderStore:
         with self.database.connect() as connection:
             row = connection.execute(
                 "INSERT INTO render_jobs (id, channel_slug, number, preset, status, export_sha256,"
-                " export_path, engine_version, requested_by, revision, created_at, updated_at)"
-                f" VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?) RETURNING {JOB_COLUMNS}",
+                " export_path, engine_version, builder_version, requested_by, revision, created_at,"
+                f" updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?) RETURNING {JOB_COLUMNS}",
                 (
                     str(uuid4()),
                     new.channel,
@@ -274,6 +305,7 @@ class RenderStore:
                     new.export_sha256,
                     new.export_path,
                     new.engine_version,
+                    new.builder_version,
                     new.requested_by,
                     now,
                     now,
@@ -336,11 +368,12 @@ class RenderStore:
         return int(row["ahead"])
 
     def reusable(self, new: NewJob) -> RenderJob | None:
-        """A job for the same export, preset and engine that is running or done with its video."""
+        """A job for the same export, preset, engine and srstudio that is running or done with its
+        video."""
         with self.database.connect() as connection:
             row = connection.execute(
                 f"SELECT {JOB_COLUMNS} FROM render_jobs WHERE channel_slug = ? AND number = ?"
-                " AND export_sha256 = ? AND preset = ? AND engine_version = ?"
+                " AND export_sha256 = ? AND preset = ? AND engine_version = ? AND builder_version = ?"
                 " AND status NOT IN (?, ?) AND (status != ? OR media_id IN"
                 " (SELECT id FROM episode_media)) ORDER BY position DESC LIMIT 1",
                 (
@@ -349,6 +382,7 @@ class RenderStore:
                     new.export_sha256,
                     new.preset,
                     new.engine_version,
+                    new.builder_version,
                     RenderStatus.FAILED,
                     RenderStatus.CANCELED,
                     RenderStatus.DONE,
@@ -356,8 +390,9 @@ class RenderStore:
             ).fetchone()
         return to_job(row) if row else None
 
-    def claim(self, lease: Lease, engine_version: str) -> RenderJob | None:
-        """Give the worker the oldest job it can run: queued, or one whose lease lapsed."""
+    def claim(self, lease: Lease, pinned: Pinned) -> RenderJob | None:
+        """Give the worker the oldest job it can run: queued, or one whose lease lapsed, built for
+        the engine and srstudio the worker runs."""
         now = self.database.now()
         with self.database.connect() as connection:
             give_up_lapsed(connection, now)
@@ -365,14 +400,15 @@ class RenderStore:
                 "UPDATE render_jobs SET status = ?, progress = 0, worker_id = ?,"
                 " lease_expires_at = ?, attempts = attempts + 1, revision = revision + 1,"
                 " updated_at = ? WHERE id = (SELECT id FROM render_jobs WHERE engine_version = ?"
-                " AND (status = ? OR (status IN (?, ?, ?) AND lease_expires_at < ?))"
+                " AND builder_version = ? AND (status = ? OR (status IN (?, ?, ?) AND lease_expires_at < ?))"
                 f" ORDER BY position LIMIT 1) RETURNING {JOB_COLUMNS}",
                 (
                     RenderStatus.BUILDING,
                     str(lease.worker_id),
                     stamp(lease.until),
                     now,
-                    engine_version,
+                    pinned.engine_version,
+                    pinned.builder_version,
                     RenderStatus.QUEUED,
                     *sorted(RUNNING),
                     now,

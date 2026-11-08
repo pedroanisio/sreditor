@@ -239,6 +239,35 @@ def test_apply_timings_replaces_block_times_and_length(
     assert [item["start_s"] for item in script["blocks"]] == [0.0, FIRST_TAKE_SECONDS]
 
 
+def test_apply_timings_moves_screen_texts_with_their_block(
+    owner: TestClient, voice: Callable[..., FakeTransport]
+) -> None:
+    on_screen = {"text": "Tchau!", "start_s": 2, "end_s": 5}
+    owner.put(SHORT_SCRIPT, json={**SCRIPT, "screen_texts": [on_screen]})
+    voice(*BLOCK_ANSWERS, ok(VOICES))
+    key = owner.post(TAKES).json()["key"]
+    moved = owner.post(TIMINGS, json={"take_key": key}).json()["screen_texts"][0]
+    assert (moved["start_s"], moved["end_s"]) == (FIRST_TAKE_SECONDS, BOTH_TAKES_SECONDS)
+
+
+def test_short_script_with_recorded_voice_judges_pace_by_its_length(
+    owner: TestClient, voice: Callable[..., FakeTransport]
+) -> None:
+    hurried = {**SCRIPT, "duration_s": 0.5}
+    hurried["blocks"] = [
+        {**SCRIPT["blocks"][0], "end_s": 0.2},
+        {**SCRIPT["blocks"][1], "start_s": 0.2, "end_s": 0.5},
+    ]
+    before = owner.put(SHORT_SCRIPT, json=hurried).json()["warnings"]
+    voice(*BLOCK_ANSWERS, ok(VOICES))
+    owner.post(TAKES)
+    after = owner.get(SHORT_SCRIPT).json()["warnings"]
+    assert "too_many_words" in [item["kind"] for item in before]
+    assert [
+        item["kind"] for item in after if "voice" in item["kind"] or "words" in item["kind"]
+    ] == ["voice_too_long"]
+
+
 def test_apply_timings_after_blocks_changed_returns_conflict(
     written: TestClient, voice: Callable[..., FakeTransport]
 ) -> None:

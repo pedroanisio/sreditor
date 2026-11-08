@@ -19,7 +19,8 @@ from sreditor import render_operations
 from sreditor.database import Database
 from sreditor.deps import ChannelAccess, Services
 from sreditor.render_upload import ABANDONED_AFTER_SECONDS, PartRejected, PartStore
-from sreditor.renders import MAX_ATTEMPTS
+from sreditor.renders import MAX_ATTEMPTS, NewJob, RenderPreset
+from sreditor.settings import DEFAULT_RENDER_BUILDER_VERSION
 from tests.conftest import RecordingMailer
 from tests.media_samples import MP4, PNG
 from tests.test_agentic import PUBLIC_URL, agent, new_token, tool
@@ -29,7 +30,11 @@ from tests.test_episodes import joined
 CHANNEL = "/channels/funny-memes"
 EPISODE = f"{CHANNEL}/episodes/1"
 RENDERS = f"{EPISODE}/renders"
-HELLO = {"engine_version": "0.9.0", "gpus": [{"name": "RTX 3050", "backend": "vulkan"}]}
+HELLO = {
+    "engine_version": "0.9.0",
+    "builder_version": DEFAULT_RENDER_BUILDER_VERSION,
+    "gpus": [{"name": "RTX 3050", "backend": "vulkan"}],
+}
 VIDEO = MP4 + b"frames" * 1000
 PART_BYTES = 1000
 LAPSED = "2000-01-01T00:00:00+00:00"
@@ -226,8 +231,34 @@ def test_claim_empty_queue_answers_204(worker: TestClient) -> None:
 
 def test_claim_other_engine_version_is_conflict(owner: TestClient, worker: TestClient) -> None:
     requested(owner)
-    response = worker.post("/render-worker/claim", json={"engine_version": "0.8.0"})
+    response = worker.post("/render-worker/claim", json={**HELLO, "engine_version": "0.8.0"})
     assert response.status_code == 409 and "0.9.0" in response.json()["detail"]
+
+
+def test_claim_other_builder_version_is_conflict(owner: TestClient, worker: TestClient) -> None:
+    requested(owner)
+    response = worker.post("/render-worker/claim", json={**HELLO, "builder_version": "0123abc"})
+    assert response.status_code == 409
+    assert DEFAULT_RENDER_BUILDER_VERSION in response.json()["detail"]
+
+
+def test_reusable_other_builder_version_is_none(app: FastAPI, owner: TestClient) -> None:
+    job = requested(owner)["job"]
+    same_but_builder = NewJob(
+        channel="funny-memes",
+        number=1,
+        preset=RenderPreset.MASTER,
+        export_sha256=job["export_sha256"],
+        export_path="",
+        engine_version=job["engine_version"],
+        builder_version="0123abc",
+        requested_by="test",
+    )
+    renders = app.state.services.renders
+    assert renders.reusable(
+        same_but_builder.model_copy(update={"builder_version": job["builder_version"]})
+    )
+    assert renders.reusable(same_but_builder) is None
 
 
 def test_claim_records_worker_gpus(admin: TestClient, worker: TestClient) -> None:
