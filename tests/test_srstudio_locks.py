@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from sreditor.database import Database
 from sreditor.deps import Services
 from sreditor.srstudio import EpisodeSlugInput, SlugLocked, SrstudioStore
+from tests.conftest import forget_schema_version
 from tests.test_api import FUNNY_MEMES
 
 CHANNEL = "funny-memes"
@@ -49,6 +50,7 @@ def test_database_from_before_exports_gains_exported_at(tmp_path: Path) -> None:
     Database(path)
     with sqlite3.connect(path) as connection:
         connection.execute("ALTER TABLE episode_slugs DROP COLUMN exported_at")
+        forget_schema_version(connection)
     Database(path)
     with sqlite3.connect(path) as connection:
         columns = {row[1] for row in connection.execute("PRAGMA table_info(episode_slugs)")}
