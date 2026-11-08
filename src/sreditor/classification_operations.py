@@ -8,9 +8,14 @@ an agent's proposal until a person saves or confirms it (rule project.classifica
 
 from __future__ import annotations
 
+from pydantic import BaseModel, ConfigDict
+
 from sreditor.classification import (
+    SCHEMA_VERSION,
+    VOCABULARY,
     ChannelProfile,
     Classification,
+    Dimension,
     EpisodeClassification,
     ObservedProfile,
     StoredClassification,
@@ -29,6 +34,23 @@ class ClassificationOperation:
 
     WRITE = "classification.write"
     PROFILE_WRITE = "channel_profile.write"
+
+
+class Vocabulary(BaseModel):
+    """The values each dimension accepts, and the taxonomy version they come from."""
+
+    model_config = ConfigDict(frozen=True)
+
+    taxonomy_version: str
+    dimensions: dict[Dimension, list[str]]
+
+
+def classification_vocabulary() -> Vocabulary:
+    """The closed vocabulary of every dimension, which needs no channel and no permission."""
+    return Vocabulary(
+        taxonomy_version=SCHEMA_VERSION,
+        dimensions={dimension: list(values) for dimension, values in VOCABULARY.items()},
+    )
 
 
 def get_classification(app: Services, access: ChannelAccess, number: int) -> EpisodeClassification:

@@ -4,16 +4,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, FastAPI, Request, Response, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict
 
 from sreditor import classification_operations as classifying
 from sreditor.classification import (
-    SCHEMA_VERSION,
-    VOCABULARY,
     ChannelProfile,
     Classification,
     ClassificationRefused,
-    Dimension,
     EpisodeClassification,
     ObservedProfile,
 )
@@ -28,15 +24,6 @@ CLASSIFICATION = "/channels/{slug}/episodes/{number}/classification"
 PROFILE = "/channels/{slug}/profile"
 
 
-class Vocabulary(BaseModel):
-    """The values each dimension accepts, and the taxonomy version they come from."""
-
-    model_config = ConfigDict(frozen=True)
-
-    taxonomy_version: str
-    dimensions: dict[Dimension, list[str]]
-
-
 def tagged[T: EpisodeClassification | ChannelProfile](found: T, response: Response) -> T:
     """The resource, with its revision as the response's ETag."""
     response.headers["ETag"] = etag(found.revision)
@@ -44,12 +31,9 @@ def tagged[T: EpisodeClassification | ChannelProfile](found: T, response: Respon
 
 
 @router.get("/classification/vocabulary", summary="Read the classification vocabulary")
-def get_classification_vocabulary() -> Vocabulary:
+def get_classification_vocabulary() -> classifying.Vocabulary:
     """The values each of the twelve dimensions accepts. Read it before classifying."""
-    return Vocabulary(
-        taxonomy_version=SCHEMA_VERSION,
-        dimensions={dimension: list(values) for dimension, values in VOCABULARY.items()},
-    )
+    return classifying.classification_vocabulary()
 
 
 @router.get(CLASSIFICATION, summary="Read an episode's classification")
