@@ -58,14 +58,33 @@ class RenderPreset(StrEnum):
     PREVIEW = "preview"
 
 
+class FindingSeverity(StrEnum):
+    """How much a finding of scene-render matters; information never fails anything."""
+
+    ERROR = "error"
+    WARNING = "warning"
+    INFO = "info"
+
+
 class ReportFinding(BaseModel):
-    """One finding of scene-render's render report (scene-render-report/1)."""
+    """One finding of scene-render's render report (scene-render-report/1): what, where and how
+    far from its limit. Jobs stored before the report was read in full keep only code, severity
+    and message."""
 
     model_config = ConfigDict(frozen=True)
 
     code: str = Field(max_length=120)
-    severity: str = Field(max_length=20)
+    severity: FindingSeverity
     message: str = Field(default="", max_length=2000)
+    # The XPath of the element concerned; /scene when nothing narrower applies.
+    path: str = Field(default="", max_length=1000)
+    node: str | None = Field(default=None, max_length=200)
+    node_name: str | None = Field(default=None, max_length=200)
+    # Composition seconds [start, end] when the finding concerns a time.
+    time: tuple[float, float] | None = None
+    measured: float | None = None
+    limit: float | None = None
+    unit: str | None = Field(default=None, max_length=40)
 
 
 class Gpu(BaseModel):

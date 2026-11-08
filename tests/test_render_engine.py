@@ -18,7 +18,7 @@ from pydantic import SecretStr
 
 from sreditor.renders import RenderPreset
 from sreditor.settings import DEFAULT_RENDER_BUILDER_VERSION
-from sreditor.worker_engine import EncodeJob, Engine, NotRendered, WorkerSettings
+from sreditor.worker_engine import EncodeJob, Engine, NotRendered, SceneInvalid, WorkerSettings
 
 ENGINE = os.environ.get("SREDITOR_TEST_SCENE_RENDER") or shutil.which("scene-render")
 FFMPEG = shutil.which("ffmpeg")
@@ -96,3 +96,25 @@ def test_engine_encode_shader_that_fails_raises_not_rendered(tmp_path: Path) -> 
     job = encode_job(tmp_path, is_shader_broken=True)
     with pytest.raises(NotRendered, match="GLSL compile/link failed"):
         engine(tmp_path).encode(job, threading.Event())
+
+
+def test_engine_gpus_real_engine_lists_an_adapter(tmp_path: Path) -> None:
+    assert engine(tmp_path).gpus()
+
+
+def test_engine_validate_real_scene_passes(tmp_path: Path) -> None:
+    job = encode_job(tmp_path)
+    engine(tmp_path).validate(job.scene, threading.Event())
+
+
+def test_engine_validate_real_invalid_scene_raises_scene_invalid(tmp_path: Path) -> None:
+    scene = tmp_path / "episode.scene.xml"
+    scene.write_text("<bad/>")
+    with pytest.raises(SceneInvalid, match="S01 at /bad"):
+        engine(tmp_path).validate(scene, threading.Event())
+
+
+def test_engine_encode_real_scene_report_parses(tmp_path: Path) -> None:
+    job = encode_job(tmp_path)
+    findings = engine(tmp_path).encode(job, threading.Event())
+    assert all(finding.path.startswith("/") for finding in findings)

@@ -21,6 +21,7 @@ from uuid import UUID
 
 import httpx
 
+from sreditor.engine_output import EngineFailed, EngineOutputInvalid
 from sreditor.render_operations import Claimed, Completion, Failure, Hello
 from sreditor.render_upload import MAX_PARTS
 from sreditor.renders import Progress, RenderStatus, ReportFinding
@@ -30,6 +31,7 @@ from sreditor.worker_engine import (
     EncodeJob,
     Engine,
     NotRendered,
+    SceneInvalid,
     WorkerSettings,
 )
 
@@ -187,6 +189,7 @@ def produce(
         opened.extractall(export)
     scene = folder / SCENE_FILE
     engine.build(export, scene, beat.stop)
+    engine.validate(scene, beat.stop)
     beat.move(RenderStatus.RENDERING, BUILT)
     video = folder / VIDEO_FILE
     encode = EncodeJob(
@@ -223,16 +226,29 @@ def run_job(
         LOGGER.info("job %s done", job_id)
     except Canceled:
         LOGGER.info("job %s canceled or lost; stopped", job_id)
-    except (CommandFailed, NotRendered, zipfile.BadZipFile, OSError, ValueError) as failure:
+    except (
+        CommandFailed,
+        NotRendered,
+        EngineFailed,
+        zipfile.BadZipFile,
+        OSError,
+        ValueError,
+    ) as failure:
         LOGGER.warning("job %s failed: %s", job_id, failure)
-        # A build that fails on the episode's data fails again, and so does a scene the pinned
-        # engine cannot draw; the engine or disk may recover from anything else.
-        is_retryable = not isinstance(failure, NotRendered) and not (
-            isinstance(failure, CommandFailed) and failure.is_build
+        client.fail(
+            job_id, Failure(reason=str(failure)[:MAX_REASON], is_retryable=is_retryable(failure))
         )
-        client.fail(job_id, Failure(reason=str(failure)[:MAX_REASON], is_retryable=is_retryable))
     finally:
         shutil.rmtree(folder, ignore_errors=True)
+
+
+def is_retryable(failure: Exception) -> bool:
+    """Whether another attempt may succeed. A build that fails on the episode's data fails again,
+    and so does a scene that does not validate, one the pinned engine cannot draw, or engine
+    output the worker cannot read; the engine, GPU or disk may recover from anything else."""
+    if isinstance(failure, CommandFailed):
+        return not failure.is_build
+    return not isinstance(failure, NotRendered | SceneInvalid | EngineOutputInvalid)
 
 
 def hello(engine: Engine) -> Hello:
@@ -266,6 +282,10 @@ def run_forever(
             has_worked = run_once(client, engine, settings)
         except httpx.HTTPError as unreachable:
             LOGGER.warning("sreditor unreachable: %s", unreachable)
+            has_worked = False
+        except (EngineOutputInvalid, EngineFailed) as unusable:
+            # An engine that cannot list its GPUs cannot render; claim nothing until it can.
+            LOGGER.error("scene-render cannot describe this machine: %s", unusable)
             has_worked = False
         if not has_worked:
             stop.wait(settings.poll_seconds)
