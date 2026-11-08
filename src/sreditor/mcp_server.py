@@ -126,6 +126,9 @@ INSTRUCTIONS = (
     "delete_pitch removes one no episode uses. Record each figure or fact an episode states with list_claims, "
     "add_claim, update_claim, check_claim_source and remove_claim; claims without a checked "
     "primary source only warn. "
+    "search_channel finds where a channel wrote about something (titles, research, sources, "
+    "screenplays, short scripts, pitches, library, third-party media, context) and says which tool "
+    "opens each hit. "
     "get_screenplay reads the Fountain screenplay and which names the channel's library still "
     "lacks; write_screenplay replaces it. The library of characters, locations and visual "
     "styles is list_library, save_library_entry and remove_library_entry; get_episode_style "
@@ -440,6 +443,7 @@ def build(
     from sreditor.pitch_tools import add_pitch_tools
     from sreditor.prop_tools import add_prop_tools
     from sreditor.render_tools import add_render_tools
+    from sreditor.search_tools import add_search_tools
     from sreditor.short_script_tools import add_short_script_tools
     from sreditor.source_tools import add_source_tools
     from sreditor.srstudio_tools import add_srstudio_tools
@@ -454,6 +458,7 @@ def build(
     add_episode_tools(server, services)
     add_research_tools(server, services)
     add_pitch_tools(server, services)
+    add_search_tools(server, services)
     add_source_tools(server, services)
     add_claim_tools(server, services)
     add_screenplay_tools(server, services)

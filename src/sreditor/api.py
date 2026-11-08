@@ -36,6 +36,7 @@ from sreditor import (
     render_routes,
     research_routes,
     screenplay_routes,
+    search_routes,
     short_script_routes,
     srstudio_routes,
     token_routes,
@@ -46,6 +47,7 @@ from sreditor.block_takes import BlockTakeStore
 from sreditor.channels import Channel, Platform, PlatformAccount
 from sreditor.claims import ClaimStore
 from sreditor.classification import ClassificationStore
+from sreditor.content_search import ContentSearchStore
 from sreditor.context import ContextStore
 from sreditor.database import Clock, Database, utc_now
 from sreditor.delivery import DeliveryStore
@@ -156,6 +158,7 @@ def create_app(
         classifications=ClassificationStore(database),
         waivers=WaiverStore(database, assets, settings.max_media_bytes),
         search=SearchStore(database),
+        content_search=ContentSearchStore(database),
         contexts=ContextStore(database),
         srstudio=SrstudioStore(database),
         users=users,
@@ -241,6 +244,7 @@ def create_app(
     app.include_router(export_routes.router)
     app.include_router(book_routes.router)
     app.include_router(file_routes.router)
+    app.include_router(search_routes.router)
     add_channel_routes(app)
     app.router.routes.append(Route(mcp_server.PATH, mcp_app, methods=["GET", "POST", "DELETE"]))
     workspace.mount(app)

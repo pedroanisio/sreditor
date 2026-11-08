@@ -89,7 +89,7 @@ def fill(path: Path) -> None:
         )
         connection.execute(
             "INSERT INTO pitches (id, channel_slug, title, status, revision, created_at,"
-            " updated_at) VALUES ('pitch-1', 'memes', 'Mondays', 'idea', 1, ?, ?)",
+            " updated_at) VALUES ('0b0a8a3e-5f0c-4c52-9a43-6d0c0c4a1111', 'memes', 'Mondays', 'idea', 1, ?, ?)",
             (NOW, NOW),
         )
         connection.execute(
@@ -181,7 +181,8 @@ def test_database_at_current_schema_without_version_keeps_every_row(tmp_path: Pa
     old_style_database(path)
     fill(path)
     with closing(sqlite3.connect(path)) as connection:
-        before_tables = table_names(connection)
+        # SQLite's own counter table gains a row for each new AUTOINCREMENT table.
+        before_tables = table_names(connection) - {"sqlite_sequence"}
     before = dump(path, before_tables)
     Database(path)
     assert dump(path, before_tables) == before

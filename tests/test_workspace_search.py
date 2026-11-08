@@ -82,3 +82,29 @@ def test_search_page_in_portuguese_names_the_groups(owner: TestClient) -> None:
 def test_search_page_without_session_goes_to_sign_in(app: FastAPI) -> None:
     response = TestClient(app).get(SEARCH, follow_redirects=False)
     assert response.status_code == 303 and "/login" in response.headers["location"]
+
+
+def test_search_dialog_in_channel_finds_text_with_its_kind_and_snippet(owner: TestClient) -> None:
+    owner.put(
+        "/channels/funny-memes/episodes/1/research", json={"text": "Zebras sleep standing up."}
+    )
+    fragment = owner.get(
+        SEARCH, params={"q": "zebras", "channel": "funny-memes"}, headers=DIALOG
+    ).text
+    assert "In the text" in fragment and "Research notes: «Zebras» sleep standing up." in fragment
+    assert f'href="{CHANNEL}/episodes/1/research"' in fragment
+
+
+def test_search_dialog_outside_a_channel_skips_text(owner: TestClient) -> None:
+    owner.put(
+        "/channels/funny-memes/episodes/1/research", json={"text": "Zebras sleep standing up."}
+    )
+    assert "In the text" not in owner.get(SEARCH, params={"q": "zebras"}, headers=DIALOG).text
+
+
+def test_search_dialog_text_group_in_portuguese(owner: TestClient) -> None:
+    owner.put("/channels/funny-memes/episodes/1/research", json={"text": "Zebras dormem."})
+    fragment = owner.get(
+        SEARCH, params={"q": "zebras", "channel": "funny-memes", "lang": "pt-BR"}, headers=DIALOG
+    ).text
+    assert "No texto" in fragment and "Anotações de pesquisa: «Zebras» dormem." in fragment
