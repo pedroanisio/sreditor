@@ -21,7 +21,7 @@ from sreditor.file_operations import ExportCheck, FileOffer, FileTarget, UploadO
 from sreditor.mcp_idempotency import IdempotencyKey, IdempotentCall, issue_link_once
 from sreditor.mcp_server import Effect, tool_annotations
 from sreditor.media_operations import RenderNotUploadable
-from sreditor.pitch_tools import channel_access
+from sreditor.pitch_tools import channel_access, pitch_reported
 from sreditor.render_tools import render_reported
 
 
@@ -36,7 +36,7 @@ def file_reported[T](action: Callable[[], T]) -> T:
                 f"{refusal}. Use request_render, then get_file_link with source render"
             ) from refusal
 
-    return render_reported(lambda: external_reported(guarded))
+    return render_reported(lambda: external_reported(lambda: pitch_reported(guarded)))
 
 
 def add_file_tools(server: MCPServer, services: Services) -> None:
@@ -48,12 +48,21 @@ def add_file_tools(server: MCPServer, services: Services) -> None:
     ) -> FileOffer:
         """Get a single-use link to download one file, which your sandbox then opens with a
         plain GET and no credentials: the channel's logo, avatar or another brand file, an
-        episode's media file, a finished render's video, a third-party item's uploaded copy, or
-        an episode's srstudio export zip. Use it when you need a file's bytes; to see what
-        exists first, call get_channel, list_media, list_renders or list_external_media. The
-        link works once and expires in 15 minutes (`expires_at`); ask again after that. Pass
-        `inline` true to also get a file of 1 MB or less as `content_base64` and skip the
-        download. Needs channels:read, and for srstudio_export the right to change the channel
+        episode's media file, a finished render's video, a third-party item's uploaded copy, an
+        episode's srstudio export zip, or an export or book. Use it when you need a file's
+        bytes; to see what exists first, call get_channel, list_media, list_renders or
+        list_external_media. The link works once and expires in 15 minutes (`expires_at`); ask
+        again after that. Pass `inline` true to also get a file of 1 MB or less as
+        `content_base64` and skip the download. For source export, `target.export` has a
+        `scope`: episode (the whole episode as data: research, sources, pitch, screenplay, short
+        script, classification, style, third-party uses and credits) gives an episode snapshot in
+        one call, instead of calling each get tool; channel (a summary with the profile and every
+        episode's classification); or pitch_book, episode_book, library_book, channel_book or
+        rights_book. Add the episode `number` or the `pitch_id`, the `format` (json, to read it
+        as data; xlsx and pdf are for people), the `language` (en or pt-BR) and, for the library,
+        channel and rights books, `options` with sections, episode statuses or a number range.
+        An export is built when the link is opened, from the data as it is then, and never holds
+        waivers. Needs channels:read, and for srstudio_export the right to change the channel
         (channels:write). Waivers cannot be fetched this way."""
         return file_reported(
             lambda: files.issue_download(

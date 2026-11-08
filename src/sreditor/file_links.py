@@ -3,8 +3,8 @@
 An agent in a sandbox cannot use the MCP connection's OAuth token to fetch or send a file, so a
 tool hands it a link instead. Like API tokens and OAuth codes, a link is random and only its
 hash is stored. It works once, for 15 minutes, for the one target it was issued for: a brand
-file, an episode media file, a third-party media copy, an episode's srstudio export, or an
-upload of one media kind into one episode. Waivers have no link kind, so none can reach them.
+file, an episode media file, a third-party media copy, an episode's srstudio export, an export or
+book of an episode or the channel, or an upload of one media kind into one episode. Waivers have no link kind, so none can reach them.
 """
 
 from __future__ import annotations
@@ -32,6 +32,7 @@ class LinkKind(StrEnum):
     MEDIA_FILE = "media_file"
     EXTERNAL_COPY = "external_copy"
     SRSTUDIO_ZIP = "srstudio_zip"
+    EXPORT_FILE = "export_file"
     MEDIA_UPLOAD = "media_upload"
 
     @property
@@ -50,7 +51,8 @@ class NewLink(BaseModel):
     channel: ChannelSlug
     kind: LinkKind
     number: int | None = None
-    # The brand file's path, the media id, the item id, or an upload's media kind.
+    # The brand file's path, the media id, the item id, an upload's media kind, or an export's
+    # request as JSON, which is all an export link stores: the file is built when it is opened.
     reference: str = ""
     # An upload's name and note for the media file it creates.
     name: str = ""

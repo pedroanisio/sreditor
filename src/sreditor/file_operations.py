@@ -1,8 +1,8 @@
 """Signed file links for agents: who may get one, and what a link delivers (rule agentic.mcp.files).
 
 Issuing a link asks the same role and scope as the API call it stands for: reading a file needs
-channels:read, uploading one needs content:write and exporting for srstudio needs the right to
-change the channel. A link is only another way to run that call, so redeeming it checks the
+channels:read (an export or book too, as the API's downloads), uploading one needs content:write
+and exporting for srstudio needs the right to change the channel. A link is only another way to run that call, so redeeming it checks the
 issuing token again: a revoked token, or a member who left, makes its links useless. Waivers
 have no link kind at all.
 """
@@ -14,7 +14,7 @@ import shutil
 import tempfile
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path, PurePath
 from typing import BinaryIO
@@ -29,6 +29,13 @@ from sreditor.brand import file_in, referenced_assets
 from sreditor.channels import Asset, Platform
 from sreditor.deps import ChannelAccess, Services, access_for
 from sreditor.episode_operations import episode_access
+from sreditor.export_formats import MEDIA_TYPES
+from sreditor.export_requests import (
+    ExportRequest,
+    build_export,
+    check_request,
+    export_filename,
+)
 from sreditor.external_media import EXTENSIONS as COPY_EXTENSIONS
 from sreditor.field_types import MediaType
 from sreditor.file_links import FileLink, LinkGone, LinkKind, NewLink
@@ -65,6 +72,7 @@ class FileSource(StrEnum):
     RENDER = "render"
     EXTERNAL_MEDIA = "external_media"
     SRSTUDIO_EXPORT = "srstudio_export"
+    EXPORT = "export"
 
 
 class FileTarget(BaseModel):
@@ -75,7 +83,7 @@ class FileTarget(BaseModel):
     source: FileSource = Field(
         description="brand_file needs brand_slot (and platform for an account's kit); "
         "episode_media needs number and media_id; render needs number and render_id; "
-        "external_media needs item_id; srstudio_export needs number."
+        "external_media needs item_id; srstudio_export needs number; export needs export."
     )
     number: int | None = Field(default=None, description="The episode's number.")
     media_id: UUID | None = Field(default=None, description="An id from list_media.")
@@ -86,6 +94,11 @@ class FileTarget(BaseModel):
     )
     platform: Platform | None = Field(
         default=None, description="Read the brand file as this account's kit sees it."
+    )
+    export: ExportRequest | None = Field(
+        default=None,
+        description="For source export: an episode or channel export, or a book, to build when "
+        "the link is opened.",
     )
 
 
@@ -109,7 +122,8 @@ class FileOffer(BaseModel):
     expires_at: datetime
     media_type: MediaType
     size_bytes: int | None = Field(
-        description="Null for an srstudio export, which is built when the link is opened."
+        description="Null for an srstudio export or an export, which are built when the link is "
+        "opened, unless an export was asked for inline."
     )
     filename: str
     content_base64: str | None = Field(
@@ -265,6 +279,14 @@ def srstudio_link(access: ChannelAccess, target: FileTarget) -> NewLink:
     return base_link(access, LinkKind.SRSTUDIO_ZIP).model_copy(update={"number": number})
 
 
+def export_link(access: ChannelAccess, target: FileTarget) -> NewLink:
+    """A link to an export or book, which stores only the request, never the file."""
+    request = needs(target.export, target.source, "export")
+    return base_link(access, LinkKind.EXPORT_FILE).model_copy(
+        update={"number": request.number, "reference": request.model_dump_json()}
+    )
+
+
 def link_for(app: Services, access: ChannelAccess, target: FileTarget) -> NewLink:
     """The link a target asks for, once its fields are present and its permission is held."""
     builders: dict[FileSource, Callable[[], NewLink]] = {
@@ -273,6 +295,7 @@ def link_for(app: Services, access: ChannelAccess, target: FileTarget) -> NewLin
         FileSource.RENDER: lambda: render_link(app, access, target),
         FileSource.EXTERNAL_MEDIA: lambda: external_link(access, target),
         FileSource.SRSTUDIO_EXPORT: lambda: srstudio_link(access, target),
+        FileSource.EXPORT: lambda: export_link(access, target),
     }
     return builders[target.source]()
 
@@ -338,6 +361,19 @@ def describe_export(app: Services, access: ChannelAccess, link: NewLink) -> Link
     )
 
 
+def describe_document(app: Services, access: ChannelAccess, link: NewLink) -> LinkedFile:
+    """An export or book; it does not exist until the link is opened, but its request must hold."""
+    request = ExportRequest.model_validate_json(link.reference)
+    check_request(app, access, request)
+    return LinkedFile(
+        path=None,
+        media_type=MEDIA_TYPES[request.format],
+        size_bytes=None,
+        filename=export_filename(access.channel.slug, request, datetime.now(UTC)),
+        is_inline=False,
+    )
+
+
 def describe(app: Services, access: ChannelAccess, link: NewLink) -> LinkedFile:
     """The file a download link points at, checking the role and that it still exists."""
     describers: dict[LinkKind, Callable[[Services, ChannelAccess, NewLink], LinkedFile]] = {
@@ -345,15 +381,32 @@ def describe(app: Services, access: ChannelAccess, link: NewLink) -> LinkedFile:
         LinkKind.MEDIA_FILE: describe_media,
         LinkKind.EXTERNAL_COPY: describe_external,
         LinkKind.SRSTUDIO_ZIP: describe_export,
+        LinkKind.EXPORT_FILE: describe_document,
     }
     return describers[link.kind](app, access, link)
 
 
-def inline_content(facts: LinkedFile) -> str | None:
+def inline_content(content: bytes | None) -> str | None:
     """The file as base64 when it is small enough to travel in a tool result."""
-    if facts.path is None or facts.size_bytes is None or facts.size_bytes > INLINE_MAX_BYTES:
+    if content is None or len(content) > INLINE_MAX_BYTES:
         return None
-    return base64.b64encode(facts.path.read_bytes()).decode("ascii")
+    return base64.b64encode(content).decode("ascii")
+
+
+def inline_parts(
+    app: Services, access: ChannelAccess, link: NewLink, facts: LinkedFile
+) -> tuple[int | None, str | None]:
+    """The size and base64 content of the file for a tool result.
+
+    An export has neither until it is built, so asking for it inline builds it here too;
+    the link still builds it again when it is opened, from the data as it is then.
+    """
+    if link.kind is LinkKind.EXPORT_FILE:
+        built = build_export(app, access, ExportRequest.model_validate_json(link.reference))
+        return len(built.content), inline_content(built.content)
+    if facts.path is None:
+        return facts.size_bytes, None
+    return facts.size_bytes, inline_content(facts.path.read_bytes())
 
 
 def issue_download(
@@ -362,14 +415,17 @@ def issue_download(
     """A single-use link to download the file, after the role, scope and file are checked."""
     new = link_for(app, access, target)
     facts = describe(app, access, new)
+    size_bytes, content = (
+        inline_parts(app, access, new, facts) if is_inline else (facts.size_bytes, None)
+    )
     issued = app.file_links.issue(new)
     return FileOffer(
         url=file_url(app, issued.secret),
         expires_at=issued.link.expires_at,
         media_type=facts.media_type,
-        size_bytes=facts.size_bytes,
+        size_bytes=size_bytes,
         filename=facts.filename,
-        content_base64=inline_content(facts) if is_inline else None,
+        content_base64=content,
     )
 
 
@@ -422,8 +478,35 @@ def issuer_access(app: Services, link: FileLink) -> ChannelAccess:
     return access_for(app, link.channel, user, token)
 
 
+def built_delivery(prefix: str, facts: LinkedFile, build: Callable[[Path], Path]) -> FileDelivery:
+    """A file `build` writes into a new folder, which is removed once the file was sent."""
+    folder = Path(tempfile.mkdtemp(prefix=prefix))
+    try:
+        built = build(folder)
+    except Exception:
+        # The folder may hold converted WAVs or a half-written file; a refused build must not
+        # leave them behind.
+        shutil.rmtree(folder, ignore_errors=True)
+        raise
+    return FileDelivery(
+        path=built,
+        media_type=facts.media_type,
+        filename=built.name,
+        is_inline=False,
+        cleanup=folder,
+    )
+
+
+def write_export(app: Services, access: ChannelAccess, link: FileLink, folder: Path) -> Path:
+    """Build the export a link stands for and write it into the folder."""
+    built = build_export(app, access, ExportRequest.model_validate_json(link.reference))
+    path = folder / built.filename
+    path.write_bytes(built.content)
+    return path
+
+
 def deliver(app: Services, link: FileLink) -> FileDelivery:
-    """The file a claimed download link points at, built first when it is an srstudio export."""
+    """The file a claimed download link points at, built first when it is an export."""
     access = issuer_access(app, link)
     facts = describe(app, access, link)
     if facts.path is not None:
@@ -433,19 +516,13 @@ def deliver(app: Services, link: FileLink) -> FileDelivery:
             filename=facts.filename,
             is_inline=facts.is_inline,
         )
-    folder = Path(tempfile.mkdtemp(prefix="srstudio-"))
-    try:
-        archive = srstudio_zip(app, access, needs(link.number, link.kind, "number"), folder)
-    except Exception:
-        # The folder holds converted WAVs; a refused export must not leave them behind.
-        shutil.rmtree(folder, ignore_errors=True)
-        raise
-    return FileDelivery(
-        path=archive,
-        media_type=facts.media_type,
-        filename=archive.name,
-        is_inline=False,
-        cleanup=folder,
+    if link.kind is LinkKind.EXPORT_FILE:
+        return built_delivery(
+            "export-", facts, lambda folder: write_export(app, access, link, folder)
+        )
+    number = needs(link.number, link.kind, "number")
+    return built_delivery(
+        "srstudio-", facts, lambda folder: srstudio_zip(app, access, number, folder)
     )
 
 
