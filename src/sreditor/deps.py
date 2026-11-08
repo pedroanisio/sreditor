@@ -24,6 +24,7 @@ from sreditor.block_takes import BlockTakeStore
 from sreditor.channels import Channel
 from sreditor.claims import ClaimStore
 from sreditor.classification import ClassificationStore
+from sreditor.content_search import ContentSearchStore
 from sreditor.context import ContextStore
 from sreditor.delivery import DeliveryStore
 from sreditor.editorial import EditorialService
@@ -87,6 +88,7 @@ class Services:
     classifications: ClassificationStore
     waivers: WaiverStore
     search: SearchStore
+    content_search: ContentSearchStore
     contexts: ContextStore
     srstudio: SrstudioStore
     users: UserStore

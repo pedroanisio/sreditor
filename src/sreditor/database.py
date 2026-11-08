@@ -23,6 +23,7 @@ from pathlib import Path
 
 from sreditor.channels import normalized_handle
 from sreditor.migrations import Migration, MigrationError, execute_script, run_migrations
+from sreditor.search_index import SEARCH_INDEX
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS channels (
@@ -835,7 +836,7 @@ def apply_baseline(connection: sqlite3.Connection) -> None:
 
 BASELINE = Migration(version=1, name="baseline schema", apply=apply_baseline)
 # Append new migrations here, numbered in order; never change one that has been released.
-MIGRATIONS = (BASELINE,)
+MIGRATIONS = (BASELINE, SEARCH_INDEX)
 
 
 def open_connection(path: Path, *, is_autocommit: bool = False) -> sqlite3.Connection:

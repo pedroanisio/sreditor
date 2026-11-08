@@ -1443,5 +1443,7 @@
   "A cut has an uploaded video or a referenced one, not both": "Um corte tem um vídeo enviado ou um vídeo por referência, não os dois",
   "The video of the cut %(cut)s runs %(seconds)s s, over the %(limit)s s limit.": "O vídeo do corte %(cut)s dura %(seconds)s s, acima do limite de %(limit)s s.",
   "The cut %(cut)s has %(count)s hashtags, over the limit of %(limit)s.": "O corte %(cut)s tem %(count)s hashtags, acima do limite de %(limit)s.",
-  "The caption of the cut %(cut)s has no AI notice line.": "A legenda do corte %(cut)s não tem a linha de aviso de IA."
+  "The caption of the cut %(cut)s has no AI notice line.": "A legenda do corte %(cut)s não tem a linha de aviso de IA.",
+  "In the text": "No texto",
+  "Pitch notes": "Anotações da pauta"
 }
