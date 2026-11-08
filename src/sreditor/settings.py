@@ -127,6 +127,10 @@ class AppSettings(BaseModel):
     # Proxies trusted to report the client's address, such as the Cloudflare tunnel; without
     # this every visitor would share the proxy's address and its per-client rate limits.
     forwarded_allow_ips: str = DEFAULT_FORWARDED_ALLOW_IPS
+    # A header the edge proxy sets itself to the visitor's address, such as Cloudflare's
+    # CF-Connecting-IP. Per-client rate limits key on it, since the leftmost X-Forwarded-For
+    # entry is whatever the client sent; none (the default) keys on the connection's address.
+    client_ip_header: str | None = None
     # Prometheus reads /metrics on this port; none (the default) serves no metrics.
     metrics_port: int | None = Field(default=None, ge=1, le=65535)
 
@@ -165,6 +169,7 @@ class AppSettings(BaseModel):
             ),
             forwarded_allow_ips=environ.get("SREDITOR_FORWARDED_ALLOW_IPS")
             or DEFAULT_FORWARDED_ALLOW_IPS,
+            client_ip_header=environ.get("SREDITOR_CLIENT_IP_HEADER") or None,
             metrics_port=metrics_port(environ, project),
             max_media_bytes=max_media_bytes(environ, project),
         )

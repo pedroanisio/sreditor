@@ -38,7 +38,7 @@ Emails go out through SMTP2GO when `SREDITOR_SMTP2GO_API_KEY` is set, from `SRED
 Copy `.env.example` to `.env`, set the user that owns `./store` and `./var`, then run `docker compose up --build`. The API listens on 127.0.0.1:8000.
 <!-- readme.50.docker -->
 
-To reach it over the internet, create a Cloudflare Tunnel, route its public hostname to `http://sreditor:8000`, and set `CLOUDFLARE_TUNNEL_TOKEN`, `COMPOSE_PROFILES=tunnel` and `SREDITOR_PUBLIC_URL=https://<that hostname>` in `.env`; no port is opened. `SREDITOR_FORWARDED_ALLOW_IPS` names the proxies trusted to report the visitor's address (`*` in Docker, where only the tunnel and this machine reach the app), so rate limits count each visitor apart.
+To reach it over the internet, create a Cloudflare Tunnel, route its public hostname to `http://sreditor:8000`, and set `CLOUDFLARE_TUNNEL_TOKEN`, `COMPOSE_PROFILES=tunnel` and `SREDITOR_PUBLIC_URL=https://<that hostname>` in `.env`; no port is opened. Rate limits count each visitor by `SREDITOR_CLIENT_IP_HEADER` (`CF-Connecting-IP` in Docker), which Cloudflare sets, not by X-Forwarded-For, whose first entry the visitor writes.
 <!-- readme.51.tunnel -->
 
 `sreditor doctor` checks `.env`, the store owner, the rules store, the public URL, email, the tunnel and whether the app answers; `--fix` writes `.env`. `--environment development|production` and `--hostname` are remembered there. With `CLOUDFLARE_API_TOKEN` exported in the shell (Tunnel Edit, DNS Edit), it creates or updates the tunnel `sreditor-<environment>` and its DNS record. Production needs an https hostname and SMTP2GO.

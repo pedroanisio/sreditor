@@ -1,7 +1,8 @@
 """Remove one-time tokens from log output.
 
 Email links carry tokens (`?token=`, `#token=`, `/invitations/<token>`); a logged token can be
-replayed to verify an email, reset a password or join a channel.
+replayed to verify an email, reset a password or join a channel. Signed file links carry theirs
+in the path (`/files/<secret>`), and a logged one can fetch or upload a file while it lasts.
 """
 
 from __future__ import annotations
@@ -19,6 +20,9 @@ PATTERNS = (
     re.compile(r"(?P<keep>\btoken(?:=|: ))[^\s&#\"'<>]+"),
     # /invitations/<token> from older links, but not the named invitation endpoints.
     re.compile(r"(?P<keep>/invitations/)(?!(?:accept|open|join)(?:[/?#\s\"']|$))[^\s/?#&\"'<>]+"),
+    # /files/<secret>, the signed file links of agentic.mcp.files, at the root of a path or URL
+    # only: /app/channels/<slug>/files/<name> and /brand/files/<slot> name files, not secrets.
+    re.compile(r"(?P<keep>(?:^|(?<=[\s\"'(=])|https?://[^/\s\"'<>]+)/files/)[^\s/?#&\"'<>]+"),
 )
 
 

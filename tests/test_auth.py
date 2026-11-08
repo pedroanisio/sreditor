@@ -246,6 +246,24 @@ def test_login_eleventh_failed_attempt_is_rate_limited(app: FastAPI) -> None:
     assert statuses[10] == 429
 
 
+def test_rate_limit_with_client_ip_header_counts_each_visitor_apart(app: FastAPI) -> None:
+    services = app.state.services
+    services.settings = services.settings.model_copy(
+        update={"client_ip_header": "CF-Connecting-IP"}
+    )
+    services.limiter = RateLimiter(1, 900.0)
+    api = client(app)
+    statuses = [
+        api.post(
+            "/auth/login",
+            json={"email": EMAIL, "password": "wrong password!!"},
+            headers={"CF-Connecting-IP": f"203.0.113.{visitor}"},
+        ).status_code
+        for visitor in (1, 2)
+    ]
+    assert statuses == [401, 401]
+
+
 def test_rate_limit_retry_after_is_seconds_left_in_window(app: FastAPI) -> None:
     moment = [0.0]
     app.state.services.limiter = RateLimiter(1, 900.0, clock=lambda: moment[0])

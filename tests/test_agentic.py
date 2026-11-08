@@ -360,6 +360,18 @@ def test_idempotency_replays_stored_response(owner: TestClient) -> None:
     assert again.headers["idempotent-replayed"] == "true"
 
 
+def test_idempotency_key_of_one_token_never_replays_for_another(
+    app: FastAPI, owner: TestClient
+) -> None:
+    headers = {"Idempotency-Key": "pillar-1"}
+    pillar = {"kind": "pillar", "text": "Office life."}
+    writer = agent(app, new_token(owner))
+    reader = agent(app, new_token(owner, ["channels:read"]))
+    assert writer.post("/channels/funny-memes/editorial", json=pillar, headers=headers).is_success
+    refused = reader.post("/channels/funny-memes/editorial", json=pillar, headers=headers)
+    assert refused.status_code == 403 and "idempotent-replayed" not in refused.headers
+
+
 def test_idempotency_key_with_other_body_returns_422(owner: TestClient) -> None:
     headers = {"Idempotency-Key": "create-other"}
     owner.post("/channels", json={**FUNNY_MEMES, "slug": "other", "accounts": []}, headers=headers)

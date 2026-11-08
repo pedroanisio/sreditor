@@ -164,7 +164,10 @@ def list_channels(
     require_scope(token, Scope.CHANNELS_READ)
     slugs = None if user.is_admin else list(app.members.roles_of(user.id))
     if token is not None and token.channels is not None:
-        slugs = [slug for slug in slugs or token.channels if token.reaches(slug)]
+        # An admin's token lists its own channels; anyone else's only those they still belong to,
+        # so a member removed from a channel stops seeing it through an older limited token.
+        candidates = token.channels if slugs is None else slugs
+        slugs = [slug for slug in candidates if token.reaches(slug)]
     rows = app.channels.list(slugs, after=decode_cursor(cursor), limit=limit + 1)
     return page(rows, limit, lambda channel: channel.slug)
 

@@ -16,7 +16,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from sreditor.api import create_app
-from sreditor.database import utc_now
+from sreditor.database import Database, utc_now
 from sreditor.deps import Services, access_for
 from sreditor.file_links import LINK_TTL
 from sreditor.file_operations import FileSource, FileTarget, issue_download
@@ -594,12 +594,25 @@ def test_upload_with_get_is_refused_and_keeps_the_link(
     assert visitor.put(url, content=sample.MP3_TAGGED).status_code == 201
 
 
-def test_upload_link_same_key_returns_the_first_link(mcp: TestClient) -> None:
+def test_upload_link_same_key_replay_returns_a_fresh_working_link(
+    mcp: TestClient, visitor: TestClient
+) -> None:
     upload = {"number": 1, "kind": "score", "name": "Theme"}
     arguments = {"slug": SLUG, "upload": upload, "idempotency_key": "theme-1"}
     first = tool(mcp, "create_upload_link", arguments)["structuredContent"]
     second = tool(mcp, "create_upload_link", arguments)["structuredContent"]
-    assert first["url"] == second["url"]
+    assert second["url"] != first["url"]
+    assert visitor.put(second["url"], content=sample.MP3_TAGGED).status_code == 201
+
+
+def test_upload_link_same_key_stores_no_secret(app: FastAPI, mcp: TestClient) -> None:
+    upload = {"number": 1, "kind": "score", "name": "Theme"}
+    arguments = {"slug": SLUG, "upload": upload, "idempotency_key": "theme-1"}
+    url = tool(mcp, "create_upload_link", arguments)["structuredContent"]["url"]
+    database: Database = app.state.services.users.database
+    with database.connect() as connection:
+        stored = connection.execute("SELECT response_body FROM idempotency_keys").fetchall()
+    assert stored and all(url.rsplit("/", 1)[1] not in row[0] for row in stored)
 
 
 def test_upload_link_same_key_other_arguments_is_refused(mcp: TestClient) -> None:

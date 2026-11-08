@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from starlette.datastructures import UploadFile
 
-from sreditor.deps import CurrentUser, ServicesDep
+from sreditor.deps import CurrentUser, ServicesDep, request_token
 from sreditor.idempotency_store import IdempotencyStore, KeyInProgress, KeyReused, StoredResponse
 from sreditor.problems import ProblemError
 
@@ -26,6 +26,7 @@ KEY_HEADER = "Idempotency-Key"
 REPLAYED_HEADER = "Idempotent-Replayed"
 MAX_KEY_LENGTH = 255
 IN_PROGRESS_RETRY_SECONDS = 1
+TOKEN_KEY_PREFIX = "token:"
 
 
 @contextmanager
@@ -46,6 +47,23 @@ def as_problems() -> Iterator[None]:
             "idempotency-key-in-progress",
             headers={"Retry-After": str(IN_PROGRESS_RETRY_SECONDS)},
         ) from running
+
+
+def caller_key(key: str | None, token_id: UUID | None) -> str | None:
+    """The key as stored: a token's keys are its own, so one token never replays another's result.
+
+    Keys belong to the user, and tokens of one user may hold different scopes and channels; without
+    this, a narrow token could replay what a broader one created (SRED-5).
+    """
+    if key is None or token_id is None:
+        return key
+    return f"{TOKEN_KEY_PREFIX}{token_id}:{key}"
+
+
+def token_id_of(request: Request) -> UUID | None:
+    """The id of the API token behind the request, or None for a signed-in session."""
+    token = request_token(request)
+    return token.id if token is not None else None
 
 
 def request_hash(method: str, path: str, body: bytes) -> str:
@@ -120,7 +138,7 @@ async def idempotency(
     return Idempotency(
         store=IdempotencyStore(app.users.database),
         user_id=user.id,
-        key=key,
+        key=caller_key(key, token_id_of(request)),
         request_hash=request_hash(request.method, request.url.path, body),
     )
 
@@ -147,7 +165,7 @@ async def upload_idempotency(
     return Idempotency(
         store=IdempotencyStore(app.users.database),
         user_id=user.id,
-        key=key,
+        key=caller_key(key, token_id_of(request)),
         request_hash=digest.hexdigest(),
     )
 
