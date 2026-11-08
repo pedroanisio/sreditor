@@ -47,6 +47,11 @@ class Passwords:
             return False
 
 
+# Past this many keys, a hit first drops every key whose hits have all left the window, so
+# addresses seen once do not pile up in memory.
+SWEEP_KEYS = 10_000
+
+
 class RateLimiter:
     """Allow at most `limit` hits per key within a sliding window of `window` seconds."""
 
@@ -63,6 +68,8 @@ class RateLimiter:
     def allow(self, key: str) -> bool:
         """Count a hit unless the key is already at its limit."""
         with self._lock:
+            if len(self._hits) > SWEEP_KEYS:
+                self._sweep()
             hits = self._recent(key)
             if len(hits) >= self.limit:
                 return False
@@ -76,6 +83,16 @@ class RateLimiter:
             if len(hits) < self.limit:
                 return 0.0
             return max(0.0, hits[0] + self.window - self.clock())
+
+    @property
+    def key_count(self) -> int:
+        """How many keys the limiter holds in memory."""
+        return len(self._hits)
+
+    def _sweep(self) -> None:
+        cutoff = self.clock() - self.window
+        for key in [key for key, hits in self._hits.items() if not hits or hits[-1] <= cutoff]:
+            del self._hits[key]
 
     def _recent(self, key: str) -> deque[float]:
         now = self.clock()

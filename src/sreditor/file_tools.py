@@ -18,7 +18,7 @@ from sreditor import file_operations as files
 from sreditor.deps import Services
 from sreditor.external_media_tools import external_reported
 from sreditor.file_operations import ExportCheck, FileOffer, FileTarget, UploadOffer, UploadRequest
-from sreditor.mcp_idempotency import IdempotencyKey, IdempotentCall, run_once
+from sreditor.mcp_idempotency import IdempotencyKey, IdempotentCall, issue_link_once
 from sreditor.mcp_server import Effect, tool_annotations
 from sreditor.media_operations import RenderNotUploadable
 from sreditor.pitch_tools import channel_access
@@ -80,13 +80,14 @@ def add_file_tools(server: MCPServer, services: Services) -> None:
         `external_video` in write_delivery instead. The type is read from the file's content, and `accepted_types` and
         `max_bytes` say what is allowed; a refused file leaves the link usable. The link works
         once and expires in 15 minutes. Needs content:write. Each call issues another link
-        unless you pass an `idempotency_key`: a retry with the same key and arguments returns the
-        first link."""
+        unless you pass an `idempotency_key`: a retry with the same key and arguments is marked
+        replayed and returns a fresh link to the same place, since a link's secret is never
+        stored."""
         call = IdempotentCall(
             operation=f"create_upload_link/{slug}", arguments=upload, key=idempotency_key
         )
         return file_reported(
-            lambda: run_once(
+            lambda: issue_link_once(
                 services,
                 context,
                 call,

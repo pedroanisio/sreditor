@@ -73,3 +73,16 @@ def test_rate_limiter_retry_after_at_limit_waits_for_oldest_hit() -> None:
     limiter.allow("a")
     now[0] = 6.0
     assert limiter.retry_after("a") == 4.0
+
+
+def test_rate_limiter_past_sweep_size_drops_keys_outside_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("sreditor.security.SWEEP_KEYS", 2)
+    now = [0.0]
+    limiter = make_limiter(now)
+    for key in ("a", "b", "c"):
+        limiter.allow(key)
+    now[0] = 10.0
+    limiter.allow("d")
+    assert limiter.key_count == 1

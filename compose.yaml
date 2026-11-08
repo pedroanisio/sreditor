@@ -23,8 +23,12 @@ services:
       # without one the feature is hidden.
       SREDITOR_ELEVENLABS_API_KEY: ${SREDITOR_ELEVENLABS_API_KEY:-}
       # Only this machine (through the loopback port) and the tunnel reach the app, so it
-      # trusts their X-Forwarded-For; per-client rate limits then see each visitor's address.
+      # trusts their X-Forwarded-For for the scheme and the logged address.
       SREDITOR_FORWARDED_ALLOW_IPS: ${SREDITOR_FORWARDED_ALLOW_IPS:-*}
+      # Cloudflare sets this header to the visitor's address and replaces any copy the visitor
+      # sent, unlike X-Forwarded-For, whose leftmost entry the visitor writes; per-client rate
+      # limits key on it. Empty it when the app is not behind Cloudflare.
+      SREDITOR_CLIENT_IP_HEADER: ${SREDITOR_CLIENT_IP_HEADER-CF-Connecting-IP}
       # Prometheus reads /metrics here over the compose network; the port is not published
       # and the tunnel routes only to 8000, so metrics never reach the internet.
       SREDITOR_METRICS_PORT: "9100"

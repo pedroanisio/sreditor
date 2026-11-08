@@ -227,6 +227,8 @@ KEYED_TOOLS = [
     "use_external_media",
     "create_upload_link",
 ]
+# A replayed link result carries a fresh link: these fields differ between the two answers.
+LINK_FIELDS = {"url", "expires_at"}
 
 
 @pytest.mark.parametrize("name", KEYED_TOOLS)
@@ -246,7 +248,12 @@ def test_mcp_keyed_tool_replay_returns_the_first_result_marked_replayed(
     assert not first.get("isError"), first
     assert first["_meta"] == {REPLAYED_META: False}
     assert again["_meta"] == {REPLAYED_META: True}
-    assert again["structuredContent"] == first["structuredContent"]
+    assert without_link(again["structuredContent"]) == without_link(first["structuredContent"])
+
+
+def without_link(result: dict[str, Any]) -> dict[str, Any]:
+    """A result without its signed link, which a replay issues afresh (its secret is not kept)."""
+    return {key: value for key, value in result.items() if key not in LINK_FIELDS}
 
 
 @pytest.mark.parametrize("name", KEYED_TOOLS)

@@ -63,6 +63,15 @@ def test_limited_token_lists_only_its_channels(limited: TestClient) -> None:
     assert slugs == ["funny-memes"]
 
 
+def test_limited_token_of_removed_member_lists_no_channels(
+    app: FastAPI, limited: TestClient
+) -> None:
+    database: Database = app.state.services.users.database
+    with database.connect() as connection:
+        connection.execute("DELETE FROM memberships")
+    assert limited.get("/channels").json()["items"] == []
+
+
 def test_limited_token_me_shows_only_its_channels(limited: TestClient) -> None:
     assert list(limited.get("/me").json()["channels"]) == ["funny-memes"]
 

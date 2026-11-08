@@ -34,6 +34,12 @@ SECRET = "Xy3_-abcDEF123"
             f"https://a.test/invitations#token={REDACTED}",
         ),
         ("GET /channels/funny-memes HTTP/1.1", "GET /channels/funny-memes HTTP/1.1"),
+        (f"PUT /files/{SECRET} HTTP/1.1", f"PUT /files/{REDACTED} HTTP/1.1"),
+        (f"https://a.test/files/{SECRET}", f"https://a.test/files/{REDACTED}"),
+        (
+            "GET /app/channels/c/files/logo.png HTTP/1.1",
+            "GET /app/channels/c/files/logo.png HTTP/1.1",
+        ),
         ("csrf_token=abc and mytoken=abc", "csrf_token=abc and mytoken=abc"),
     ],
 )

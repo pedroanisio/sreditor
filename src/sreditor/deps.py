@@ -236,20 +236,27 @@ def author(user: User) -> Owner:
     return Owner(type="user", id=str(user.id))
 
 
-def limit_key(request: Request) -> str:
+def client_address(request: Request, header: str | None) -> str:
+    """The visitor's address: the edge proxy's header when configured, else the connection's."""
+    reported = request.headers.get(header) if header else None
+    if reported:
+        return reported.strip()
+    return request.client.host if request.client else "unknown"
+
+
+def limit_key(request: Request, app: Services) -> str:
     """The limiter key for this client on this path."""
-    client = request.client.host if request.client else "unknown"
-    return f"{request.url.path}:{client}"
+    return f"{request.url.path}:{client_address(request, app.settings.client_ip_header)}"
 
 
 def within_rate_limit(request: Request, app: Services) -> bool:
     """Count this attempt against the client's limit for this path."""
-    return app.limiter.allow(limit_key(request))
+    return app.limiter.allow(limit_key(request, app))
 
 
 def retry_after_seconds(request: Request, app: Services) -> int:
     """Whole seconds until this client may try this path again (agentic.rate-limits)."""
-    return max(1, math.ceil(app.limiter.retry_after(limit_key(request))))
+    return max(1, math.ceil(app.limiter.retry_after(limit_key(request, app))))
 
 
 AGENT_LIMIT_DETAIL = "Too many requests for this API token; wait for Retry-After seconds"
