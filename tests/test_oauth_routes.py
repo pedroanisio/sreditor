@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -10,8 +11,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from sreditor import oauth_routes
+from sreditor.api import AUTH_ATTEMPTS
 from sreditor.client_metadata import ClientDocuments, FetchedDocument
-from sreditor.oauth import challenge_of
+from sreditor.oauth import MAX_REGISTRATION_BYTES, challenge_of
 from tests.conftest import RecordingMailer
 from tests.workspace_helpers import ORIGIN, browser, member, submit
 
@@ -127,6 +129,53 @@ def test_register_without_redirect_uris_answers_invalid_client_metadata(app: Fas
 def test_register_unreadable_body_answers_invalid_client_metadata(app: FastAPI) -> None:
     response = TestClient(app).post("/oauth/register", content=b"{nope")
     assert response.json()["error"] == "invalid_client_metadata"
+
+
+def register_with(app: FastAPI, **fields: object) -> dict[str, str]:
+    response = TestClient(app).post("/oauth/register", json=fields)
+    assert response.status_code == 400, response.text
+    body: dict[str, str] = response.json()
+    return body
+
+
+def test_register_overlong_client_name_answers_invalid_client_metadata(app: FastAPI) -> None:
+    refused = register_with(app, redirect_uris=[CALLBACK], client_name="n" * 201)
+    assert refused["error"] == "invalid_client_metadata"
+
+
+def test_register_too_many_redirect_uris_answers_invalid_client_metadata(app: FastAPI) -> None:
+    uris = [f"https://claude.ai/cb/{number}" for number in range(11)]
+    assert register_with(app, redirect_uris=uris)["error"] == "invalid_client_metadata"
+
+
+def test_register_overlong_redirect_uri_answers_invalid_client_metadata(app: FastAPI) -> None:
+    uri = "https://claude.ai/" + "x" * 2000
+    assert register_with(app, redirect_uris=[uri])["error"] == "invalid_client_metadata"
+
+
+def test_register_limit_sized_metadata_is_accepted(app: FastAPI) -> None:
+    uris = [f"https://claude.ai/{number}/" + "x" * 1900 for number in range(10)]
+    response = TestClient(app).post(
+        "/oauth/register", json={"redirect_uris": uris, "client_name": "n" * 200}
+    )
+    assert response.status_code == 201
+
+
+def test_register_body_over_the_cap_answers_413(app: FastAPI) -> None:
+    padding = "x" * MAX_REGISTRATION_BYTES
+    response = TestClient(app).post(
+        "/oauth/register", json={"redirect_uris": [CALLBACK], "padding": padding}
+    )
+    assert (response.status_code, response.json()["error"]) == (413, "invalid_client_metadata")
+
+
+def test_register_streamed_body_over_the_cap_answers_413(app: FastAPI) -> None:
+    def chunks() -> Iterator[bytes]:
+        for _ in range(MAX_REGISTRATION_BYTES // 1024 + 2):
+            yield b" " * 1024
+
+    response = TestClient(app).post("/oauth/register", content=chunks())
+    assert response.status_code == 413
 
 
 def test_authorize_without_session_redirects_to_sign_in_and_back(
@@ -321,3 +370,42 @@ def test_authorize_cimd_document_that_fails_shows_error_page(
     monkeypatch.setattr(oauth_routes, "CLIENT_DOCUMENTS", broken)
     response = person.get("/oauth/authorize", params=authorize_query(CIMD_URL))
     assert response.status_code == 400
+
+
+def test_authorize_over_the_rate_limit_shows_error_page_with_retry_after(
+    person: TestClient, client_id: str
+) -> None:
+    for _ in range(AUTH_ATTEMPTS):
+        person.get("/oauth/authorize", params=authorize_query(client_id))
+    response = person.get("/oauth/authorize", params=authorize_query(client_id))
+    assert response.status_code == 429 and int(response.headers["retry-after"]) >= 1
+    assert "Too many attempts" in response.text
+
+
+def test_authorize_over_the_rate_limit_in_portuguese_translates_the_page(
+    person: TestClient, client_id: str
+) -> None:
+    query = {**authorize_query(client_id), "lang": "pt-BR"}
+    for _ in range(AUTH_ATTEMPTS):
+        person.get("/oauth/authorize", params=query)
+    assert "Tentativas demais" in person.get("/oauth/authorize", params=query).text
+
+
+def test_authorize_after_a_limited_client_other_clients_are_not_limited(
+    app: FastAPI, person: TestClient, client_id: str
+) -> None:
+    for _ in range(AUTH_ATTEMPTS + 1):
+        person.get("/oauth/authorize", params=authorize_query(client_id))
+    assert person.get("/oauth/authorize/deny").status_code != 429
+
+
+def test_approve_over_the_rate_limit_is_refused(person: TestClient, client_id: str) -> None:
+    for _ in range(AUTH_ATTEMPTS):
+        person.post("/oauth/authorize", data=authorize_query(client_id))
+    assert person.post("/oauth/authorize", data=authorize_query(client_id)).status_code == 429
+
+
+def test_deny_over_the_rate_limit_is_refused(person: TestClient, client_id: str) -> None:
+    for _ in range(AUTH_ATTEMPTS):
+        person.post("/oauth/authorize/deny", data=authorize_query(client_id))
+    assert person.post("/oauth/authorize/deny", data=authorize_query(client_id)).status_code == 429

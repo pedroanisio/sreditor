@@ -13,7 +13,7 @@ from fastapi import APIRouter, Form, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 from pydantic import Field
 
-from sreditor.deps import Services, ServicesDep
+from sreditor.deps import Services, ServicesDep, within_rate_limit
 from sreditor.i18n import N_
 from sreditor.mcp_server import PATH as MCP_PATH
 from sreditor.oauth import (
@@ -31,7 +31,15 @@ from sreditor.tokens import Scope
 from sreditor.users import User
 from sreditor.web.forms import SubmittedFields
 from sreditor.web.labels import SCOPE_HINTS
-from sreditor.web.routes import SECURITY_HEADERS, Notice, message, rejected_form, translator
+from sreditor.web.routes import (
+    SECURITY_HEADERS,
+    TOO_MANY,
+    TOO_MANY_ATTEMPTS,
+    Notice,
+    message,
+    rejected_form,
+    translator,
+)
 from sreditor.web.workspace.shell import PageUser, workspace_page
 
 router = APIRouter()
@@ -42,6 +50,9 @@ INVALID_REQUEST = Notice(
     title=N_("This connection request is not valid"),
     text=N_("Start connecting again from the app that sent you here."),
     status_code=status.HTTP_400_BAD_REQUEST,
+)
+TOO_MANY_REQUESTS = Notice(
+    title=N_("Too many attempts"), text=TOO_MANY_ATTEMPTS, status_code=TOO_MANY
 )
 FORM_ACTION = "form-action 'self'"
 
@@ -64,6 +75,17 @@ class ConsentFields(SubmittedFields):
         return AuthorizationRequest.model_validate(
             self.model_dump(exclude={"csrf_token", "scopes"})
         )
+
+
+def over_limit(request: Request, app: Services) -> Response | None:
+    """The page that refuses a client over its limit on this path (rule agentic.rate-limits).
+
+    Every step looks the client up, and a client_id URL makes sreditor fetch it, so a stranger
+    could otherwise use a signed-in browser or account to make the server fetch without end.
+    """
+    if within_rate_limit(request, app):
+        return None
+    return message(request, app, TOO_MANY_REQUESTS)
 
 
 def checked(app: Services, authorization: AuthorizationRequest) -> OAuthClient:
@@ -144,6 +166,8 @@ def authorize(
     query: Annotated[AuthorizationRequest, Query()],
 ) -> Response:
     """Ask the person whether the client may act for them, and with which permissions."""
+    if limited := over_limit(request, app):
+        return limited
     try:
         client = checked(app, query)
     except OAuthError as refusal:
@@ -157,6 +181,8 @@ def approve(
     request: Request, app: ServicesDep, user: PageUser, fields: Annotated[ConsentFields, Form()]
 ) -> Response:
     """Grant the chosen permissions and send the person back to the client with a code."""
+    if limited := over_limit(request, app):
+        return limited
     if rejected := rejected_form(request, app, fields.csrf_token):
         return rejected
     authorization = fields.authorization()
@@ -186,6 +212,8 @@ def deny(
     request: Request, app: ServicesDep, user: PageUser, fields: Annotated[ConsentFields, Form()]
 ) -> Response:
     """Refuse: the client is told access_denied and gets no code."""
+    if limited := over_limit(request, app):
+        return limited
     if rejected := rejected_form(request, app, fields.csrf_token):
         return rejected
     authorization = fields.authorization()

@@ -4,7 +4,8 @@ An MCP client may use an https URL as its client_id; sreditor fetches the JSON d
 that URL to learn the client's name and redirect URIs. Fetching a URL a stranger chose is a
 server-side request forgery risk, so the fetch connects only to public addresses (checked
 after DNS resolution, and pinned so a second lookup cannot swap in a private one), follows no
-redirects, and stops at a size and a time limit.
+redirects, and stops at a size limit and a wall-clock deadline for the whole fetch, name
+lookup included.
 """
 
 from __future__ import annotations
@@ -15,8 +16,10 @@ import json
 import re
 import socket
 import ssl
+import threading
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from urllib.parse import urlsplit
@@ -27,7 +30,13 @@ from sreditor.oauth import AUTH_METHOD, ClientRegistration, ErrorCode, OAuthClie
 
 HTTPS = "https"
 HTTPS_PORT = 443
-FETCH_TIMEOUT_SECONDS = 5.0
+IPV4_MASK = 0xFFFFFFFF
+FETCH_TIMEOUT_SECONDS = 5.0  # for one connect or read; the deadline bounds all of them together
+FETCH_DEADLINE_SECONDS = 10.0
+# Fetches run on their own threads, so a server that stalls holds one of these and never the
+# thread of a request; when all are busy a fetch waits, then fails at its deadline.
+FETCH_WORKERS = 4
+READ_CHUNK_BYTES = 4096
 MAX_DOCUMENT_BYTES = 16 * 1024
 JSON_TYPE = "application/json"
 USER_AGENT = "sreditor-oauth"
@@ -68,11 +77,37 @@ def check_url(url: str) -> None:
         raise ClientDocumentError("client_id URL must not contain dot segments")
 
 
+# IPv6 ranges that carry an IPv4 address in their low 32 bits and that a host or gateway may
+# translate to it: the NAT64 well-known prefix (RFC 6052) and the deprecated IPv4-compatible
+# range. Python's is_global calls both global, so the embedded address decides instead.
+NAT64_NETWORK = ipaddress.ip_network("64:ff9b::/96")
+IPV4_COMPATIBLE_NETWORK = ipaddress.ip_network("::/96")
+# NAT64 prefixes for local use (RFC 8215) are never public.
+NAT64_LOCAL_NETWORK = ipaddress.ip_network("64:ff9b:1::/48")
+
+
+def embedded_ipv4(address: ipaddress.IPv6Address) -> ipaddress.IPv4Address | None:
+    """The IPv4 address an IPv6 one maps, translates or tunnels to, if it does."""
+    if address.ipv4_mapped:
+        return address.ipv4_mapped
+    if address in NAT64_NETWORK or address in IPV4_COMPATIBLE_NETWORK:
+        return ipaddress.IPv4Address(int(address) & IPV4_MASK)
+    if address.sixtofour:
+        return address.sixtofour
+    if address.teredo:
+        return address.teredo[1]
+    return None
+
+
 def is_public(address: str) -> bool:
     """Whether an IP is on the public internet: not private, loopback, link-local and so on."""
     parsed = ipaddress.ip_address(address)
-    if isinstance(parsed, ipaddress.IPv6Address) and parsed.ipv4_mapped:
-        parsed = parsed.ipv4_mapped
+    if isinstance(parsed, ipaddress.IPv6Address):
+        if parsed in NAT64_LOCAL_NETWORK:
+            return False
+        embedded = embedded_ipv4(parsed)
+        if embedded is not None:
+            parsed = embedded
     return parsed.is_global and not parsed.is_multicast
 
 
@@ -118,20 +153,42 @@ def cache_seconds(cache_control: str) -> int:
     return min(seconds, MAX_CACHE_SECONDS)
 
 
-def fetch(url: str, resolver: Resolver = resolve) -> FetchedDocument:
-    """GET the document from a public address, with no redirects, within the limits."""
-    check_url(url)
+def read_within(response: http.client.HTTPResponse, expires: float) -> bytes:
+    """Read the body in chunks up to the size limit, giving up when the deadline passes."""
+    body = bytearray()
+    while len(body) <= MAX_DOCUMENT_BYTES:
+        if time.monotonic() >= expires:
+            raise ClientDocumentError("The document was too slow to arrive")
+        chunk = response.read(READ_CHUNK_BYTES)
+        if not chunk:
+            break
+        body.extend(chunk)
+    return bytes(body)
+
+
+def time_left(url: str, expires: float) -> float:
+    """Seconds until the deadline; a fetch that waited for a thread past it was abandoned."""
+    remaining = expires - time.monotonic()
+    if remaining <= 0:
+        raise ClientDocumentError(f"{url} was not fetched in time")
+    return remaining
+
+
+def download(url: str, resolver: Resolver, expires: float) -> FetchedDocument:
+    """GET the document from a public address, with no redirects, before `expires`."""
     parts = urlsplit(url)
     host = parts.hostname or ""
     port = parts.port or HTTPS_PORT
     target = parts.path + (f"?{parts.query}" if parts.query else "")
+    time_left(url, expires)
+    address = public_address(host, port, resolver)
     connection = PinnedHTTPSConnection(
-        host, port, public_address(host, port, resolver), FETCH_TIMEOUT_SECONDS
+        host, port, address, min(FETCH_TIMEOUT_SECONDS, time_left(url, expires))
     )
     try:
         connection.request("GET", target, headers={"Accept": JSON_TYPE, "User-Agent": USER_AGENT})
         response = connection.getresponse()
-        body = response.read(MAX_DOCUMENT_BYTES + 1)
+        body = read_within(response, expires)
     except (OSError, http.client.HTTPException) as failed:
         raise ClientDocumentError(f"Cannot fetch {url}: {failed}") from failed
     finally:
@@ -143,6 +200,28 @@ def fetch(url: str, resolver: Resolver = resolve) -> FetchedDocument:
     return FetchedDocument(
         body=body, cache_seconds=cache_seconds(response.getheader("Cache-Control", ""))
     )
+
+
+FETCH_POOL = ThreadPoolExecutor(max_workers=FETCH_WORKERS, thread_name_prefix="client-document")
+
+
+def fetch(
+    url: str, resolver: Resolver = resolve, deadline_seconds: float = FETCH_DEADLINE_SECONDS
+) -> FetchedDocument:
+    """GET the document within `deadline_seconds` in all, covering lookup, connect and read.
+
+    Socket timeouts alone bound each wait, not their sum: a server sending a byte at a time
+    would hold the caller for hours. The caller therefore waits only until the deadline; the
+    fetch thread stops at its next chunk or socket timeout.
+    """
+    check_url(url)
+    expires = time.monotonic() + deadline_seconds
+    pending = FETCH_POOL.submit(download, url, resolver, expires)
+    try:
+        return pending.result(timeout=deadline_seconds)
+    except TimeoutError as slow:
+        pending.cancel()
+        raise ClientDocumentError(f"{url} did not answer within {deadline_seconds:g} s") from slow
 
 
 AUTH_METHODS_SUPPORTED = "token_endpoint_auth_methods_supported"
@@ -196,12 +275,14 @@ class ClientDocuments:
     fetcher: Fetcher = fetch
     clock: Clock = time.monotonic
     cache: dict[str, tuple[float, OAuthClient]] = field(default_factory=dict)
+    # Sync routes run on worker threads that share this cache; the fetch itself runs unlocked.
+    lock: threading.Lock = field(default_factory=threading.Lock)
 
     def client(self, url: str) -> OAuthClient:
         """The client behind a client_id URL; a document that fails is an invalid client."""
-        cached = self.cache.get(url)
-        if cached and cached[0] > self.clock():
-            return cached[1]
+        cached = self.cached(url)
+        if cached is not None:
+            return cached
         try:
             fetched = self.fetcher(url)
             client = client_from(url, fetched.body)
@@ -211,12 +292,19 @@ class ClientDocuments:
             self.keep(url, (self.clock() + fetched.cache_seconds, client))
         return client
 
+    def cached(self, url: str) -> OAuthClient | None:
+        """The client kept for a URL while its document is fresh."""
+        with self.lock:
+            kept = self.cache.get(url)
+        return kept[1] if kept and kept[0] > self.clock() else None
+
     def keep(self, url: str, entry: tuple[float, OAuthClient]) -> None:
         """Cache an entry; anyone can publish documents, so the cache stays bounded."""
-        if len(self.cache) >= MAX_CACHED_DOCUMENTS:
-            now = self.clock()
-            for expired in [key for key, kept in self.cache.items() if kept[0] <= now]:
-                del self.cache[expired]
-        while len(self.cache) >= MAX_CACHED_DOCUMENTS:
-            del self.cache[next(iter(self.cache))]  # the oldest entry goes first
-        self.cache[url] = entry
+        with self.lock:
+            if len(self.cache) >= MAX_CACHED_DOCUMENTS:
+                now = self.clock()
+                for expired in [key for key, kept in self.cache.items() if kept[0] <= now]:
+                    del self.cache[expired]
+            while len(self.cache) >= MAX_CACHED_DOCUMENTS:
+                del self.cache[next(iter(self.cache))]  # the oldest entry goes first
+            self.cache[url] = entry

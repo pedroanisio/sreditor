@@ -20,6 +20,7 @@ from sreditor.mcp_server import RESOURCE_METADATA_PATH
 from sreditor.oauth import (
     AUTH_METHOD,
     GRANT_TYPE,
+    MAX_REGISTRATION_BYTES,
     PKCE_METHOD,
     RESPONSE_TYPE,
     ClientRegistration,
@@ -39,7 +40,8 @@ TOKEN_PATH = "/oauth/token"
 REGISTER_PATH = "/oauth/register"
 RESOURCE_NAME = "sreditor"
 BEARER_TOKEN_TYPE = "Bearer"
-MISSING = "missing"  # Pydantic's error type for an absent field
+TOO_LARGE = f"Client metadata must be at most {MAX_REGISTRATION_BYTES} bytes"
+REFUSED_BY_VALIDATOR = "value_error"  # Pydantic's error type when a field validator refuses
 # Token answers carry a secret (RFC 6749 section 5.1).
 NO_STORE = {"Cache-Control": "no-store", "Pragma": "no-cache"}
 limited = [Depends(rate_limit)]
@@ -121,14 +123,28 @@ def registration_from(raw: bytes) -> ClientRegistration:
     except (json.JSONDecodeError, UnicodeDecodeError) as unreadable:
         raise OAuthError(ErrorCode.INVALID_CLIENT_METADATA, "Send JSON") from unreadable
     except ValidationError as invalid:
-        # A redirect URI that is present but not allowed has its own code (RFC 7591 3.2.2).
+        # A redirect URI that is present but not allowed has its own code (RFC 7591 3.2.2);
+        # a missing, too long or too many one is a problem with the metadata as a whole.
         bad_redirect = any(
-            error["loc"][:1] == ("redirect_uris",) and error["type"] != MISSING
+            error["loc"][:1] == ("redirect_uris",) and error["type"] == REFUSED_BY_VALIDATOR
             for error in invalid.errors()
         )
         code = ErrorCode.INVALID_REDIRECT_URI if bad_redirect else ErrorCode.INVALID_CLIENT_METADATA
         messages = "; ".join(str(error["msg"]) for error in invalid.errors())
         raise OAuthError(code, messages) from invalid
+
+
+async def registration_body(request: Request) -> bytes:
+    """The request body, read only as far as the cap allows (413 past it)."""
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > MAX_REGISTRATION_BYTES:
+        raise OAuthError(ErrorCode.INVALID_CLIENT_METADATA, TOO_LARGE)
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > MAX_REGISTRATION_BYTES:
+            raise OAuthError(ErrorCode.INVALID_CLIENT_METADATA, TOO_LARGE)
+    return bytes(body)
 
 
 @router.post(
@@ -144,7 +160,11 @@ async def register_oauth_client(request: Request, app: ServicesDep) -> JSONRespo
     Clients are public: they prove themselves with PKCE, so no secret is issued.
     """
     try:
-        registration = registration_from(await request.body())
+        raw = await registration_body(request)
+    except OAuthError as refusal:
+        return oauth_error(refusal, status.HTTP_413_CONTENT_TOO_LARGE)
+    try:
+        registration = registration_from(raw)
     except OAuthError as refusal:
         return oauth_error(refusal)
     client = oauth_store(app).register(registration)
