@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from sreditor.database import Database, MigrationError
+from tests.conftest import forget_schema_version
 
 NOW = "2026-11-07T12:00:00+00:00"
 OLD_EPISODE_PITCHES = """
@@ -148,6 +149,7 @@ def test_database_from_before_channel_scoped_links_is_rebuilt(database: Database
         connection.execute("DROP TABLE episode_pitches")
         connection.execute(OLD_EPISODE_PITCHES)
         connection.execute("INSERT INTO episode_pitches VALUES ('a', 1, 'pitch-a', 0)")
+        forget_schema_version(connection)
         connection.execute("DROP TABLE file_links")
         connection.execute(OLD_FILE_LINKS)
         add_user_token(connection, "token", None)
@@ -173,6 +175,7 @@ def test_database_with_cross_channel_link_refuses_upgrade(database: Database) ->
         connection.execute("DROP TABLE episode_pitches")
         connection.execute(OLD_EPISODE_PITCHES)
         connection.execute("INSERT INTO episode_pitches VALUES ('a', 1, 'pitch-b', 0)")
+        forget_schema_version(connection)
     with pytest.raises(MigrationError, match="episode_pitches"):
         Database(database.path)
     with sqlite3.connect(database.path) as connection:
