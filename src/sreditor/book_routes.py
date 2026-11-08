@@ -3,7 +3,6 @@ its rights and credits, as JSON, Excel or PDF (rule project.export)."""
 
 from __future__ import annotations
 
-from enum import StrEnum
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
@@ -17,6 +16,7 @@ from sreditor.book_operations import (
     PITCH_BOOK,
     RIGHTS_BOOK,
     BookKind,
+    BookLanguage,
     BookOptions,
     BookRequest,
     BookSection,
@@ -28,7 +28,7 @@ from sreditor.episode_routes import Number
 from sreditor.episodes import EpisodeStatus
 from sreditor.export_formats import ExportFormat
 from sreditor.export_routes import FILE_RESPONSES, Format, attachment
-from sreditor.i18n import BASE_LOCALE, Translator
+from sreditor.i18n import Translator
 from sreditor.pitch_routes import PitchId
 from sreditor.problems import ProblemError
 from sreditor.web.books import book_file
@@ -43,13 +43,6 @@ def blank_as_none(value: object) -> object:
 
 # An episode number bound that an empty query value leaves open.
 EpisodeBound = Annotated[PositiveInt | None, BeforeValidator(blank_as_none)]
-
-
-class BookLanguage(StrEnum):
-    """The languages a book's Excel and PDF are written in."""
-
-    ENGLISH = BASE_LOCALE
-    PORTUGUESE = "pt-BR"
 
 
 class BookOutput(BaseModel):

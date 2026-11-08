@@ -33,6 +33,7 @@ from sreditor.book_operations import (
     ProfileBookPart,
     RelationshipsBookPart,
     ThirdPartyBookPart,
+    book_stem,
 )
 from sreditor.channels import Asset
 from sreditor.classification import Classification
@@ -99,11 +100,6 @@ def part_section(part: BookPart) -> BookSection:
     if isinstance(part, EntryBookPart):
         return ENTRY_SECTIONS[part.entry.kind]
     return PART_SECTIONS[part.type]
-
-
-def book_stem(book: Book) -> str:
-    """The start of a book's file name, such as funny-memes-library-book."""
-    return f"{book.channel.slug}-{book.kind.value}-book"
 
 
 # Texts shared by Excel and PDF
@@ -637,5 +633,7 @@ def book_file(
     return ExportFile(
         content=content,
         media_type=MEDIA_TYPES[export_format],
-        filename=file_name(book_stem(book), book.exported_at, export_format),
+        filename=file_name(
+            book_stem(book.channel.slug, book.kind), book.exported_at, export_format
+        ),
     )

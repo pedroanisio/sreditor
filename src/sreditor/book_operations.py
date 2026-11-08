@@ -40,6 +40,7 @@ from sreditor.export_operations import (
 )
 from sreditor.external_media import EpisodeCredits, ExternalKind, ExternalMedia
 from sreditor.field_types import MediaType
+from sreditor.i18n import BASE_LOCALE
 from sreditor.library import LibraryEntry, LibraryKind
 from sreditor.library_operations import Cast
 from sreditor.members import Permission
@@ -70,6 +71,18 @@ class BookKind(StrEnum):
     LIBRARY = "library"
     CHANNEL = "channel"
     RIGHTS = "rights"
+
+
+class BookLanguage(StrEnum):
+    """The languages a book's Excel and PDF are written in."""
+
+    ENGLISH = BASE_LOCALE
+    PORTUGUESE = "pt-BR"
+
+
+def book_stem(slug: str, kind: BookKind) -> str:
+    """The start of a book's file name, such as funny-memes-library-book."""
+    return f"{slug}-{kind.value}-book"
 
 
 class BookSection(StrEnum):
