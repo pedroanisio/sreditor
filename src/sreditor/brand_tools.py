@@ -1,9 +1,9 @@
-"""MCP tools for a channel's identity: its display name, brand colors, fonts and narrator voice.
+"""MCP tools for a channel's identity: display name, status, brand colors, fonts and narrator voice.
 
-Two task-sized tools (agentic.mcp.tools.outcomes, project.brand): rename the channel or change
-its language, and set its palette, fonts and default narrator voice. Reading the kit is
-get_brand. Files (logo, avatar, stings, font files) are read with get_file_link and uploaded
-on the brand page, not through these tools.
+Task-sized tools (agentic.mcp.tools.outcomes, project.brand): rename the channel or change its
+language, move it between draft, active, paused and archived, and set its palette, fonts and
+default narrator voice. Reading the kit is get_brand. Files (logo, avatar, stings, font files)
+are read with get_file_link and uploaded on the brand page, not through these tools.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ from sreditor.channels import (
     FontRole,
     NarratorVoice,
     Platform,
+    Status,
     Text,
 )
 from sreditor.deps import ChannelAccess, Services, access_for
@@ -81,7 +82,7 @@ def brand_patch(changes: BrandChanges) -> BrandPatch:
 
 
 def add_brand_tools(server: MCPServer, services: Services) -> None:
-    """Tools to rename a channel or change its language, and to set its brand colors and fonts."""
+    """Tools to rename a channel, change its language or status, and set its brand colors and fonts."""
 
     def access(context: Context, slug: str) -> ChannelAccess:
         who = principal(context)
@@ -112,6 +113,28 @@ def add_brand_tools(server: MCPServer, services: Services) -> None:
             identity = ChannelIdentity(name=name, language=language)
             done = operations.change_identity(
                 services, access(context, slug), identity, expected_revision
+            )
+            return ChannelView(channel=done.channel, revision=done.revision)
+
+        return reported(write)
+
+    @server.tool(annotations=tool_annotations("Set channel status", Effect.REPLACE))
+    def set_channel_status(
+        context: Context, slug: str, status: Status, expected_revision: int | None = None
+    ) -> ChannelView:
+        """Move a channel to draft, active, paused or archived, for example to archive one
+        that is no longer published; its accounts, brand kit and episodes stay as they are.
+        The name and language are changed with update_channel, an account's own status with
+        put_account. Needs owner or editor role and the channels:write scope; pass the
+        `revision` from get_channel as `expected_revision` to refuse the change if the channel
+        moved on."""
+
+        def write() -> ChannelView:
+            done = operations.change_identity(
+                services,
+                access(context, slug),
+                ChannelIdentity(status=status),
+                expected_revision,
             )
             return ChannelView(channel=done.channel, revision=done.revision)
 

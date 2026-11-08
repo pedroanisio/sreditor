@@ -33,8 +33,11 @@ from sreditor.external_media import (
 from sreditor.external_media_operations import ItemChange, ItemQuery, UseChange, UseQuery
 from sreditor.mcp_idempotency import IdempotencyKey, IdempotentCall, run_once
 from sreditor.mcp_server import Effect, Removed, reported, tool_annotations
-from sreditor.pagination import DEFAULT_LIMIT, Page, ToolLimit
+from sreditor.pagination import DEFAULT_LIMIT, Page, ToolLimit, page_after
 from sreditor.pitch_tools import channel_access
+
+# Episode numbers are cursor keys compared as text, so they are zero-padded to sort as numbers.
+CURSOR_DIGITS = 10
 
 
 class UseTarget(BaseModel):
@@ -65,7 +68,8 @@ def external_media_error_message(error: Exception) -> str | None:
         numbers = ", ".join(str(number) for number in error.episodes)
         return (
             f"Third-party item {error} is used by episodes {numbers}; call "
-            "remove_external_media_use for each of their uses first"
+            "list_external_media_episodes to list them again, then get_episode_credits for "
+            "each episode's use ids and remove_external_media_use for each use of this item first"
         )
     if isinstance(error, UseRefused):
         return f"{error} (field {error.field}); leave it out or pick an item of another kind"
@@ -142,6 +146,42 @@ def add_library_items(server: MCPServer, services: Services) -> None:
                 ExternalMedia,
             )
         )
+
+    @server.tool(annotations=tool_annotations("List an item's episodes", Effect.READ))
+    def list_external_media_episodes(
+        context: Context,
+        slug: str,
+        media_id: UUID,
+        cursor: str | None = None,
+        limit: ToolLimit = DEFAULT_LIMIT,
+    ) -> Page[int]:
+        """List the numbers of the episodes that use a third-party item (from
+        list_external_media), lowest first; the item cannot be deleted while any do. Use
+        get_episode_credits on an episode to find the ids of its uses. Pass `next_cursor` as
+        `cursor` for more."""
+
+        def read() -> Page[int]:
+            numbers = external.item_episodes(services, access(context, slug), media_id)
+            return page_after(numbers, cursor, limit, lambda number: f"{number:0{CURSOR_DIGITS}d}")
+
+        return external_reported(read)
+
+    @server.tool(annotations=tool_annotations("Delete third-party media", Effect.REMOVE))
+    def delete_external_media(
+        context: Context, slug: str, media_id: UUID, expected_revision: int | None = None
+    ) -> Removed:
+        """Remove an item from the channel's library for good, with its uploaded copy. Refused
+        while episodes use it: list_external_media_episodes lists them, get_episode_credits
+        gives each episode's use ids and remove_external_media_use drops each use. Needs owner
+        or editor role and the channels:write scope. Pass the item's `revision` from
+        list_external_media as `expected_revision` to refuse the delete if the item changed."""
+        change = ItemChange(media_id=media_id, expected_revision=expected_revision)
+
+        def delete() -> Removed:
+            external.delete_item(services, access(context, slug), change)
+            return Removed(kind="external_media", id=media_id)
+
+        return external_reported(delete)
 
     @server.tool(annotations=tool_annotations("Update third-party media", Effect.REPLACE))
     def update_external_media(

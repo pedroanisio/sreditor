@@ -508,7 +508,6 @@ def add_account_routes(app: FastAPI) -> None:
         if_match: IfMatch = None,
     ) -> Channel:
         """Remove the channel's account on one platform; returns the updated channel."""
-        access.require(Permission.WRITE_CHANNEL)
         revised = operations.delete_account(services, access, platform, expected_revision(if_match))
         return with_etag(revised, response)
 

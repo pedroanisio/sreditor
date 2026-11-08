@@ -16,7 +16,8 @@ from sreditor.accounts import Accounts
 from sreditor.deps import ChannelAccess, Services
 from sreditor.i18n import N_
 from sreditor.members import ELEVATED_ROLES, Invitation, Member, Permission, Role
-from sreditor.operations import gated
+from sreditor.operations import gated, require_scope
+from sreditor.tokens import Scope
 
 
 class MemberOperation:
@@ -167,10 +168,16 @@ def change_role(
 def remove_member(
     app: Services, access: ChannelAccess, user_id: UUID, expected: Role | None = None
 ) -> None:
-    """Remove a member. Anyone may leave a channel, except its last owner."""
+    """Remove a member. Anyone may leave a channel, except its last owner.
+
+    Leaving needs no role, but a token still needs members:write: it must not drop its own
+    user from a channel when it was never allowed to manage members.
+    """
     slug = access.channel.slug
     current = current_role(app, slug, user_id, expected)
-    if user_id != access.user.id:
+    if user_id == access.user.id:
+        require_scope(access.token, Scope.MEMBERS_WRITE)
+    else:
         check_change(access, current, None)
     keep_an_owner(app, slug, current, None)
     is_removed = gated(
