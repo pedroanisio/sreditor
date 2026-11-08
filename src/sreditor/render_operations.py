@@ -78,7 +78,10 @@ class RenderView(BaseModel):
     )
     video: MediaFile | None = Field(default=None, description="The finished video, once done.")
     download_path: str | None = Field(
-        default=None, description="API path that downloads the video with the same token."
+        default=None,
+        description=(
+            "API path that downloads the video with an API token; MCP agents use get_file_link."
+        ),
     )
 
 

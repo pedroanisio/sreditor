@@ -266,3 +266,42 @@ def test_mcp_list_linkable_items_names_them(mcp: TestClient, rex: str) -> None:
     result = tool(mcp, "list_linkable_items", {"slug": "funny-memes"})
     labels = [item["label"] for item in result["structuredContent"]["items"]]
     assert labels == ["Pilot", "Rex"]
+
+
+def pitch_context(pitch: str, links: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "slug": "funny-memes",
+        "item": {"kind": "pitch", "id": pitch},
+        "update": {"answers": ANSWERS, "links": links},
+    }
+
+
+def test_mcp_write_context_link_with_other_note_writes_nothing(
+    mcp: TestClient, owner: TestClient, rex: str, pitch: str
+) -> None:
+    link(owner, f"pitch/{pitch}", {"kind": "character", "id": rex})
+    wanted = {"to": {"kind": "character", "id": rex}, "question": "who", "note": "Changed"}
+    result = tool(mcp, "write_context", pitch_context(pitch, [wanted]))
+    assert result["isError"] and "unlink_items" in result["content"][0]["text"]
+    assert owner.get(f"{CHANNEL}/items/pitch/{pitch}/context").json()["revision"] == 0
+
+
+def test_mcp_write_context_self_link_writes_nothing(
+    mcp: TestClient, owner: TestClient, pitch: str
+) -> None:
+    wanted = {"to": {"kind": "pitch", "id": pitch}, "question": "what"}
+    result = tool(mcp, "write_context", pitch_context(pitch, [wanted]))
+    assert result["isError"] and "itself" in result["content"][0]["text"]
+    assert owner.get(f"{CHANNEL}/items/pitch/{pitch}/context").json()["revision"] == 0
+
+
+def test_mcp_write_context_retried_keeps_one_link(
+    mcp: TestClient, owner: TestClient, rex: str, pitch: str
+) -> None:
+    wanted = {"to": {"kind": "character", "id": rex}, "question": "who"}
+    arguments = pitch_context(pitch, [wanted, wanted])
+    first = tool(mcp, "write_context", arguments)
+    revision = first["structuredContent"]["context"]["revision"]
+    arguments["update"]["expected_revision"] = revision
+    assert not tool(mcp, "write_context", arguments).get("isError")
+    assert len(owner.get(f"{CHANNEL}/items/pitch/{pitch}/links").json()["items"]) == 1

@@ -309,6 +309,15 @@ def test_mcp_list_media_returns_kind_and_size(mcp: TestClient, intro: dict[str, 
     assert item["kind"] == "voice_over" and item["size_bytes"] == len(sample.MP3_TAGGED)
 
 
+def test_mcp_list_media_with_kind_lists_only_that_kind(
+    mcp: TestClient, owner: TestClient, intro: dict[str, Any]
+) -> None:
+    assert upload(owner, kind="score").status_code == 201
+    arguments = {"slug": "funny-memes", "number": 1, "kind": "score"}
+    listed = tool(mcp, "list_media", arguments)["structuredContent"]["items"]
+    assert [item["kind"] for item in listed] == ["score"]
+
+
 @pytest.mark.parametrize("limit", [0, 201])
 def test_mcp_list_media_limit_out_of_range_is_refused(mcp: TestClient, limit: int) -> None:
     result = tool(mcp, "list_media", {"slug": "funny-memes", "number": 1, "limit": limit})

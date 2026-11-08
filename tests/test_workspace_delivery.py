@@ -49,7 +49,13 @@ def media_id(client: TestClient, kind_path: str, content: bytes, name: str) -> s
 
 
 def add_cut(client: TestClient, **fields: str) -> Response:
-    data = {"name": "main", "caption": "Oi!", "hashtags": "#dogs funny", "revision": "0", **fields}
+    data = {
+        "name": "main",
+        "caption": "Oi! Feito com IA.",
+        "hashtags": "#dogs funny",
+        "revision": "0",
+        **fields,
+    }
     return submit(client, f"{DELIVERY}/cuts", data)
 
 

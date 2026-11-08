@@ -279,8 +279,15 @@ def episode_pitch_research(
     app: Services, access: ChannelAccess, number: int
 ) -> list[PitchResearch]:
     """The research of every pitch an episode refers to, in order and as it is now."""
+    return research_of_pitches(app, access, get_episode_pitches(app, access, number))
+
+
+def research_of_pitches(
+    app: Services, access: ChannelAccess, listed: EpisodePitches
+) -> list[PitchResearch]:
+    """The research of each pitch in an episode's list, read after the list itself."""
     shown: list[PitchResearch] = []
-    for pitch_id in get_episode_pitches(app, access, number).pitch_ids:
+    for pitch_id in listed.pitch_ids:
         pitch = app.pitches.get(access.channel.slug, pitch_id)
         rows = app.pitches.sources(pitch.id, None, SHOWN_SOURCES + 1)
         shown.append(

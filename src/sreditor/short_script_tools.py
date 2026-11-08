@@ -148,7 +148,7 @@ def add_script_tools(server: MCPServer, services: Services) -> None:
 def add_voice_tools(server: MCPServer, services: Services) -> None:
     """Tools to list voices, generate a voice-over and adopt its times."""
 
-    @server.tool(annotations=tool_annotations("List voices", Effect.READ))
+    @server.tool(annotations=tool_annotations("List voices", Effect.READ, is_open_world=True))
     def list_voices(context: Context, slug: str) -> VoiceList:
         """List the ElevenLabs voices whose voice_id a short script can name. Needs an owner or
         editor. Fails when the server has no ElevenLabs key."""
@@ -188,7 +188,9 @@ def add_voice_tools(server: MCPServer, services: Services) -> None:
             )
         )
 
-    @server.tool(annotations=tool_annotations("Generate a voice-over", Effect.CREATE))
+    @server.tool(
+        annotations=tool_annotations("Generate a voice-over", Effect.CREATE, is_open_world=True)
+    )
     def generate_voice_over(
         context: Context, slug: str, number: int, idempotency_key: IdempotencyKey = None
     ) -> Annotated[CallToolResult, TakeResult]:

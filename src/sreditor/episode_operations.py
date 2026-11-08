@@ -14,10 +14,8 @@ from sreditor.deps import ChannelAccess, Services
 from sreditor.episodes import Episode, EpisodeInput, EpisodeStatus, PartCounts, RevisedEpisode
 from sreditor.members import Permission
 from sreditor.operations import gated
-from sreditor.pagination import Page, decode_cursor, encode_cursor
+from sreditor.pagination import INVALID_CURSOR, Page, decode_cursor, encode_cursor
 from sreditor.problems import ProblemError
-
-INVALID_CURSOR = "Invalid cursor"
 
 
 class EpisodeOperation:
