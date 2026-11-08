@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 from typing import Any, ClassVar
 
 import pytest
@@ -47,6 +49,13 @@ def document(**changes: Any) -> bytes:
         "fc00::1",
         "0.0.0.0",
         "::ffff:127.0.0.1",
+        "::127.0.0.1",
+        "64:ff9b::7f00:1",
+        "64:ff9b::a00:1",
+        "64:ff9b::a9fe:a9fe",
+        "64:ff9b:1::1",
+        "2002:7f00:1::",
+        "2001:0:4136:e378:8000:ffff:80ff:fffe",
         "100.64.0.1",
         "224.0.0.1",
     ],
@@ -55,7 +64,9 @@ def test_is_public_internal_addresses_are_refused(address: str) -> None:
     assert not is_public(address)
 
 
-@pytest.mark.parametrize("address", ["160.79.104.10", "1.1.1.1", "2606:4700::1111"])
+@pytest.mark.parametrize(
+    "address", ["160.79.104.10", "1.1.1.1", "2606:4700::1111", "64:ff9b::808:808"]
+)
 def test_is_public_internet_addresses_are_allowed(address: str) -> None:
     assert is_public(address)
 
@@ -110,9 +121,12 @@ class FakeResponse:
         self.status = status
         self.body = body
         self.cache_control = cache_control
+        self.position = 0
 
     def read(self, limit: int) -> bytes:
-        return self.body[:limit]
+        chunk = self.body[self.position : self.position + limit]
+        self.position += len(chunk)
+        return chunk
 
     def getheader(self, name: str, default: str) -> str:
         return self.cache_control or default
@@ -329,3 +343,85 @@ def test_client_documents_full_cache_drops_expired_entries() -> None:
     clock.now = 61
     documents.client(f"{URL}/new")
     assert list(documents.cache) == [f"{URL}/new"]
+
+
+def slow_resolver(host: str, port: int) -> list[str]:
+    time.sleep(1.0)
+    return ["160.79.104.10"]
+
+
+def test_fetch_slow_name_lookup_stops_at_the_deadline() -> None:
+    started = time.monotonic()
+    with pytest.raises(ClientDocumentError, match="did not answer within"):
+        fetch(URL, slow_resolver, deadline_seconds=0.1)
+    assert time.monotonic() - started < 0.9
+
+
+def test_download_after_its_deadline_is_abandoned(connection: type[FakeConnection]) -> None:
+    with pytest.raises(ClientDocumentError, match="not fetched in time"):
+        client_metadata.download(URL, public, time.monotonic() - 1)
+    assert connection.seen == []
+
+
+class TrickleResponse(FakeResponse):
+    """Sends one byte per read, slowly, like a server trying to hold a connection open."""
+
+    def read(self, limit: int) -> bytes:
+        time.sleep(0.05)
+        return b"x"
+
+
+def test_download_trickling_body_stops_at_the_deadline(connection: type[FakeConnection]) -> None:
+    connection.answer = TrickleResponse(200, b"")
+    with pytest.raises(ClientDocumentError, match="too slow"):
+        client_metadata.download(URL, public, time.monotonic() + 0.2)
+
+
+class CountingLock:
+    """A lock that counts how often it was taken."""
+
+    def __init__(self) -> None:
+        self.taken = 0
+        self.inner = threading.Lock()
+
+    def __enter__(self) -> None:
+        self.taken += 1
+        self.inner.acquire()
+
+    def __exit__(self, *exc: object) -> None:
+        self.inner.release()
+
+
+def test_client_documents_cache_is_read_and_written_under_its_lock() -> None:
+    lock = CountingLock()
+    documents = ClientDocuments(
+        fetcher=counting(document(), 60, []),
+        clock=Clock(),
+        lock=lock,  # type: ignore[arg-type]
+    )
+    documents.client(URL)
+    assert lock.taken == 2
+
+
+def test_client_documents_concurrent_callers_keep_the_cache_within_its_cap() -> None:
+    clock = Clock()
+
+    def fetcher(url: str) -> FetchedDocument:
+        return FetchedDocument(body=document(client_id=url), cache_seconds=60)
+
+    documents = ClientDocuments(fetcher=fetcher, clock=clock)
+    failures: list[Exception] = []
+
+    def hammer(worker: int) -> None:
+        try:
+            for index in range(MAX_CACHED_DOCUMENTS):
+                documents.client(f"{URL}/{worker}/{index}")
+        except Exception as raised:  # noqa: BLE001 - the test reports whatever a thread hit
+            failures.append(raised)
+
+    threads = [threading.Thread(target=hammer, args=(worker,)) for worker in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert failures == [] and len(documents.cache) <= MAX_CACHED_DOCUMENTS

@@ -9,9 +9,14 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
-from sreditor.database import Database
+from sreditor.database import OAUTH_CLIENT_USE, Database
 from sreditor.oauth import (
+    CODE_TTL,
     DEFAULT_SCOPES,
+    MAX_CLIENT_NAME_LENGTH,
+    MAX_REDIRECT_URI_LENGTH,
+    MAX_REDIRECT_URIS,
+    UNUSED_CLIENT_TTL,
     AuthorizationRequest,
     ClientRegistration,
     ErrorCode,
@@ -318,3 +323,122 @@ def test_exchange_other_redirect_is_refused(store: OAuthStore, user_id: UUID) ->
 def test_exchange_other_grant_type_is_refused(store: OAuthStore) -> None:
     request = token_request("c", "x", grant_type="client_credentials")
     assert refusal_code(lambda: store.exchange(request)) is ErrorCode.UNSUPPORTED_GRANT_TYPE
+
+
+def count_rows(database: Database, table: str) -> int:
+    with database.connect() as connection:
+        total: int = connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+    return total
+
+
+def test_client_registration_with_overlong_name_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        ClientRegistration(redirect_uris=[CALLBACK], client_name="n" * (MAX_CLIENT_NAME_LENGTH + 1))
+
+
+def test_client_registration_with_too_many_redirects_is_rejected() -> None:
+    uris = [f"{CALLBACK}/{number}" for number in range(MAX_REDIRECT_URIS + 1)]
+    with pytest.raises(ValidationError):
+        ClientRegistration(redirect_uris=uris)
+
+
+def test_client_registration_with_overlong_redirect_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        ClientRegistration(redirect_uris=[CALLBACK + "/" + "x" * MAX_REDIRECT_URI_LENGTH])
+
+
+def test_register_unused_client_past_the_cutoff_is_purged(store: OAuthStore, clock: Clock) -> None:
+    stale = registered(store)
+    clock.now += UNUSED_CLIENT_TTL + timedelta(days=1)
+    registered(store)
+    assert store.client(stale) is None
+
+
+def test_register_unused_client_within_the_cutoff_is_kept(store: OAuthStore, clock: Clock) -> None:
+    young = registered(store)
+    clock.now += UNUSED_CLIENT_TTL - timedelta(days=1)
+    registered(store)
+    assert store.client(young) is not None
+
+
+def test_register_client_that_was_approved_is_never_purged(
+    store: OAuthStore, user_id: UUID, clock: Clock
+) -> None:
+    used = registered(store)
+    issued_code(store, user_id, used)
+    clock.now += UNUSED_CLIENT_TTL * 3
+    registered(store)
+    assert store.client(used) is not None
+
+
+def test_register_client_with_a_live_token_is_never_purged(
+    store: OAuthStore, user_id: UUID, clock: Clock
+) -> None:
+    holder = registered(store)
+    store.exchange(token_request(holder, issued_code(store, user_id, holder)))
+    clock.now += UNUSED_CLIENT_TTL + timedelta(days=1)
+    registered(store)
+    assert store.client(holder) is not None
+
+
+def test_register_expired_code_is_purged(
+    store: OAuthStore, database: Database, user_id: UUID, clock: Clock
+) -> None:
+    issued_code(store, user_id, registered(store))
+    clock.now += CODE_TTL + timedelta(seconds=1)
+    registered(store)
+    assert count_rows(database, "oauth_codes") == 0
+
+
+def test_register_pending_code_is_kept(
+    store: OAuthStore, database: Database, user_id: UUID, clock: Clock
+) -> None:
+    issued_code(store, user_id, registered(store))
+    clock.now += CODE_TTL - timedelta(seconds=1)
+    registered(store)
+    assert count_rows(database, "oauth_codes") == 1
+
+
+def test_issue_code_purges_expired_codes(
+    store: OAuthStore, database: Database, user_id: UUID, clock: Clock
+) -> None:
+    client_id = registered(store)
+    issued_code(store, user_id, client_id)
+    clock.now += CODE_TTL + timedelta(seconds=1)
+    issued_code(store, user_id, client_id)
+    assert count_rows(database, "oauth_codes") == 1
+
+
+def test_exchange_leaves_no_used_code_behind(
+    store: OAuthStore, database: Database, user_id: UUID
+) -> None:
+    client_id = registered(store)
+    store.exchange(token_request(client_id, issued_code(store, user_id, client_id)))
+    assert count_rows(database, "oauth_codes") == 0
+
+
+def last_used(database: Database, client_id: str) -> str | None:
+    with database.connect() as connection:
+        value: str | None = connection.execute(
+            "SELECT last_used_at FROM oauth_clients WHERE client_id = ?", (client_id,)
+        ).fetchone()[0]
+    return value
+
+
+def test_migrate_client_with_a_token_counts_as_used(
+    store: OAuthStore, database: Database, user_id: UUID, clock: Clock
+) -> None:
+    holder = registered(store)
+    store.exchange(token_request(holder, issued_code(store, user_id, holder)))
+    idle = store.register(
+        ClientRegistration(redirect_uris=[CALLBACK], client_name="Idle")
+    ).client_id
+    with database.connect() as connection:
+        connection.execute("DROP INDEX oauth_clients_unused")
+        connection.execute("DROP INDEX oauth_codes_by_expiry")
+        connection.execute(
+            "DELETE FROM schema_version WHERE version = ?", (OAUTH_CLIENT_USE.version,)
+        )
+        connection.execute("ALTER TABLE oauth_clients DROP COLUMN last_used_at")
+    reopened = Database(database.path, clock)
+    assert (last_used(reopened, holder) is not None, last_used(reopened, idle)) == (True, None)

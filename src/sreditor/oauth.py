@@ -20,7 +20,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
-from sreditor.database import Database, stamp
+from sreditor.database import (
+    OAUTH_TOKEN_CLIENT_NAME_LENGTH,
+    OAUTH_TOKEN_NAME_SUFFIX,
+    Database,
+    stamp,
+)
 from sreditor.security import hash_token
 from sreditor.tokens import DEFAULT_TTL_DAYS, NewToken, Scope, TokenInput, TokenStore
 
@@ -35,9 +40,14 @@ HTTPS = "https"
 # Registered client ids are random URL-safe strings, so an https URL is always a CIMD client.
 CLIENT_ID_URL_PREFIX = "https://"
 LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+# Caps on what an anonymous caller may register (rule agentic.oauth.protocol); real clients
+# (claude.ai, ChatGPT, Claude Code) send a name and one to three short redirect URIs.
+MAX_REGISTRATION_BYTES = 32 * 1024  # room for ten redirect URIs at their full length
 MAX_REDIRECT_URIS = 10
-CLIENT_NAME_LENGTH = 60
-TOKEN_NAME_SUFFIX = " (OAuth)"
+MAX_REDIRECT_URI_LENGTH = 2000
+MAX_CLIENT_NAME_LENGTH = 200
+# A client nobody has approved a connection for in this long is purged.
+UNUSED_CLIENT_TTL = timedelta(days=30)
 DEFAULT_CLIENT_NAME = "MCP client"
 # RFC 7636: 43 to 128 characters from the unreserved set.
 VERIFIER = re.compile(r"[A-Za-z0-9\-._~]{43,128}")
@@ -101,7 +111,9 @@ def without_port(uri: str) -> str:
     return parts._replace(netloc=host or "").geturl()
 
 
-ClientName = Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)]
+ClientName = Annotated[
+    str, StringConstraints(strip_whitespace=True, max_length=MAX_CLIENT_NAME_LENGTH)
+]
 
 
 class ClientRegistration(BaseModel):
@@ -109,7 +121,10 @@ class ClientRegistration(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
-    redirect_uris: Annotated[list[str], Field(min_length=1, max_length=MAX_REDIRECT_URIS)]
+    redirect_uris: Annotated[
+        list[Annotated[str, StringConstraints(max_length=MAX_REDIRECT_URI_LENGTH)]],
+        Field(min_length=1, max_length=MAX_REDIRECT_URIS),
+    ]
     client_name: ClientName = DEFAULT_CLIENT_NAME
     token_endpoint_auth_method: str = AUTH_METHOD
 
@@ -234,8 +249,32 @@ class OAuthStore:
         self.tokens = tokens
         self.documents = documents
 
+    def purge_expired_codes(self) -> None:
+        """Delete codes past their expiry; a code that was used is deleted when redeemed."""
+        with self.database.connect() as connection:
+            connection.execute(
+                "DELETE FROM oauth_codes WHERE expires_at <= ?", (self.database.now(),)
+            )
+
+    def purge_stale(self) -> None:
+        """Delete expired codes and clients nobody used within UNUSED_CLIENT_TTL.
+
+        A client that was ever approved keeps its row: tokens do not depend on it, but a client
+        that registered once and re-authorizes later must still be known. Only registrations
+        nobody used, which is all an anonymous caller can create, go away.
+        """
+        self.purge_expired_codes()
+        cutoff = stamp(self.database.clock() - UNUSED_CLIENT_TTL)
+        with self.database.connect() as connection:
+            connection.execute(
+                "DELETE FROM oauth_clients WHERE last_used_at IS NULL AND created_at < ?",
+                (cutoff,),
+            )
+
     def register(self, registration: ClientRegistration) -> OAuthClient:
         """Register a client (RFC 7591) and give it a fresh client_id."""
+        # Registration is open to anyone, so it is where stale rows get cleaned up.
+        self.purge_stale()
         client = OAuthClient(
             client_id=secrets.token_urlsafe(CLIENT_ID_BYTES),
             client_name=registration.client_name or DEFAULT_CLIENT_NAME,
@@ -300,12 +339,17 @@ class OAuthStore:
     def issue_code(self, grant: Grant) -> str:
         """A single-use code for the grant; only its hash is stored."""
         code = secrets.token_urlsafe(CODE_BYTES)
+        self.purge_expired_codes()
         expires_at = stamp(self.database.clock() + CODE_TTL)
         if grant.client_id.startswith(CLIENT_ID_URL_PREFIX):
             client = self.client(grant.client_id)
             if client is not None:
                 self.remember(client)
         with self.database.connect() as connection:
+            connection.execute(
+                "UPDATE oauth_clients SET last_used_at = ? WHERE client_id = ?",
+                (self.database.now(), grant.client_id),
+            )
             connection.execute(
                 "INSERT INTO oauth_codes (code_hash, client_id, user_id, redirect_uri,"
                 " code_challenge, scopes, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -346,9 +390,13 @@ class OAuthStore:
             raise OAuthError(ErrorCode.UNSUPPORTED_GRANT_TYPE, "Use authorization_code")
         grant = self.redeem(request)
         client = self.client(grant.client_id)
-        name = (client.client_name if client else DEFAULT_CLIENT_NAME)[:CLIENT_NAME_LENGTH]
+        name = (client.client_name if client else DEFAULT_CLIENT_NAME)[
+            :OAUTH_TOKEN_CLIENT_NAME_LENGTH
+        ]
         data = TokenInput(
-            name=name + TOKEN_NAME_SUFFIX, scopes=grant.scopes, expires_in_days=DEFAULT_TTL_DAYS
+            name=name + OAUTH_TOKEN_NAME_SUFFIX,
+            scopes=grant.scopes,
+            expires_in_days=DEFAULT_TTL_DAYS,
         )
         return self.tokens.create(grant.user_id, data)
 

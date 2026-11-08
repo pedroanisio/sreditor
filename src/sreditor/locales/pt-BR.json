@@ -1100,6 +1100,7 @@
   "Today when left empty.": "Hoje, se ficar vazio.",
   "Tokens let agents use the API and the MCP server as you. A token never does more than your role allows, and only what its permissions name.": "Tokens permitem que agentes usem a API e o servidor MCP em seu nome. Um token nunca faz mais do que seu papel permite, e só o que as permissões dele indicam.",
   "Tones": "Tons",
+  "Too many attempts": "Tentativas demais",
   "Too many attempts. Wait a minute and try again.": "Tentativas demais. Espere um minuto e tente de novo.",
   "Topics": "Temas",
   "Total silence that lets the last sentence echo.": "Silêncio total para a última frase ecoar.",

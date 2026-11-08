@@ -835,8 +835,42 @@ def apply_baseline(connection: sqlite3.Connection) -> None:
 
 
 BASELINE = Migration(version=1, name="baseline schema", apply=apply_baseline)
+
+# Tokens an OAuth approval creates are named after their client (see sreditor.oauth).
+OAUTH_TOKEN_NAME_SUFFIX = " (OAuth)"
+OAUTH_TOKEN_CLIENT_NAME_LENGTH = 60
+
+
+def track_oauth_client_use(connection: sqlite3.Connection) -> None:
+    """Migration 3: record when OAuth clients were used and index what retention scans.
+
+    Clients with no such record are purged after a while, so clients registered before this
+    column existed that already hold a token count as used. Expired codes are found by expiry.
+    """
+    # Idempotent like the baseline, so a rerun over a migrated database changes nothing.
+    columns = {row["name"] for row in connection.execute("PRAGMA table_info(oauth_clients)")}
+    if "last_used_at" not in columns:
+        connection.execute("ALTER TABLE oauth_clients ADD COLUMN last_used_at TEXT")
+        connection.execute(
+            "UPDATE oauth_clients SET last_used_at = created_at WHERE EXISTS ("
+            " SELECT 1 FROM api_tokens WHERE api_tokens.name ="
+            " substr(oauth_clients.client_name, 1, ?) || ?)",
+            (OAUTH_TOKEN_CLIENT_NAME_LENGTH, OAUTH_TOKEN_NAME_SUFFIX),
+        )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS oauth_clients_unused ON oauth_clients (created_at)"
+        " WHERE last_used_at IS NULL"
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS oauth_codes_by_expiry ON oauth_codes (expires_at)"
+    )
+
+
+OAUTH_CLIENT_USE = Migration(
+    version=3, name="OAuth client use and code expiry", apply=track_oauth_client_use
+)
 # Append new migrations here, numbered in order; never change one that has been released.
-MIGRATIONS = (BASELINE, SEARCH_INDEX)
+MIGRATIONS = (BASELINE, SEARCH_INDEX, OAUTH_CLIENT_USE)
 
 
 def open_connection(path: Path, *, is_autocommit: bool = False) -> sqlite3.Connection:
