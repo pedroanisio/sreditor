@@ -144,6 +144,13 @@ def test_validation_from_invalid_scene_names_each_error() -> None:
     assert validation.errors() == [f"S01 at /bad: {DIAGNOSTIC['message']}"]
 
 
+def test_validation_from_scene_with_information_lines_stays_valid() -> None:
+    document = validated([])
+    document["result"]["files"][0]["info"] = ["info: safe area audit sampled 40 of 672 frames"]
+    validation = validation_from(text(document))
+    assert validation.is_valid and validation.errors() == []
+
+
 def test_validation_from_diagnostic_with_measure_reads_it() -> None:
     measured = DIAGNOSTIC | {"measured": {"value": 3.0, "limit": 2.0, "unit": "s"}}
     assert not validation_from(text(validated([measured]))).is_valid
