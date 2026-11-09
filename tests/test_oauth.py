@@ -437,7 +437,7 @@ def test_migrate_client_with_a_token_counts_as_used(
         connection.execute("DROP INDEX oauth_clients_unused")
         connection.execute("DROP INDEX oauth_codes_by_expiry")
         connection.execute(
-            "DELETE FROM schema_version WHERE version = ?", (OAUTH_CLIENT_USE.version,)
+            "DELETE FROM schema_version WHERE version >= ?", (OAUTH_CLIENT_USE.version,)
         )
         connection.execute("ALTER TABLE oauth_clients DROP COLUMN last_used_at")
     reopened = Database(database.path, clock)
