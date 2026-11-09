@@ -18,7 +18,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-from sreditor.block_takes import BlockTake
+from sreditor.block_takes import PUNCTUATION, BlockTake
 from sreditor.elevenlabs import MODEL_IDS
 from sreditor.field_types import Sha256
 from sreditor.short_script import Beat, Block
@@ -158,18 +158,47 @@ def direction_of(speech: str, model: TtsModel) -> dict[str, Any]:
     return direction
 
 
+def punctuated(word: str, line: str, cursor: int) -> tuple[str, int]:
+    """The word with the punctuation around it in the line, found from `cursor` on, and where it ends.
+
+    Takes keep their words bare, but srstudio cuts captions from the words, so a word must carry its own
+    marks ("lá." not "lá"), as srstudio's recorded takes do. A word the line does not hold stays bare.
+    """
+    found = re.compile(rf"(?<!\w){re.escape(word)}(?!\w)", re.IGNORECASE).search(line, cursor)
+    if found is None:
+        return word, cursor
+    start, end = found.start(), found.end()
+    while start > cursor and line[start - 1] in PUNCTUATION:
+        start -= 1
+    while end < len(line) and line[end] in PUNCTUATION:
+        end += 1
+    return line[start : found.start()] + word + line[found.end() : end], end
+
+
+def punctuated_words(words: list[str], line: str) -> list[str]:
+    """Each word of a take with the punctuation the line gives it, matched in order."""
+    marked: list[str] = []
+    cursor = 0
+    for word in words:
+        text, cursor = punctuated(word, line, cursor)
+        marked.append(text)
+    return marked
+
+
 def timeline_item(timed: TimedBlock, model: TtsModel) -> dict[str, Any]:
     """One take of timeline.json: the clean line, its clock, its audio and its words."""
     duration = timed.wav.duration_s
+    line = plain_text(timed.block.speech)
+    texts = punctuated_words([word.text for word in timed.take.words], line)
     words = [
-        {"text": word.text, "start": min(word.start, duration), "end": min(word.end, duration)}
-        for word in timed.take.words
+        {"text": text, "start": min(word.start, duration), "end": min(word.end, duration)}
+        for text, word in zip(texts, timed.take.words, strict=True)
     ]
     return {
         "id": f"{timed.index + 1:02d}",
         "actor": timed.actor,
         "shot": timed.block.function.value,
-        "text": plain_text(timed.block.speech),
+        "text": line,
         "start": round(timed.start, TIME_DECIMALS),
         "duration": duration,
         "speech_duration": words[-1]["end"] if words else duration,
