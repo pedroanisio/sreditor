@@ -8,6 +8,7 @@ import json
 import shutil
 import subprocess
 import zipfile
+from uuid import UUID
 from collections.abc import Callable
 from typing import Any
 
@@ -18,7 +19,9 @@ from fastapi.testclient import TestClient
 from sreditor import short_script_operations, srstudio_timeline
 from sreditor.deps import Services
 from sreditor.elevenlabs import ElevenLabs
+from sreditor.library import LibraryKind
 from sreditor.short_script import Block, BlockFunction
+from sreditor.srstudio import SheetInput
 from sreditor.srstudio_timeline import direction_of
 from sreditor.voice_markup import TtsModel
 from tests.media_samples import MP3_TAGGED
@@ -217,6 +220,18 @@ def test_export_beats_on_rig_that_is_no_toon_are_listed(
     path = f"{CHANNEL}/characters/{rex}/srstudio"
     owner.put(path, json={"slug": "rex", "sheet": sheet}, headers={"If-Match": '"1"'})
     assert "not a toon character" in owner.get(ZIP).text
+
+
+def test_export_character_with_rig_outside_toon_cast_is_listed(
+    app: FastAPI, owner: TestClient, rex: str, voiced: FakeTransport
+) -> None:
+    services: Services = app.state.services
+    entry = services.library.get("funny-memes", LibraryKind.CHARACTER, UUID(rex))
+    stored = services.srstudio.sheet(entry)
+    sheet = stored.sheet.model_copy(update={"rig": "toon-host"})
+    data = SheetInput(slug=stored.slug, sheet=sheet)
+    services.srstudio.save_sheet(entry, data, stored.revision)
+    assert "rig toon-host is not in srstudio" in owner.get(ZIP).text
 
 
 def test_export_by_contributor_is_forbidden(

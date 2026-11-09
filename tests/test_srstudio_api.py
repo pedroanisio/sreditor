@@ -100,6 +100,16 @@ def test_character_fact_citing_unpublished_episode_is_refused(owner: TestClient,
     assert response.status_code == 422 and response.json()["type"].endswith("unpublished-episode")
 
 
+def test_character_rig_outside_toon_cast_is_refused_naming_the_field(
+    owner: TestClient, rex: str
+) -> None:
+    body = {"slug": "rex", "sheet": {**DOG_SHEET, "rig": "toon-host"}}
+    response = owner.put(f"{CHANNEL}/characters/{rex}/srstudio", json=body)
+    problem = response.json()
+    assert response.status_code == 422 and problem["type"].endswith("unknown-rig")
+    assert problem["errors"][0]["location"] == ["body", "sheet", "sheet", "rig"]
+
+
 def test_character_fact_citing_published_episode_is_kept(
     owner: TestClient, rex: str, published: int
 ) -> None:

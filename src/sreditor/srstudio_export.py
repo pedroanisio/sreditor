@@ -44,6 +44,7 @@ from sreditor.srstudio_vocabulary import (
     FRAMES,
     SRSTUDIO_REVISION,
     Style,
+    is_unknown_toon_rig,
     toon_character,
 )
 from sreditor.voice_generation import take_key
@@ -63,6 +64,9 @@ NO_WORLD = N_("%(name)s has no srstudio world.")
 NO_KIND = N_("Character %(name)s has no kind (person, animal, object or archetype).")
 UNPUBLISHED = N_("A fact about %(name)s cites episode %(number)s, which is no longer published.")
 NOT_TOON = N_("%(name)s has beats, but their rig is not a toon character such as toon-dog.")
+UNKNOWN_RIG = N_(
+    "%(name)s's rig %(rig)s is not in srstudio's toon cast, so nothing would draw them."
+)
 NO_STYLE = N_("Pick the episode's visual style, with its srstudio style, before exporting.")
 
 
@@ -177,6 +181,8 @@ def sheet_gaps(
     gaps = [] if sheet.world else [Missing(message=NO_WORLD, values=name)]
     if isinstance(sheet, CharacterSheet) and sheet.character_kind is None:
         gaps.append(Missing(message=NO_KIND, values=name))
+    if isinstance(sheet, CharacterSheet) and is_unknown_toon_rig(sheet.rig):
+        gaps.append(Missing(message=UNKNOWN_RIG, values={**name, "rig": sheet.rig}))
     facts = sheet.canon if isinstance(sheet, CharacterSheet) else sheet.cites
     gaps += [
         Missing(message=UNPUBLISHED, values={**name, "number": str(number)})

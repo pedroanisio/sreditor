@@ -30,7 +30,7 @@ from sreditor.srstudio import (
     SlugLocked,
     SlugTaken,
 )
-from sreditor.srstudio_operations import FactNotPublished, get_sheet, save_sheet
+from sreditor.srstudio_operations import FactNotPublished, UnknownToonRig, get_sheet, save_sheet
 from sreditor.srstudio_vocabulary import (
     CharacterKind,
     CharacterStatus,
@@ -84,6 +84,9 @@ OPTIONAL = frozenset({"world", "character_kind", "comic_role", "style", "min_tex
 SLUG_TAKEN = N_("Another entry of this kind already uses this slug.")
 SLUG_LOCKED = N_("srstudio already knows this entry by its slug, so it can no longer change.")
 NOT_PUBLISHED = N_("A fact can only cite a published episode.")
+UNKNOWN_RIG = N_(
+    "This toon rig is not in srstudio's cast; use one such as toon-dog, or leave it empty."
+)
 SHEET_CHANGED = N_("Someone changed this sheet after you opened it. Reload the page to see it.")
 KIND_TITLES = {
     LibraryKind.CHARACTER: N_("Character"),
@@ -360,6 +363,8 @@ def save_errors(
         return Outcome.conflict({"slug": translate(SLUG_LOCKED)})
     except FactNotPublished:
         return Outcome.invalid({"form": translate(NOT_PUBLISHED)})
+    except UnknownToonRig:
+        return Outcome.invalid({"rig": translate(UNKNOWN_RIG)})
     except (PartChanged, EntryNotFound):
         return Outcome.conflict({"form": translate(SHEET_CHANGED)})
     return None

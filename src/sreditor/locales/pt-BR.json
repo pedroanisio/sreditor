@@ -1628,5 +1628,7 @@
   "someone who left": "alguém que saiu",
   "through %(name)s": "por meio de %(name)s",
   "The episode has no review yet.": "O episódio ainda não tem parecer.",
-  "The latest review did not approve the episode.": "O parecer mais recente não aprovou o episódio."
+  "The latest review did not approve the episode.": "O parecer mais recente não aprovou o episódio.",
+  "%(name)s's rig %(rig)s is not in srstudio's toon cast, so nothing would draw them.": "O rig %(rig)s de %(name)s não está no elenco toon do srstudio, então nada o desenharia.",
+  "This toon rig is not in srstudio's cast; use one such as toon-dog, or leave it empty.": "Este rig toon não está no elenco do srstudio; use um como toon-dog ou deixe vazio."
 }
