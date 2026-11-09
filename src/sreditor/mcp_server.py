@@ -131,6 +131,9 @@ INSTRUCTIONS = (
     "delete_pitch removes one no episode uses. Record each figure or fact an episode states with list_claims, "
     "add_claim, update_claim, check_claim_source and remove_claim; claims without a checked "
     "primary source only warn. "
+    "list_events lists what changed in a channel since your last cursor (writes by people, "
+    "agents and render workers, render status changes), with the tool that reads each; "
+    "it carries no content. "
     "search_channel finds where a channel wrote about something (titles, research, sources, "
     "screenplays, short scripts, pitches, library, third-party media, context) and says which tool "
     "opens each hit. "
@@ -449,6 +452,7 @@ def build(
     from sreditor.classification_tools import add_classification_tools
     from sreditor.context_tools import add_context_tools
     from sreditor.delivery_tools import add_delivery_tools
+    from sreditor.event_tools import add_event_tools
     from sreditor.external_media_tools import add_external_media_tools
     from sreditor.file_tools import add_file_tools
     from sreditor.member_tools import add_member_change_tools
@@ -470,6 +474,7 @@ def build(
     add_editorial_tools(server, services)
     add_episode_tools(server, services)
     add_overview_tools(server, services)
+    add_event_tools(server, services)
     add_research_tools(server, services)
     add_pitch_tools(server, services)
     add_search_tools(server, services)

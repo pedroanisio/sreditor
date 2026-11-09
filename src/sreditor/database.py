@@ -869,8 +869,37 @@ def track_oauth_client_use(connection: sqlite3.Connection) -> None:
 OAUTH_CLIENT_USE = Migration(
     version=3, name="OAuth client use and code expiry", apply=track_oauth_client_use
 )
+EVENTS_SCRIPT = """
+CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    channel_slug TEXT NOT NULL REFERENCES channels (slug) ON DELETE CASCADE,
+    occurred_at TEXT NOT NULL,
+    operation TEXT NOT NULL,
+    episode_number INTEGER,
+    item_id TEXT,
+    status TEXT,
+    actor_type TEXT,
+    actor_id TEXT,
+    CHECK ((actor_type IS NULL) = (actor_id IS NULL))
+);
+CREATE INDEX IF NOT EXISTS events_by_channel ON events (channel_slug, id);
+CREATE INDEX IF NOT EXISTS events_by_time ON events (occurred_at);
+-- The newest event of a channel that retention removed: a cursor older than this has missed some.
+CREATE TABLE IF NOT EXISTS event_horizons (
+    channel_slug TEXT PRIMARY KEY REFERENCES channels (slug) ON DELETE CASCADE,
+    pruned_through INTEGER NOT NULL
+);
+"""
+
+
+def add_events(connection: sqlite3.Connection) -> None:
+    """Migration 4: the change feed of each channel and what retention has removed from it."""
+    execute_script(connection, EVENTS_SCRIPT)
+
+
+EVENTS = Migration(version=4, name="change feed events", apply=add_events)
 # Append new migrations here, numbered in order; never change one that has been released.
-MIGRATIONS = (BASELINE, SEARCH_INDEX, OAUTH_CLIENT_USE)
+MIGRATIONS = (BASELINE, SEARCH_INDEX, OAUTH_CLIENT_USE, EVENTS)
 
 
 def open_connection(path: Path, *, is_autocommit: bool = False) -> sqlite3.Connection:

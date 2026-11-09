@@ -42,6 +42,7 @@ def episode_access(
     """The channel's slug once the permission is checked and the episode is known to exist."""
     access.require(permission)
     app.episodes.get(access.channel.slug, number)
+    access.episode_number = number  # for the change feed, if a write follows
     return access.channel.slug
 
 
@@ -77,7 +78,13 @@ def create_episode(app: Services, access: ChannelAccess, data: EpisodeInput) -> 
     """Add an episode with the channel's next number."""
     access.require(Permission.WRITE_CONTENT)
     slug = access.channel.slug
-    return gated(app, access, EpisodeOperation.CREATE, lambda: app.episodes.create(slug, data))
+
+    def create() -> RevisedEpisode:
+        created = app.episodes.create(slug, data)
+        access.episode_number = created.episode.number
+        return created
+
+    return gated(app, access, EpisodeOperation.CREATE, create)
 
 
 def replace_episode(
@@ -94,6 +101,7 @@ def replace_episode(
     """
     access.require(Permission.WRITE_CONTENT)
     slug = access.channel.slug
+    access.episode_number = number
     revised = gated(
         app,
         access,
@@ -115,6 +123,7 @@ def delete_episode(
     """Delete an episode; its number is never given to another one."""
     access.require(Permission.WRITE_CHANNEL)
     slug = access.channel.slug
+    access.episode_number = number
     gated(
         app,
         access,

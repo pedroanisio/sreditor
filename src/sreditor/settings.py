@@ -48,6 +48,7 @@ DEFAULT_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 DEFAULT_MAX_MEDIA_BYTES = 95 * 1024 * 1024
 DEFAULT_ASSETS_DIR = "var/assets"
 DEFAULT_AGENT_REQUESTS_PER_MINUTE = 120
+DEFAULT_EVENTS_RETENTION_DAYS = 30
 # Only a proxy on this machine may set X-Forwarded-For / -Proto unless configured otherwise.
 DEFAULT_FORWARDED_ALLOW_IPS = "127.0.0.1"
 # A rendered video arrives in parts (rule project.render.upload), so only the disk bounds it.
@@ -124,6 +125,8 @@ class AppSettings(BaseModel):
     delivery: DeliveryRules = DeliveryRules()
     # Requests one API token may make per minute, counted across the API and /mcp.
     agent_requests_per_minute: int = Field(default=DEFAULT_AGENT_REQUESTS_PER_MINUTE, ge=1)
+    # How long the change feed keeps events (rule agentic.events).
+    events_retention_days: int = Field(default=DEFAULT_EVENTS_RETENTION_DAYS, ge=1, le=365)
     # Proxies trusted to report the client's address, such as the Cloudflare tunnel; without
     # this every visitor would share the proxy's address and its per-client rate limits.
     forwarded_allow_ips: str = DEFAULT_FORWARDED_ALLOW_IPS
@@ -166,6 +169,11 @@ class AppSettings(BaseModel):
             agent_requests_per_minute=int(
                 environ.get("SREDITOR_AGENT_REQUESTS_PER_MINUTE")
                 or DEFAULT_AGENT_REQUESTS_PER_MINUTE
+            ),
+            events_retention_days=int(
+                environ.get("SREDITOR_EVENTS_RETENTION_DAYS")
+                or project.get("events_retention_days")
+                or DEFAULT_EVENTS_RETENTION_DAYS
             ),
             forwarded_allow_ips=environ.get("SREDITOR_FORWARDED_ALLOW_IPS")
             or DEFAULT_FORWARDED_ALLOW_IPS,

@@ -30,6 +30,7 @@ from sreditor.delivery import DeliveryStore
 from sreditor.editorial import EditorialService
 from sreditor.elevenlabs import ElevenLabs
 from sreditor.episodes import EpisodeStore
+from sreditor.events import EventStore
 from sreditor.external_media import ExternalMediaStore
 from sreditor.file_links import FileLinkStore
 from sreditor.i18n import BASE_LOCALE, Translator, negotiate
@@ -107,6 +108,7 @@ class Services:
     post_metrics: PostMetricsStore
     file_links: FileLinkStore
     claims: ClaimStore
+    events: EventStore
     voice: ElevenLabs | None = None  # None: SREDITOR_ELEVENLABS_API_KEY is not set
 
     def accounts(self, locale: str = BASE_LOCALE) -> Accounts:
@@ -309,6 +311,8 @@ class ChannelAccess:
     user: User
     token: ApiToken | None = None
     revision: int = 0
+    # The episode the write in progress concerns, noted by the access check for the change feed.
+    episode_number: int | None = None
 
     def can(self, permission: Permission) -> bool:
         """Whether the user may do this; admins may do anything, members what their role allows."""

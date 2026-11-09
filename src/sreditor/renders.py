@@ -19,6 +19,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from sreditor.database import Database, parse, stamp
+from sreditor.events import RENDER_STATUS, ActorType, EventActor, NewEvent, record_in
 from sreditor.field_types import ChannelSlug
 from sreditor.security import hash_token
 
@@ -278,8 +279,31 @@ def to_worker(row: sqlite3.Row) -> RenderWorker:
     )
 
 
+def record_transition(
+    connection: sqlite3.Connection, job: RenderJob, actor: EventActor | None = None
+) -> RenderJob:
+    """Add the job's new status to the channel's change feed, in the transaction that set it."""
+    event = NewEvent(
+        channel=job.channel,
+        operation=RENDER_STATUS,
+        episode_number=job.number,
+        item_id=str(job.id),
+        status=job.status.value,
+        actor=actor,
+    )
+    record_in(connection, event, stamp(job.updated_at))
+    return job
+
+
+def worker_actor(job: RenderJob) -> EventActor | None:
+    """The worker that holds the job, as the actor of what it reports."""
+    if job.worker_id is None:
+        return None
+    return EventActor(type=ActorType.WORKER, id=str(job.worker_id))
+
+
 def insert_job(connection: sqlite3.Connection, new: NewJob, now: str) -> RenderJob:
-    """Insert a queued job within the caller's transaction."""
+    """Insert a queued job within the caller's transaction, and note it in the change feed."""
     row = connection.execute(
         "INSERT INTO render_jobs (id, channel_slug, number, preset, status, export_sha256,"
         " export_path, engine_version, builder_version, requested_by, revision, created_at,"
@@ -299,7 +323,7 @@ def insert_job(connection: sqlite3.Connection, new: NewJob, now: str) -> RenderJ
             now,
         ),
     ).fetchone()
-    return to_job(row)
+    return record_transition(connection, to_job(row))
 
 
 def find_reusable(connection: sqlite3.Connection, new: NewJob) -> RenderJob | None:
@@ -439,7 +463,10 @@ class RenderStore:
                     now,
                 ),
             ).fetchone()
-        return to_job(row) if row else None
+            if row is None:
+                return None
+            job = to_job(row)
+            return record_transition(connection, job, worker_actor(job))
 
     def report(self, job_id: UUID, lease: Lease, progress: Progress) -> RenderJob:
         """Record a worker's progress and renew its lease; JobNotHeld when it lost the job."""
@@ -476,6 +503,7 @@ class RenderStore:
             job,
             "status = ?, progress = 1, media_id = ?, scene_path = ?, findings = ?",
             (RenderStatus.DONE, str(outcome.media_id), outcome.scene_path, findings),
+            worker_actor(job),
         )
 
     def fail(self, job: RenderJob, reason: str, is_retryable: bool) -> RenderJob:
@@ -483,7 +511,10 @@ class RenderStore:
         again = is_retryable and job.attempts < MAX_ATTEMPTS
         status = RenderStatus.QUEUED if again else RenderStatus.FAILED
         return self.close(
-            job, "status = ?, progress = 0, failure = ?", (status, reason[:FAILURE_LENGTH])
+            job,
+            "status = ?, progress = 0, failure = ?",
+            (status, reason[:FAILURE_LENGTH]),
+            worker_actor(job),
         )
 
     def cancel(self, job: RenderJob) -> RenderJob:
@@ -492,8 +523,14 @@ class RenderStore:
             raise RenderFinished(job)
         return self.close(job, "status = ?", (RenderStatus.CANCELED,))
 
-    def close(self, job: RenderJob, assignments: str, values: tuple[object, ...]) -> RenderJob:
-        """Apply a final change to a job that is still where the caller saw it."""
+    def close(
+        self,
+        job: RenderJob,
+        assignments: str,
+        values: tuple[object, ...],
+        actor: EventActor | None = None,
+    ) -> RenderJob:
+        """Apply a final change to a job that is still where the caller saw it, and record it."""
         with self.database.connect() as connection:
             row = connection.execute(
                 f"UPDATE render_jobs SET {assignments}, lease_expires_at = NULL,"
@@ -501,9 +538,9 @@ class RenderStore:
                 f" RETURNING {JOB_COLUMNS}",
                 (*values, self.database.now(), str(job.id), job.revision),
             ).fetchone()
-        if row is None:
-            raise JobNotHeld(job.id, self.get(job.id).status)
-        return to_job(row)
+            if row is not None:
+                return record_transition(connection, to_job(row), actor)
+        raise JobNotHeld(job.id, self.get(job.id).status)
 
     def register(self, name: str, created_by: UUID) -> NewWorker:
         """Register a worker and make its secret, which is never stored."""
@@ -570,10 +607,10 @@ class RenderStore:
 
 def give_up_lapsed(connection: sqlite3.Connection, now: str) -> None:
     """Fail the lapsed jobs that used all their attempts, so they leave the queue."""
-    connection.execute(
+    rows = connection.execute(
         "UPDATE render_jobs SET status = ?, failure = ?, lease_expires_at = NULL,"
         " revision = revision + 1, updated_at = ? WHERE status IN (?, ?, ?)"
-        " AND lease_expires_at < ? AND attempts >= ?",
+        f" AND lease_expires_at < ? AND attempts >= ? RETURNING {JOB_COLUMNS}",
         (
             RenderStatus.FAILED,
             "The worker stopped reporting on every attempt",
@@ -582,7 +619,9 @@ def give_up_lapsed(connection: sqlite3.Connection, now: str) -> None:
             now,
             MAX_ATTEMPTS,
         ),
-    )
+    ).fetchall()
+    for row in rows:
+        record_transition(connection, to_job(row))
 
 
 def lease_until(now: datetime, seconds: int) -> datetime:

@@ -535,3 +535,54 @@ def test_mcp_cancel_render_twice_explains_refusal(app: FastAPI, owner: TestClien
         again = tool(mcp, "cancel_render", target)
     assert canceled["job"]["status"] == "canceled"
     assert again["isError"] and "queued or running" in again["content"][0]["text"]
+
+
+# The change feed (rule agentic.events)
+
+
+def render_events(client: TestClient) -> list[tuple[str, str | None, str | None]]:
+    """The feed's render events as (operation, status, actor type), oldest first."""
+    items = client.get(f"{CHANNEL}/events").json()["items"]
+    return [
+        (item["operation"], item["status"], item["actor"]["type"] if item["actor"] else None)
+        for item in items
+        if item["operation"].startswith("render.")
+    ]
+
+
+def test_events_render_to_done_records_each_transition_with_its_worker(
+    owner: TestClient, worker: TestClient
+) -> None:
+    job = requested(owner)["job"]
+    claimed(worker)
+    finished(worker, job["id"])
+    assert render_events(owner) == [
+        ("render.status", "queued", None),
+        ("render.request", None, "user"),
+        ("render.status", "building", "worker"),
+        ("render.status", "done", "worker"),
+    ]
+
+
+def test_events_render_canceled_by_agent_records_request_and_cancel(
+    app: FastAPI, owner: TestClient
+) -> None:
+    bot = agent(app, new_token(owner, RENDER_SCOPES))
+    job = requested(bot)["job"]
+    assert bot.post(f"{RENDERS}/{job['id']}/cancel").status_code == 200
+    events = owner.get(f"{CHANNEL}/events").json()["items"]
+    gated = [item for item in events if item["operation"] in ("render.request", "render.cancel")]
+    assert [item["operation"] for item in gated] == ["render.request", "render.cancel"]
+    assert all(item["actor"]["type"] == "token" for item in gated)
+    assert ("render.status", "canceled", None) in render_events(owner)
+
+
+def test_events_render_lapsed_on_every_attempt_records_failed(
+    app: FastAPI, owner: TestClient, worker: TestClient
+) -> None:
+    requested(owner)
+    for _ in range(MAX_ATTEMPTS):
+        claimed(worker)
+        lapse_leases(app)
+    worker.post("/render-worker/claim", json=HELLO)
+    assert render_events(owner)[-1][:2] == ("render.status", "failed")

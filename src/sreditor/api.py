@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Request, Response, status
@@ -20,6 +21,7 @@ from sreditor import (
     context_routes,
     delivery_routes,
     episode_routes,
+    event_routes,
     export_routes,
     external_media_routes,
     file_routes,
@@ -67,6 +69,7 @@ from sreditor.elevenlabs import build_voice
 from sreditor.episode_texts import PartChanged
 from sreditor.episodes import EpisodeChanged, EpisodeNotFound, EpisodeStore
 from sreditor.etags import IfMatch, etag, expected_revision
+from sreditor.events import EventStore
 from sreditor.external_media import ExternalMediaStore
 from sreditor.file_links import FileLinkStore
 from sreditor.idempotency import IdempotencyDep
@@ -180,6 +183,7 @@ def create_app(
         post_metrics=PostMetricsStore(database),
         file_links=FileLinkStore(database),
         claims=ClaimStore(database),
+        events=EventStore(database, timedelta(days=settings.events_retention_days)),
         voice=build_voice(settings.voice),
     )
     mcp = mcp_server.build(services)
@@ -228,6 +232,7 @@ def create_app(
     app.include_router(member_routes.router)
     app.include_router(episode_routes.router)
     app.include_router(overview_routes.router)
+    app.include_router(event_routes.router)
     app.include_router(research_routes.router)
     app.include_router(pitch_routes.router)
     app.include_router(claim_routes.router)

@@ -24,6 +24,7 @@ from sreditor.channels import (
 )
 from sreditor.deps import ChannelAccess, ScopeMissing, Services, author
 from sreditor.editorial import Editorial, Guideline, GuidelineInput
+from sreditor.events import ActorType, EventActor, NewEvent
 from sreditor.members import Permission
 from sreditor.pagination import Page, decode_cursor, page
 from sreditor.problems import ProblemError
@@ -71,16 +72,16 @@ def gated[T](app: Services, access: ChannelAccess, operation: str, write: Callab
 def gate_in[T](
     app: Services, scope: str, access: ChannelAccess, operation: str, write: Callable[[], T]
 ) -> T:
-    """Run `write`, but for an API token first ask the stmt gate and emit its AFTER event."""
+    """Run `write`, for an API token only after the stmt gate allows it, then record its event.
+
+    Signed-in sessions skip the gate and its AFTER event but are recorded in the change feed
+    like tokens, so it shows every write that goes through an operation (rule agentic.events).
+    """
     if access.token is None:
-        return write()
-    context: dict[str, Any] = {
-        "channel": access.channel.slug,
-        "user": str(access.user.id),
-        "role": access.role.value if access.role else None,
-        "token": str(access.token.id),
-        "scopes": [str(scope) for scope in access.token.scopes],
-    }
+        result = write()
+        record_change(app, access, operation)
+        return result
+    context = gate_context(access)
     gate_id = f"gate-{uuid4()}"
     decision = app.stmt.gate(scope, {"id": gate_id, "operation": operation, "context": context})
     if decision.decision != ALLOW:
@@ -97,7 +98,34 @@ def gate_in[T](
         scope,
         {"id": f"after-{uuid4()}", "cause": gate_id, "operation": operation, "context": context},
     )
+    record_change(app, access, operation)
     return result
+
+
+def gate_context(access: ChannelAccess) -> dict[str, Any]:
+    """What the stmt gate and its AFTER event know about a token's write."""
+    assert access.token is not None
+    return {
+        "channel": access.channel.slug,
+        "user": str(access.user.id),
+        "role": access.role.value if access.role else None,
+        "token": str(access.token.id),
+        "scopes": [str(scope) for scope in access.token.scopes],
+    }
+
+
+def record_change(app: Services, access: ChannelAccess, operation: str) -> None:
+    """Add the write to the channel's change feed: what and who, never what was written."""
+    owner = owner_of(access.user, access.token)
+    app.events.record(
+        NewEvent(
+            channel=access.channel.slug,
+            operation=operation,
+            episode_number=access.episode_number,
+            actor=EventActor(type=ActorType(owner.type), id=owner.id),
+        )
+    )
+    access.episode_number = None
 
 
 def require_account(channel: Channel, platform: Platform | None) -> None:
