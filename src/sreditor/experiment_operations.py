@@ -11,7 +11,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from sreditor.channels import Platform
+from sreditor.delivery import post_key
 from sreditor.deps import ChannelAccess, Services
 from sreditor.episode_operations import after_number
 from sreditor.experiment_results import (
@@ -29,7 +29,7 @@ from sreditor.experiments import (
 from sreditor.members import Permission
 from sreditor.operations import gated
 from sreditor.pagination import Page, encode_cursor
-from sreditor.post_metrics import ChannelPost, Snapshot
+from sreditor.post_metrics import ChannelPost, PostKey, Snapshot
 from sreditor.what_worked import number_of, snapshot_for
 
 
@@ -139,17 +139,18 @@ def delete_experiment(app: Services, access: ChannelAccess, change: ExperimentCh
 
 
 def post_value(
-    item: ChannelPost, history: dict[tuple[int, Platform], list[Snapshot]], experiment: Experiment
+    item: ChannelPost, history: dict[PostKey, list[Snapshot]], experiment: Experiment
 ) -> PostValue:
     """A post's number at the experiment's age, picked the way what_worked picks it."""
     published = item.post.published_at
     found = snapshot_for(
-        history.get((item.number, item.post.platform), []),
+        history.get((item.number, *post_key(item.post)), []),
         published.date() if published else None,
         experiment.snapshot_age,
     )
     return PostValue(
         platform=item.post.platform,
+        cut=item.post.cut,
         published_at=published.isoformat() if published else None,
         captured_on=found.captured_on if found else None,
         value=number_of(found, experiment.metric),

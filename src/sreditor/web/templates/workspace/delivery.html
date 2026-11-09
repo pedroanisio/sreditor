@@ -3,6 +3,13 @@
 {% block page_title %}{{ _("Delivery") }} · {{ episode.title }}{% endblock %}
 {% block page %}
 {% set may_write = can("write_content") %}
+{% macro post_fields(prefix, values, shown_errors) %}
+    {{ ui.field("url", _("Post link"), shown_errors, type="url", value=values.url, required=false, id=prefix ~ "-url", hint=_("Starting with https://. Leave it empty until the post is live.")) }}
+    {{ ui.field("published_at", _("Published at (UTC)"), shown_errors, type="datetime-local", value=values.published_at, required=false, id=prefix ~ "-published") }}
+    {{ ui.textarea("caption", _("Caption for this platform"), shown_errors, value=values.caption, limit=caption_limit, rows=4, id=prefix ~ "-caption", hint=_("Leave the text empty to use the cut's. A caption written here needs the AI notice.")) }}
+    {{ ui.textarea("alt_text", _("Alt text for this platform"), shown_errors, value=values.alt_text, limit=alt_text_limit, rows=3, id=prefix ~ "-alt") }}
+    {{ ui.field("hashtags", _("Hashtags for this platform"), shown_errors, value=values.hashtags, required=false, id=prefix ~ "-hashtags", hint=_("At most %(count)s, separated by spaces, with or without #.", count=post_hashtag_limit)) }}
+{% endmacro %}
 {% set lead = _("The final cuts, their covers and texts, and the post link on each platform.") %}
 {% include "workspace/_episode_header.html" %}
 {{ ui.form_error(errors) }}
@@ -39,25 +46,29 @@
 {% endcall %}
 {% call ui.panel(_("Posts"), id="posts") %}
   {% if accounts %}
-  {% call(account) ui.items(accounts, _("Posts")) %}
+    {% call(account) ui.items(accounts, _("Posts")) %}
     {% call ui.item_body() %}
       <strong>{{ account.name }}</strong>
-      {% if account.post %}
-      {{ ui.meta(_("Cut %(cut)s", cut=account.post.cut) ~ (" · " ~ account.post.published_at.strftime("%Y-%m-%d %H:%M") ~ " UTC" if account.post.published_at else "")) }}
-      {% if account.post.url %}<p><a href="{{ account.post.url }}" rel="noopener noreferrer" target="_blank">{{ account.post.url }}</a></p>
+      {% for entry in account.posts %}
+      {% set post = entry.post %}
+      <div>
+      {{ ui.meta(_("Cut %(cut)s", cut=post.cut) ~ (" · " ~ post.published_at.strftime("%Y-%m-%d %H:%M") ~ " UTC" if post.published_at else "")) }}
+      {% if post.url %}<p><a href="{{ post.url }}" rel="noopener noreferrer" target="_blank">{{ post.url }}</a></p>
       {% else %}<p class="muted">{{ _("No link yet.") }}</p>{% endif %}
-      {% if account.post.caption or account.post.alt_text or account.post.hashtags %}
-      {% if account.post.caption %}<p>{{ account.post.caption }}</p>{% endif %}
-      {% if account.post.alt_text %}<p class="muted">{{ _("Alt text") }}: {{ account.post.alt_text }}</p>{% endif %}
-      {% for tag in account.post.hashtags %}{{ ui.tag("#" ~ tag) }}{% endfor %}
+      {% if post.caption or post.alt_text or post.hashtags %}
+      {% if post.caption %}<p>{{ post.caption }}</p>{% endif %}
+      {% if post.alt_text %}<p class="muted">{{ _("Alt text") }}: {{ post.alt_text }}</p>{% endif %}
+      {% for tag in post.hashtags %}{{ ui.tag("#" ~ tag) }}{% endfor %}
       {% else %}<p class="muted">{{ _("No text of its own: the post uses the text of its cut.") }}</p>{% endif %}
+      {{ ui.link_button(delivery_link ~ "/metrics/" ~ account.platform ~ "/" ~ post.cut, _("Numbers"), variant="ghost", size="small") }}
+      {% if may_write %}{{ ui.dialog_button(entry.dialog, _("Edit"), variant="ghost", size="small") }}{% endif %}
+      </div>
       {% else %}
       <p class="muted">{{ _("Not posted yet.") }}</p>
-      {% endif %}
+      {% endfor %}
     {% endcall %}
     {% call ui.item_side() %}
-      {% if account.post %}{{ ui.link_button(delivery_link ~ "/metrics/" ~ account.platform, _("Numbers"), variant="ghost", size="small") }}{% endif %}
-      {% if may_write and cut_options %}{{ ui.dialog_button("post-" ~ account.platform, _("Edit") if account.post else _("Add post"), variant="ghost", size="small") }}{% endif %}
+      {% if may_write and cut_options %}{{ ui.dialog_button(account.new_dialog, _("Add post"), variant="ghost", size="small") }}{% endif %}
     {% endcall %}
   {% endcall %}
   {% else %}
@@ -100,26 +111,35 @@
 {% endcall %}
 {% if cut_options %}
 {% for account in accounts %}
-{% set is_sent = posting == account.platform %}
-{% set values = sent_post if is_sent else account.values %}
+{% set is_sent = posting == account.new_dialog %}
+{% set values = sent_post if is_sent else account.new_values %}
 {% set shown_errors = errors if is_sent else {} %}
-{% call ui.dialog("post-" ~ account.platform, account.name, _("Close"), open=is_sent) %}
+{% call ui.dialog(account.new_dialog, account.name, _("Close"), open=is_sent) %}
   {% call ui.form(delivery_link ~ "/posts/" ~ account.platform, csrf_field, csrf_token) %}
     {{ ui.hidden("revision", package.revision) }}
-    {{ ui.select("cut", _("Cut"), cut_options, shown_errors, value=values.cut, id=account.platform ~ "-cut") }}
-    {{ ui.field("url", _("Post link"), shown_errors, type="url", value=values.url, required=false, id=account.platform ~ "-url", hint=_("Starting with https://. Leave it empty until the post is live.")) }}
-    {{ ui.field("published_at", _("Published at (UTC)"), shown_errors, type="datetime-local", value=values.published_at, required=false, id=account.platform ~ "-published") }}
-    {{ ui.textarea("caption", _("Caption for this platform"), shown_errors, value=values.caption, limit=caption_limit, rows=4, id=account.platform ~ "-caption", hint=_("Leave the text empty to use the cut's. A caption written here needs the AI notice.")) }}
-    {{ ui.textarea("alt_text", _("Alt text for this platform"), shown_errors, value=values.alt_text, limit=alt_text_limit, rows=3, id=account.platform ~ "-alt") }}
-    {{ ui.field("hashtags", _("Hashtags for this platform"), shown_errors, value=values.hashtags, required=false, id=account.platform ~ "-hashtags", hint=_("At most %(count)s, separated by spaces, with or without #.", count=post_hashtag_limit)) }}
+    {{ ui.hidden("dialog", account.new_dialog) }}
+    {{ ui.select("cut", _("Cut"), cut_options, shown_errors, value=values.cut, id=account.platform ~ "-cut", hint=_("Posting the same cut again replaces its post; another cut is another post.")) }}
+    {{ post_fields(account.platform, values, shown_errors) }}
     {% call ui.panel_actions() %}{{ ui.button(_("Save post")) }}{% endcall %}
   {% endcall %}
-  {% if account.post %}
-  {% call ui.panel_actions() %}
-    {{ ui.confirm(_("Remove"), _("Remove this post from the package?"), delivery_link ~ "/posts/" ~ account.platform ~ "/remove", csrf_field, csrf_token, _("Remove"), fields=[("revision", package.revision)]) }}
-  {% endcall %}
-  {% endif %}
 {% endcall %}
+{% for entry in account.posts %}
+{% set is_sent = posting == entry.dialog %}
+{% set values = sent_post if is_sent else entry.values %}
+{% set shown_errors = errors if is_sent else {} %}
+{% call ui.dialog(entry.dialog, account.name ~ " · " ~ entry.post.cut, _("Close"), open=is_sent) %}
+  {% call ui.form(delivery_link ~ "/posts/" ~ account.platform, csrf_field, csrf_token) %}
+    {{ ui.hidden("revision", package.revision) }}
+    {{ ui.hidden("dialog", entry.dialog) }}
+    {{ ui.hidden("cut", entry.post.cut) }}
+    {{ post_fields(account.platform ~ "-" ~ entry.post.cut, values, shown_errors) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Save post")) }}{% endcall %}
+  {% endcall %}
+  {% call ui.panel_actions() %}
+    {{ ui.confirm(_("Remove"), _("Remove this post from the package?"), delivery_link ~ "/posts/" ~ account.platform ~ "/" ~ entry.post.cut ~ "/remove", csrf_field, csrf_token, _("Remove"), fields=[("revision", package.revision)]) }}
+  {% endcall %}
+{% endcall %}
+{% endfor %}
 {% endfor %}
 {% endif %}
 {% endif %}

@@ -41,6 +41,7 @@ ALT_TEXT_LENGTH = 1000
 CUT_NAME_LENGTH = 40
 HASHTAG_LENGTH = 100
 MAX_CUTS = 10
+MAX_POSTS = MAX_CUTS * len(Platform)  # one post per cut on each platform account
 MAX_HASHTAGS = 30
 MAX_POST_HASHTAGS = 5  # a post's own text is refused above this, where a cut only warns
 HASHTAG_SIGIL = "#"
@@ -165,6 +166,11 @@ class Post(BaseModel):
         return self
 
 
+def post_key(post: Post) -> tuple[Platform, str]:
+    """What identifies a post: its platform account and the cut it carries."""
+    return (post.platform, post.cut)
+
+
 class PostedText(BaseModel):
     """The text that goes out on one platform: the post's own, field by field, else its cut's."""
 
@@ -190,17 +196,17 @@ class DeliveryInput(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     cuts: list[Cut] = Field(default_factory=list, max_length=MAX_CUTS)
-    posts: list[Post] = Field(default_factory=list, max_length=len(Platform))
+    posts: list[Post] = Field(default_factory=list, max_length=MAX_POSTS)
 
     @model_validator(mode="after")
     def is_consistent(self) -> Self:
-        """Cut names are unique, each account has one post and each post names an existing cut."""
+        """Cut names are unique, each (platform, cut) has one post and each post names a cut."""
         names = [cut.name for cut in self.cuts]
         if len(set(names)) != len(names):
             raise ValueError(N_("Each cut needs its own name"))
-        platforms = [post.platform for post in self.posts]
-        if len(set(platforms)) != len(platforms):
-            raise ValueError(N_("Each platform account has at most one post"))
+        keys = [post_key(post) for post in self.posts]
+        if len(set(keys)) != len(keys):
+            raise ValueError(N_("Each cut has at most one post on a platform account"))
         unknown = sorted({post.cut for post in self.posts} - set(names))
         if unknown:
             raise ValueError(N_("A post names a cut that is not in this package"))
@@ -225,7 +231,7 @@ WARNING_MESSAGES: dict[DeliveryWarningKind, str] = {
     DeliveryWarningKind.VIDEO_REMOVED: N_(
         "The final video of the cut %(cut)s is no longer among the episode's media."
     ),
-    DeliveryWarningKind.NO_LINK: N_("The post on %(platform)s has no link."),
+    DeliveryWarningKind.NO_LINK: N_("The post of the cut %(cut)s on %(platform)s has no link."),
     DeliveryWarningKind.TOO_LONG: N_(
         "The video of the cut %(cut)s runs %(seconds)s s, over the %(limit)s s limit."
     ),
@@ -234,10 +240,11 @@ WARNING_MESSAGES: dict[DeliveryWarningKind, str] = {
     ),
     DeliveryWarningKind.NO_AI_NOTICE: N_("The caption of the cut %(cut)s has no AI notice line."),
     DeliveryWarningKind.POST_TOO_MANY_HASHTAGS: N_(
-        "The post on %(platform)s goes out with %(count)s hashtags, over the limit of %(limit)s."
+        "The post of the cut %(cut)s on %(platform)s goes out with %(count)s hashtags, over the"
+        " limit of %(limit)s."
     ),
     DeliveryWarningKind.POST_NO_AI_NOTICE: N_(
-        "The caption posted on %(platform)s has no AI notice line."
+        "The caption of the cut %(cut)s posted on %(platform)s has no AI notice line."
     ),
 }
 
@@ -303,19 +310,22 @@ def post_warnings(post: Post, cut: Cut, rules: DeliveryRules) -> list[DeliveryWa
     found: list[DeliveryWarning] = []
     platform = post.platform.value
     if post.url is None:
-        found.append(warning(DeliveryWarningKind.NO_LINK, platform=platform))
+        found.append(warning(DeliveryWarningKind.NO_LINK, cut=post.cut, platform=platform))
     text = posted_text(post, cut)
     if len(text.hashtags) > MAX_POST_HASHTAGS:
         found.append(
             warning(
                 DeliveryWarningKind.POST_TOO_MANY_HASHTAGS,
+                cut=post.cut,
                 platform=platform,
                 count=len(text.hashtags),
                 limit=MAX_POST_HASHTAGS,
             )
         )
     if rules.ai_notice_pattern and not re.search(rules.ai_notice_pattern, text.caption):
-        found.append(warning(DeliveryWarningKind.POST_NO_AI_NOTICE, platform=platform))
+        found.append(
+            warning(DeliveryWarningKind.POST_NO_AI_NOTICE, cut=post.cut, platform=platform)
+        )
     return found
 
 

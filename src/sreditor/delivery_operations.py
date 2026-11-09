@@ -26,6 +26,7 @@ from sreditor.delivery import (
     DeliveryInput,
     Hashtag,
     Post,
+    post_key,
     warnings_of,
 )
 from sreditor.deps import ChannelAccess, Services
@@ -185,9 +186,9 @@ def check_post_texts(rules: DeliveryRules, posts: list[Post], stored: list[Post]
     """
     if not rules.ai_notice_pattern:
         return
-    held = {post.platform: post.caption for post in stored}
+    held = {post_key(post): post.caption for post in stored}
     for index, post in enumerate(posts):
-        is_new = post.caption != held.get(post.platform)
+        is_new = post.caption != held.get(post_key(post))
         if post.caption and is_new and not re.search(rules.ai_notice_pattern, post.caption):
             values = {"pattern": rules.ai_notice_pattern}
             raise DeliveryRefused(("posts", index, "caption"), AI_NOTICE_REQUIRED % values, values)
@@ -237,14 +238,15 @@ def without_cut(delivery: DeliveryInput, name: str) -> DeliveryInput:
 
 
 def with_post(delivery: DeliveryInput, post: Post) -> DeliveryInput:
-    """The package with the platform's post set, replacing its earlier one."""
-    others = [other for other in delivery.posts if other.platform != post.platform]
+    """The package with the post set, replacing the earlier one of the same platform and cut."""
+    others = [other for other in delivery.posts if post_key(other) != post_key(post)]
     return consistent(delivery.cuts, [*others, post])
 
 
-def without_post(delivery: DeliveryInput, platform: Platform) -> DeliveryInput:
-    """The package without the platform's post."""
-    return consistent(delivery.cuts, [p for p in delivery.posts if p.platform != platform])
+def without_post(delivery: DeliveryInput, platform: Platform, cut: str) -> DeliveryInput:
+    """The package without the post of that platform and cut."""
+    kept = [other for other in delivery.posts if post_key(other) != (platform, cut)]
+    return consistent(delivery.cuts, kept)
 
 
 def merged_post(platform: Platform, post: PostInput, earlier: Post | None) -> Post:
@@ -268,10 +270,12 @@ def record_post(
     platform: Platform,
     post: PostInput,
 ) -> Delivery:
-    """Set the post of one platform account in the package, keeping the cuts and other posts."""
+    """Set the post of one cut on a platform account, keeping the cuts and the other posts."""
     slug = episode_access(app, access, number, Permission.WRITE_CONTENT)
     current = app.deliveries.delivery(slug, number)
-    earlier = next((other for other in current.posts if other.platform == platform), None)
+    earlier = next(
+        (other for other in current.posts if post_key(other) == (platform, post.cut)), None
+    )
     chosen = merged_post(platform, post, earlier)
     changed = with_post(current, chosen)
     check_accounts(access, [chosen])

@@ -16,7 +16,7 @@ from tests.workspace_helpers import approve_episode, flash_after, join, member, 
 CHANNEL = "/app/channels/funny-memes"
 EPISODE = f"{CHANNEL}/episodes/1"
 DELIVERY = f"{EPISODE}/delivery"
-METRICS = f"{DELIVERY}/metrics/tiktok"
+METRICS = f"{DELIVERY}/metrics/tiktok/main"
 COMPARE = f"{CHANNEL}/metrics"
 MEDIA = f"{EPISODE}/media"
 CSV = "second,percent\n0,100\n1,90\n"
@@ -162,7 +162,7 @@ def test_delivery_set_post_shows_link_and_numbers_button(with_cut: TestClient) -
 
 def test_delivery_set_post_without_link_says_so_and_warns(with_cut: TestClient) -> None:
     page = flash_after(with_cut, set_post(with_cut, url=""))
-    assert "No link yet." in page and "The post on tiktok has no link." in page
+    assert "No link yet." in page and "The post of the cut main on tiktok has no link." in page
 
 
 def test_delivery_set_post_with_bad_link_shows_error_next_to_field(with_cut: TestClient) -> None:
@@ -216,8 +216,31 @@ def test_delivery_set_post_caption_error_is_translated_to_portuguese(with_cut: T
 
 
 def test_delivery_remove_post_takes_it_out(posted: TestClient) -> None:
-    response = submit(posted, f"{DELIVERY}/posts/tiktok/remove", {"revision": "2"})
+    response = submit(posted, f"{DELIVERY}/posts/tiktok/main/remove", {"revision": "2"})
     assert "Not posted yet." in flash_after(posted, response)
+
+
+def test_delivery_second_cut_on_the_same_account_is_its_own_post_with_its_own_numbers(
+    posted: TestClient,
+) -> None:
+    flash_after(posted, add_cut(posted, name="alt", revision="2"))
+    set_post(posted, cut="alt", url="https://tiktok.test/v/2")
+    page = posted.get(DELIVERY).text
+    assert f'href="{DELIVERY}/metrics/tiktok/main"' in page
+    assert f'href="{DELIVERY}/metrics/tiktok/alt"' in page
+
+
+def test_delivery_remove_post_of_one_cut_keeps_the_other_cuts_post(posted: TestClient) -> None:
+    flash_after(posted, add_cut(posted, name="alt", revision="2"))
+    set_post(posted, cut="alt", url="https://tiktok.test/v/2")
+    submit(posted, f"{DELIVERY}/posts/tiktok/main/remove", {"revision": "4"})
+    page = posted.get(DELIVERY).text
+    assert "https://tiktok.test/v/2" in page and "https://tiktok.test/v/1" not in page
+
+
+def test_delivery_remove_post_with_cut_that_is_no_name_is_not_found(posted: TestClient) -> None:
+    response = submit(posted, f"{DELIVERY}/posts/tiktok/Not_A_Cut/remove", {"revision": "2"})
+    assert response.status_code == 404
 
 
 def test_delivery_page_in_portuguese_is_translated(with_cut: TestClient) -> None:
