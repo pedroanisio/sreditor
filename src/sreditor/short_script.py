@@ -174,6 +174,8 @@ class Block(BaseModel):
     impact: Impact | None = None
     # A character of the channel's library; None is the episode's narrator voice.
     speaker: UUID | None = None
+    # A place of the channel's library the block plays in; None leaves it unstaged.
+    place: UUID | None = None
     beats: list[Beat] = Field(default_factory=list, max_length=MAX_BEATS)
 
     @model_validator(mode="after")

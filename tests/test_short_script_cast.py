@@ -115,6 +115,24 @@ def test_short_script_unknown_speaker_names_field_and_tool(owner: TestClient) ->
     assert problem["errors"][0]["location"] == ["body", "blocks", 0, "speaker"]
 
 
+def test_short_script_place_from_library_is_saved(owner: TestClient) -> None:
+    salon = added(owner, "locations", "Salon")
+    response = owner.put(SHORT_SCRIPT, json=script(place=salon))
+    assert response.status_code == 200 and response.json()["blocks"][0]["place"] == salon
+
+
+def test_short_script_unknown_place_names_field_and_tool(owner: TestClient) -> None:
+    response = owner.put(SHORT_SCRIPT, json=script(place=str(uuid4())))
+    problem = response.json()
+    assert response.status_code == 422 and "kind location" in problem["detail"]
+    assert problem["errors"][0]["location"] == ["body", "blocks", 0, "place"]
+
+
+def test_short_script_character_as_place_is_refused(owner: TestClient) -> None:
+    rex = added(owner, "characters", "Rex")
+    assert owner.put(SHORT_SCRIPT, json=script(place=rex)).status_code == 422
+
+
 def test_short_script_location_as_speaker_is_refused(owner: TestClient) -> None:
     kitchen = added(owner, "locations", "Kitchen")
     assert owner.put(SHORT_SCRIPT, json=script(speaker=kitchen)).status_code == 422

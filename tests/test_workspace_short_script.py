@@ -221,6 +221,17 @@ def test_short_script_save_stores_beats_and_drops_blank_row(owner: TestClient, r
     assert beats[0]["wear"] == ["glasses", "sweat"]
 
 
+def test_short_script_save_untouched_page_keeps_block_place(owner: TestClient) -> None:
+    salon = owner.post("/channels/funny-memes/locations", json={"name": "Salon"}).json()["id"]
+    block = {"start_s": 0, "end_s": 2, "function": "hook", "speech": "Oi.", "place": salon}
+    api = "/channels/funny-memes/episodes/1/short-script"
+    assert owner.put(api, json={"duration_s": 2, "blocks": [block]}).status_code == 200
+    page = owner.get(SHORT_SCRIPT).text
+    assert f'<option value="{salon}" selected' in page
+    flash_after(owner, submit(owner, SHORT_SCRIPT, page_fields(page)))
+    assert owner.get(api).json()["blocks"][0]["place"] == salon
+
+
 def test_short_script_save_untouched_page_keeps_speaker_and_beats(
     owner: TestClient, rex: str
 ) -> None:

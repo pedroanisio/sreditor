@@ -313,6 +313,41 @@ def test_export_poses_show_the_toon_each_beat_draws(
 
 
 @pytest.mark.skipif(not HAS_FFMPEG, reason="needs ffmpeg to turn takes into WAV")
+def test_export_staging_names_each_takes_set_and_each_props_rig(
+    owner: TestClient,
+    rex: str,
+    toon_style: None,
+    voice: Callable[..., FakeTransport],
+    take_audio: bytes,
+) -> None:
+    salon = str(created(owner, f"{CHANNEL}/locations", {"name": "Salon"})["id"])
+    place = {"kind": "location", "world": "okayville", "rig": "toon-planetarium-salon"}
+    saved(owner, f"{CHANNEL}/locations/{salon}/srstudio", {"slug": "salon", "sheet": place})
+    laptop = str(created(owner, f"{CHANNEL}/props", {"name": "Laptop"})["id"])
+    prop = {"kind": "prop", "rig": "laptop"}
+    saved(owner, f"{CHANNEL}/props/{laptop}/srstudio", {"slug": "laptop", "sheet": prop})
+    body = script(rex)
+    body["blocks"][1]["place"] = salon
+    body["blocks"][1]["beats"][1]["prop"] = "laptop"
+    saved(owner, f"{EPISODE}/short-script", body)
+    voice(spoken("Oi.", take_audio), spoken("[sighs] Tchau [pause] AGORA.", take_audio), ok(VOICES))
+    assert owner.post(f"{EPISODE}/voice-over-takes").status_code == 201
+    archive = zipfile.ZipFile(io.BytesIO(owner.get(ZIP).content))
+    assert json.loads(archive.read("assets/staging.json")) == {
+        "sets": {"02": "toon-planetarium-salon"},
+        "props": {"laptop": "laptop"},
+    }
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="needs ffmpeg to turn takes into WAV")
+def test_export_without_places_or_prop_rigs_writes_no_staging(
+    owner: TestClient, voiced: FakeTransport
+) -> None:
+    archive = zipfile.ZipFile(io.BytesIO(owner.get(ZIP).content))
+    assert "assets/staging.json" not in archive.namelist()
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="needs ffmpeg to turn takes into WAV")
 def test_export_style_json_carries_the_visual_style_as_data(
     owner: TestClient, voiced: FakeTransport
 ) -> None:

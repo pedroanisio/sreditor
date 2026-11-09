@@ -38,7 +38,7 @@
     {% for row in blocks %}
     {% set index = loop.index0 %}
     {% set prefix = "block-" ~ index ~ "-" %}
-    {% set details_errors = errors.get(prefix ~ "reaction") or errors.get(prefix ~ "intensity") or errors.get(prefix ~ "note") %}
+    {% set details_errors = errors.get(prefix ~ "reaction") or errors.get(prefix ~ "intensity") or errors.get(prefix ~ "note") or errors.get(prefix ~ "place") %}
     {% call ui.script_row(row.range, id="block-" ~ index, state="is-new" if row.is_new else "") %}
       <div class="script-main">
         <div class="script-chips">
@@ -57,6 +57,7 @@
         <div class="wide">{{ ui.textarea(prefix ~ "note", _("What should click for the viewer"), errors, value=row.note, rows=2) }}</div>
         {{ ui.select(prefix ~ "reaction", _("Expected reaction"), reaction_options, errors, value=row.reaction) }}
         {{ ui.select(prefix ~ "intensity", _("Intensity"), intensity_options, errors, value=row.intensity) }}
+        {{ ui.select(prefix ~ "place", _("Place"), place_options, errors, value=row.place or "") }}
       {% endcall %}
       {% if beat_characters | length > 1 %}
       {% set beats = beat_rows[index] %}

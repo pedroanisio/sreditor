@@ -75,6 +75,10 @@ NO_CHARACTER = (
     "No character with id %(id)s in this channel's library; list_library with kind character"
     " gives the valid entry ids."
 )
+NO_PLACE = (
+    "No place with id %(id)s in this channel's library; list_library with kind location"
+    " gives the valid entry ids."
+)
 NO_PROP = (
     "No prop with slug %(slug)s in this channel's library; list_library with kind prop"
     " lists the props, and each one's srstudio sheet holds its slug."
@@ -144,13 +148,27 @@ def prop_slugs(app: Services, channel: str) -> set[str]:
     return {sheet.slug for sheet in sheets.values()}
 
 
-def has_character(app: Services, channel: str, entry_id: UUID) -> bool:
-    """Whether the channel's library holds this character."""
+def has_entry(app: Services, channel: str, kind: LibraryKind, entry_id: UUID) -> bool:
+    """Whether the channel's library holds this entry of this kind."""
     try:
-        app.library.get(channel, LibraryKind.CHARACTER, entry_id)
+        app.library.get(channel, kind, entry_id)
     except EntryNotFound:
         return False
     return True
+
+
+def has_character(app: Services, channel: str, entry_id: UUID) -> bool:
+    """Whether the channel's library holds this character."""
+    return has_entry(app, channel, LibraryKind.CHARACTER, entry_id)
+
+
+def place_references(blocks: list[Block]) -> list[tuple[tuple[str | int, ...], UUID]]:
+    """Every place a script's blocks play in, with where it is named."""
+    return [
+        (("blocks", index, "place"), block.place)
+        for index, block in enumerate(blocks)
+        if block.place is not None
+    ]
 
 
 def cast_references(blocks: list[Block]) -> list[tuple[tuple[str | int, ...], UUID]]:
@@ -165,11 +183,14 @@ def cast_references(blocks: list[Block]) -> list[tuple[tuple[str | int, ...], UU
 
 
 def check_cast(app: Services, channel: str, blocks: list[Block]) -> None:
-    """Refuse a speaker, beat character or prop the channel's library does not hold."""
+    """Refuse a speaker, beat character, place or prop the channel's library does not hold."""
     known: dict[UUID, bool] = {}
     for location, entry_id in cast_references(blocks):
         if not known.setdefault(entry_id, has_character(app, channel, entry_id)):
             raise NotInLibrary(location, NO_CHARACTER % {"id": entry_id})
+    for location, entry_id in place_references(blocks):
+        if not has_entry(app, channel, LibraryKind.LOCATION, entry_id):
+            raise NotInLibrary(location, NO_PLACE % {"id": entry_id})
     props = [
         (("blocks", index, "beats", beat_index, "prop"), beat.prop)
         for index, block in enumerate(blocks)

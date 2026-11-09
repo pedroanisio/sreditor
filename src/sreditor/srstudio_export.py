@@ -28,14 +28,20 @@ from sreditor.library import LibraryEntry, LibraryKind
 from sreditor.members import Permission
 from sreditor.short_script import ShortScript
 from sreditor.short_script_operations import ScriptNotReady, block_plans
-from sreditor.srstudio import CharacterSheet, EntrySheet, PlaceSheet, StyleSheet
+from sreditor.srstudio import CharacterSheet, EntrySheet, PlaceSheet, PropSheet, StyleSheet
 from sreditor.srstudio_bible import BibleSource, cast_document, relationships_document
 from sreditor.srstudio_locks import lock_exported_slugs
-from sreditor.srstudio_operations import all_entries, cast_references, published_numbers
+from sreditor.srstudio_operations import (
+    all_entries,
+    cast_references,
+    place_references,
+    published_numbers,
+)
 from sreditor.srstudio_timeline import (
     TimedBlock,
     events_document,
     poses_document,
+    take_id,
     timeline_document,
     wav_take,
 )
@@ -198,9 +204,8 @@ def episode_entries(app: Services, channel: str, number: int, script: ShortScrip
         *app.library.named(channel, LibraryKind.CHARACTER, screenplay.characters).values(),
         *app.library.named(channel, LibraryKind.LOCATION, screenplay.locations).values(),
     ]
-    return {entry_id for _, entry_id in cast_references(script.blocks)} | {
-        entry.id for entry in named
-    }
+    referenced = [*cast_references(script.blocks), *place_references(script.blocks)]
+    return {entry_id for _, entry_id in referenced} | {entry.id for entry in named}
 
 
 def kept_entries(
@@ -437,7 +442,42 @@ def bundle(app: Services, access: ChannelAccess, number: int, folder: Path) -> B
         cast = toon_cast(gathered.script, library)[0]
         documents["assets/poses.json"] = poses_document(timed, cast, timeline["duration"])
         documents["assets/events.json"] = events_document(timed)
+    staging = staging_document(app, channel, timed, library)
+    if staging["sets"] or staging["props"]:
+        documents["assets/staging.json"] = staging
     return Bundle(documents=documents, timed=timed)
+
+
+def prop_rigs(app: Services, channel: str, used: set[str]) -> dict[str, str]:
+    """The catalogue prop that draws each prop slug the beats use, for those that name one."""
+    sheets = app.srstudio.sheets(all_entries(app, channel, LibraryKind.PROP)).values()
+    return {
+        stored.slug: stored.sheet.rig
+        for stored in sheets
+        if stored.slug in used and isinstance(stored.sheet, PropSheet) and stored.sheet.rig
+    }
+
+
+def staging_document(
+    app: Services, channel: str, timed: list[TimedBlock], library: Library
+) -> dict[str, dict[str, str]]:
+    """assets/staging.json: the catalogue set each take plays in and the catalogue prop of each prop slug.
+
+    The bible keeps a place's story, not its drawing, so the sets a scene needs travel here; a take
+    whose block names no place, or a place with no rig, is left for srstudio's default staging.
+    """
+    place_rigs = {
+        entry.id: stored.sheet.rig
+        for entry, stored in library.places
+        if isinstance(stored.sheet, PlaceSheet) and stored.sheet.rig
+    }
+    sets = {
+        take_id(block): place_rigs[block.block.place]
+        for block in timed
+        if block.block.place in place_rigs
+    }
+    used = {beat.prop for block in timed for beat in block.block.beats if beat.prop}
+    return {"sets": sets, "props": prop_rigs(app, channel, used) if used else {}}
 
 
 def write_zip(found: Bundle, target: Path) -> Path:
