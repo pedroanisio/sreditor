@@ -33,6 +33,7 @@ from sreditor.srstudio_export import (
     NOT_TOON,
     STALE_TAKE,
     TAKE_GONE,
+    UNKNOWN_RIG,
     UNPUBLISHED,
 )
 
@@ -264,6 +265,7 @@ SRSTUDIO_KINDS: dict[str, Kind] = {
     NO_WORLD: blocker("srstudio_no_world", SRSTUDIO_SHEET),
     NO_KIND: blocker("srstudio_no_kind", SRSTUDIO_SHEET),
     NOT_TOON: blocker("srstudio_not_toon", SRSTUDIO_SHEET),
+    UNKNOWN_RIG: blocker("srstudio_unknown_rig", SRSTUDIO_SHEET),
     UNPUBLISHED: blocker("srstudio_unpublished_fact", SRSTUDIO_SHEET),
     NO_STYLE: blocker(
         "srstudio_no_style",

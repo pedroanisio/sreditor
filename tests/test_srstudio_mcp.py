@@ -170,6 +170,11 @@ def test_save_library_sheet_unpublished_fact_names_list_episodes(mcp: TestClient
     assert done["isError"] and "list_episodes" in text_of(done)
 
 
+def test_save_library_sheet_unknown_toon_rig_lists_the_toon_rigs(mcp: TestClient, rex: str) -> None:
+    done = save_sheet(mcp, rex, sheet={"slug": "rex", "sheet": {**DOG, "rig": "toon-host"}})
+    assert done["isError"] and "toon-dog" in text_of(done) and "toon-host" in text_of(done)
+
+
 def test_save_library_sheet_kind_of_another_entry_names_list_library(
     mcp: TestClient, rex: str
 ) -> None:

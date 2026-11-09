@@ -32,6 +32,7 @@ from sreditor.srstudio import (
     RelationshipInput,
     SheetInput,
 )
+from sreditor.srstudio_vocabulary import is_unknown_toon_rig, toon_rigs
 
 SHEET_WRITE = "_sheet.write"  # character_sheet.write: stmt operations are resource.verb
 SLUG_WRITE = "episode_slug.write"
@@ -55,6 +56,20 @@ class NotInLibrary(ValueError):
         super().__init__(detail)
         self.location = location
 
+
+class UnknownToonRig(ValueError):
+    """A character's rig claims srstudio's toon cast (toon-...) but names no one in it."""
+
+    def __init__(self, rig: str) -> None:
+        super().__init__(
+            f"The rig {rig} is not in srstudio's toon cast, so nothing would draw it; use one of "
+            f"{', '.join(toon_rigs())}, a rig outside the toon cast, or none"
+        )
+        self.rig = rig
+
+
+# Where an unknown rig sits in the body save_sheet takes: SheetInput.sheet.rig.
+RIG_LOCATION = ("sheet", "sheet", "rig")
 
 NO_CHARACTER = (
     "No character with id %(id)s in this channel's library; list_library with kind character"
@@ -105,6 +120,12 @@ def check_facts(app: Services, channel: str, facts: list[Fact]) -> None:
     for fact in facts:
         if fact.episode not in published:
             raise FactNotPublished(fact.episode)
+
+
+def check_rig(data: SheetInput) -> None:
+    """Refuse a character whose toon rig srstudio cannot draw (rule project.srstudio.bible)."""
+    if isinstance(data.sheet, CharacterSheet) and is_unknown_toon_rig(data.sheet.rig):
+        raise UnknownToonRig(data.sheet.rig)
 
 
 def all_entries(app: Services, channel: str, kind: LibraryKind) -> list[LibraryEntry]:
@@ -184,6 +205,7 @@ def save_sheet(
     access.require(Permission.WRITE_CONTENT)
     entry = app.library.get(access.channel.slug, change.kind, change.entry_id)
     check_facts(app, entry.channel, sheet_facts(data))
+    check_rig(data)
     return gated(
         app,
         access,

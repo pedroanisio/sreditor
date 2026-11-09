@@ -43,6 +43,7 @@ from sreditor.srstudio_operations import (
     FactNotPublished,
     LibrarySheet,
     RelationshipChange,
+    UnknownToonRig,
 )
 
 RELATIONSHIP_KIND = "relationship"
@@ -84,6 +85,8 @@ def srstudio_error_message(error: Exception, slug_field: str) -> str | None:
             f"{error}. Cite only published episodes (list_episodes shows each status), or "
             "leave that fact out"
         )
+    if isinstance(error, UnknownToonRig):
+        return f"{error}. Fix sheet.sheet.rig and call save_library_sheet again"
     if isinstance(error, RelationshipNotFound):
         return f"Relationship {error} not found; call list_relationships for the relationship ids"
     if isinstance(error, SameCharacter):
@@ -99,6 +102,7 @@ SRSTUDIO_REFUSALS = (
     SlugLocked,
     SheetMismatch,
     FactNotPublished,
+    UnknownToonRig,
     RelationshipNotFound,
     SameCharacter,
 )

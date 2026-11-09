@@ -21,6 +21,7 @@ from sreditor.srstudio_export import (
     NO_STYLE,
     NO_WORLD,
     NOT_TOON,
+    UNKNOWN_RIG,
     UNPUBLISHED,
     Missing,
     missing_pieces,
@@ -50,7 +51,7 @@ SLUG_TAKEN = N_("Another episode of this channel already uses this slug.")
 SLUG_LOCKED = N_("srstudio already knows this episode by its slug, so it can no longer change.")
 SLUG_CHANGED = N_("Someone changed the slug or seed after you opened the page. Reload the page.")
 # Where each missing piece is fixed; anything about the script or its takes is fixed there.
-LIBRARY_FIXES = frozenset({NO_WORLD, NO_KIND, NOT_TOON, UNPUBLISHED})
+LIBRARY_FIXES = frozenset({NO_WORLD, NO_KIND, NOT_TOON, UNKNOWN_RIG, UNPUBLISHED})
 SHORT_SCRIPT_SUFFIX = "/short-script"
 MEDIA_SUFFIX = "/media"
 LIBRARY_SUFFIX = "/library"

@@ -34,7 +34,13 @@ from sreditor.srstudio import (
     SlugTaken,
 )
 from sreditor.srstudio_export import SrstudioNotReady, srstudio_zip
-from sreditor.srstudio_operations import FactNotPublished, NotInLibrary, RelationshipChange
+from sreditor.srstudio_operations import (
+    RIG_LOCATION,
+    FactNotPublished,
+    NotInLibrary,
+    RelationshipChange,
+    UnknownToonRig,
+)
 
 router = APIRouter(tags=["srstudio"])
 
@@ -274,6 +280,17 @@ def install_srstudio_error_handlers(app: FastAPI) -> None:
             errors=[
                 {"location": ["body", *missing.location], "message": str(missing), "type": kind}
             ],
+        )
+
+    @app.exception_handler(UnknownToonRig)
+    async def unknown_toon_rig(request: Request, unknown: UnknownToonRig) -> JSONResponse:
+        kind = "unknown-rig"
+        return problem_response(
+            request,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            str(unknown),
+            problem_type(kind),
+            errors=[{"location": ["body", *RIG_LOCATION], "message": str(unknown), "type": kind}],
         )
 
     @app.exception_handler(SrstudioNotReady)

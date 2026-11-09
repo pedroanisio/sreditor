@@ -43,6 +43,7 @@ from sreditor.worker_engine import (
     WorkerSettings,
     build_arguments,
     gpu_held,
+    opened_lock,
     run_command,
     worker_settings,
 )
@@ -454,6 +455,20 @@ def test_gpu_held_while_taken_elsewhere_waits_until_canceled(tmp_path: Path) -> 
         fcntl.flock(other, fcntl.LOCK_EX)
         with pytest.raises(Canceled), gpu_held(lock, stop):
             pass
+
+
+def test_opened_lock_existing_file_opens_without_creating(tmp_path: Path) -> None:
+    lock = tmp_path / "gpu.lock"
+    lock.touch()
+    with opened_lock(lock) as opened:
+        assert opened.mode == "r+"
+
+
+def test_opened_lock_missing_file_creates_it(tmp_path: Path) -> None:
+    lock = tmp_path / "gpu.lock"
+    with opened_lock(lock):
+        pass
+    assert lock.exists()
 
 
 def unreachable(request: httpx.Request) -> httpx.Response:

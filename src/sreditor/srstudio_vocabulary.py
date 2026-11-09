@@ -255,3 +255,13 @@ def toon_character(rig: str) -> str | None:
     """The toon cast name a rig draws (toon-dog draws dog), or None when the rig is not a toon character."""
     name = rig.removeprefix(TOON_RIG_PREFIX)
     return name if rig.startswith(TOON_RIG_PREFIX) and name in TOON_CHARACTERS else None
+
+
+def is_unknown_toon_rig(rig: str) -> bool:
+    """Whether a rig claims srstudio's toon cast (toon-...) but names no one in it, so nothing draws it."""
+    return rig.startswith(TOON_RIG_PREFIX) and toon_character(rig) is None
+
+
+def toon_rigs() -> list[str]:
+    """Every toon rig srstudio draws, sorted, for a message that lists the valid ones."""
+    return sorted(TOON_RIG_PREFIX + name for name in TOON_CHARACTERS)

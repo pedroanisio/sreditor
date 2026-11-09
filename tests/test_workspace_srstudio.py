@@ -137,6 +137,11 @@ def test_srstudio_sheet_fact_citing_unpublished_episode_is_refused(
     assert response.status_code == 422 and "published episode" in response.text
 
 
+def test_srstudio_sheet_unknown_toon_rig_is_refused(owner: TestClient, rex: str) -> None:
+    response = submit(owner, rex, character_form(rig="toon-host"))
+    assert response.status_code == 422 and "not in srstudio&#39;s cast" in response.text
+
+
 def test_srstudio_sheet_style_saves_palette(owner: TestClient) -> None:
     style = first_entry(owner, "styles", "Flat")
     form = {
