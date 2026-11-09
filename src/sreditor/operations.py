@@ -6,6 +6,8 @@ succeed (rule agentic.gate), and record the token as their author (rule agentic.
 
 from __future__ import annotations
 
+import logging
+import sqlite3
 from collections.abc import Callable
 from typing import Any
 from uuid import uuid4
@@ -33,6 +35,8 @@ from sreditor.search import SearchHit
 from sreditor.store import Owner
 from sreditor.tokens import ApiToken, NewToken, Scope, TokenInput
 from sreditor.users import User
+
+logger = logging.getLogger(__name__)
 
 ALLOW = "ALLOW"
 TOKEN_OWNER = "token"
@@ -115,17 +119,24 @@ def gate_context(access: ChannelAccess) -> dict[str, Any]:
 
 
 def record_change(app: Services, access: ChannelAccess, operation: str) -> None:
-    """Add the write to the channel's change feed: what and who, never what was written."""
+    """Add the write to the channel's change feed: what and who, never what was written.
+
+    A failure to record is logged, never raised, since the write itself already succeeded.
+    """
     owner = owner_of(access.user, access.token)
-    app.events.record(
-        NewEvent(
-            channel=access.channel.slug,
-            operation=operation,
-            episode_number=access.episode_number,
-            actor=EventActor(type=ActorType(owner.type), id=owner.id),
-        )
+    new = NewEvent(
+        channel=access.channel.slug,
+        operation=operation,
+        episode_number=access.episode_number,
+        actor=EventActor(type=ActorType(owner.type), id=owner.id),
     )
     access.episode_number = None
+    try:
+        app.events.record(new)
+    except sqlite3.Error:
+        # The write is already committed: answering 500 would make an agent retry and write twice,
+        # so a lost feed entry is logged instead (the feed is a convenience, the write is the record).
+        logger.exception("change feed: could not record %s on %s", operation, new.channel)
 
 
 def require_account(channel: Channel, platform: Platform | None) -> None:

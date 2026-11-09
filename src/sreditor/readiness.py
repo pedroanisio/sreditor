@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sreditor.delivery import WARNING_MESSAGES as DELIVERY_MESSAGES
 from sreditor.delivery import DeliveryWarningKind
 from sreditor.episode_facts import EpisodeFacts
+from sreditor.episodes import EpisodeStatus
 from sreditor.external_media import Problem
 from sreditor.i18n import N_
 from sreditor.members import Permission
@@ -309,11 +310,21 @@ def short_script_items(facts: EpisodeFacts) -> list[ReadinessItem]:
 
 
 def export_items(facts: EpisodeFacts) -> list[ReadinessItem]:
-    """What the srstudio export lacks, which is also what request_render refuses for."""
-    return [
+    """What the srstudio export lacks, which is also what request_render refuses for.
+
+    Before production these gaps are expected, so they only warn; from production on they block.
+    """
+    found = [
         item(SRSTUDIO_KINDS.get(missing.message, SRSTUDIO_OTHER), missing.message, missing.values)
         for missing in facts.export_gaps
     ]
+    if facts.episode.episode.status in BLOCKING_STATUSES:
+        return found
+    return [gap.model_copy(update={"severity": Severity.WARNING}) for gap in found]
+
+
+# Statuses from which a gap in the srstudio export holds the episode back.
+BLOCKING_STATUSES = frozenset({EpisodeStatus.PRODUCTION, EpisodeStatus.PUBLISHED})
 
 
 @dataclass(frozen=True)

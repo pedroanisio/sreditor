@@ -88,6 +88,12 @@ def load_every_source(owner: TestClient) -> None:
     assert owner.put(f"{EPISODE}/delivery", json=package).status_code == 200
     assert owner.put(f"{EPISODE}/short-script", json=NO_HOOK_SCRIPT).status_code == 200
     assert owner.put(f"{EPISODE}/screenplay", json={"text": SCREENPLAY}).status_code == 200
+    in_production(owner)
+
+
+def in_production(owner: TestClient) -> None:
+    body = {"title": "Pilot", "summary": "", "status": "production"}
+    assert owner.put(EPISODE, json=body).status_code == 200
 
 
 # The sections
@@ -177,6 +183,17 @@ def test_readiness_items_name_area_severity_and_fix(owner: TestClient) -> None:
     assert gaps["srstudio_no_style"]["fix_tool"] == "set_episode_style"
     assert gaps["delivery_no_link"]["fix_tool"] == "record_post"
     assert all(gap["fix_hint"] and gap["message"] for gap in gaps.values())
+
+
+def test_readiness_srstudio_gap_before_production_only_warns(owner: TestClient) -> None:
+    gaps = {gap["code"]: gap for gap in overview(owner)["readiness"]["items"]}
+    assert gaps["srstudio_no_style"]["severity"] == "warning"
+
+
+def test_readiness_srstudio_gap_in_production_blocks(owner: TestClient) -> None:
+    in_production(owner)
+    gaps = {gap["code"]: gap for gap in overview(owner)["readiness"]["items"]}
+    assert gaps["srstudio_no_style"]["severity"] == "blocker"
 
 
 def test_readiness_lists_blockers_before_warnings(owner: TestClient) -> None:
@@ -275,7 +292,7 @@ def test_channel_readiness_counts_match_the_episode_overview(owner: TestClient) 
         report["blockers"],
         report["warnings"],
         "Pilot",
-        "idea",
+        "production",
     )
 
 
@@ -332,7 +349,7 @@ def test_mcp_list_episodes_with_readiness_counts_each_episode(
         {
             "number": 1,
             "title": "Pilot",
-            "status": "idea",
+            "status": "production",
             "blockers": expected["blockers"],
             "warnings": expected["warnings"],
         }
@@ -357,12 +374,14 @@ def pages(app: FastAPI, mailer: RecordingMailer) -> TestClient:
 
 
 def test_episode_page_lists_gaps_with_links_to_the_pages_that_fix_them(pages: TestClient) -> None:
+    in_production(pages)
     page = pages.get(PAGE).text
     assert 'id="readiness"' in page and "Blocks export and render" in page
     assert f'href="{PAGE}/srstudio"' in page
 
 
 def test_episode_page_portuguese_translates_the_readiness_list(pages: TestClient) -> None:
+    in_production(pages)
     page = pages.get(f"{PAGE}?lang=pt-BR").text
     assert "Prontidão" in page and "Bloqueia a exportação e a renderização" in page
 

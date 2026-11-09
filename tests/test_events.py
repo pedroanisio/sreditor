@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Callable, Iterator
 from typing import Any
 
@@ -111,6 +112,19 @@ def test_events_failed_write_records_nothing(owner: TestClient) -> None:
     before = len(feed(owner)["items"])
     assert owner.put(f"{CHANNEL}/episodes/99/screenplay", json={"text": "x"}).status_code == 404
     assert len(feed(owner)["items"]) == before
+
+
+def test_events_record_failure_keeps_the_committed_write(
+    app: FastAPI, owner: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    services: Services = app.state.services
+
+    def broken(_new: object) -> None:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(services.events, "record", broken)
+    write_screenplay(owner, "Kept even when the feed fails.")
+    assert owner.get(f"{EPISODE}/screenplay").json()["text"] == "Kept even when the feed fails."
 
 
 def test_events_gate_refused_write_records_nothing(app: FastAPI, owner: TestClient) -> None:
