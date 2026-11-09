@@ -286,7 +286,7 @@ def test_export_zip_holds_timeline_audio_bible_and_beats_but_no_waiver(
     assert second["start"] == first["duration"] and second["actor"] == "rex"
     assert second["text"] == "Tchau agora." and [word["text"] for word in second["words"]] == [
         "Tchau",
-        "AGORA",
+        "AGORA.",
     ]
 
 
@@ -344,6 +344,21 @@ def test_export_style_json_without_structured_data_holds_nulls(
     document = json.loads(archive.read("style.json"))
     assert document["style"] == "toon" and document["fonts"] is None
     assert document["safe_zone"] is None and document["min_text_px"] is None
+
+
+def test_punctuated_words_carry_the_marks_around_them_in_the_line() -> None:
+    words = ["Em", "1969", "a", "Apollo", "11", "deixou", "lá", "A", "gente"]
+    line = "Em 1969, a Apollo 11 deixou lá. A gente"
+    assert srstudio_timeline.punctuated_words(words, line) == [
+        "Em", "1969,", "a", "Apollo", "11", "deixou", "lá.", "A", "gente",
+    ]  # fmt: skip
+
+
+def test_punctuated_words_keeps_word_case_and_leaves_unmatched_bare() -> None:
+    assert srstudio_timeline.punctuated_words(["um", "dois"], "«Um», disse ele.") == [
+        "«um»,",
+        "dois",
+    ]
 
 
 def test_direction_keeps_known_tags_and_moves_others_to_quality() -> None:
