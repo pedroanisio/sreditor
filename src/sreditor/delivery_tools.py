@@ -119,9 +119,11 @@ def add_package_tools(server: MCPServer, services: Services) -> None:
     @server.tool(annotations=tool_annotations("Read a delivery package", Effect.READ))
     def get_delivery(context: Context, slug: str, number: int) -> Delivery:
         """Read an episode's delivery package: its cuts (final video, cover, caption, alt text,
-        hashtags) and the post on each platform account (cut, link, publish time), plus
+        hashtags) and the post on each platform account (cut, link, publish time, and its own
+        caption, alt_text and hashtags, which replace the cut's when not empty), plus
         `warnings` for a cut without a video, a video over the length limit (24 s by default),
-        more than 5 hashtags, a caption with no AI notice line, and a post without a link. They
+        more than 5 hashtags, a caption with no AI notice line, a post without a link and a post
+        whose text, its own or its cut's, has no AI notice or more than 5 hashtags. They
         never block a status. Revision 0 means nobody wrote it yet. For the files themselves use list_media."""
         return delivery_reported(
             lambda: deliveries.get_delivery(
@@ -146,7 +148,10 @@ def add_package_tools(server: MCPServer, services: Services) -> None:
         opens the location; give one of the two, not both), `cover_id` (an image of kind cover),
         caption and alt_text up to 1000 characters and hashtags (typed with or without #).
         A post names a platform the channel has an account on and a cut of the same package,
-        with the post's link and publish time. To add only a link, use record_post. Pass
+        with the post's link and publish time and, optionally, its own `caption`, `alt_text`
+        and `hashtags` (plain text; at most 5 hashtags; the caption must match the channel's
+        AI notice pattern): the call is refused naming the field otherwise. A post with none
+        of its own text goes out with its cut's. To add only a link, use record_post. Pass
         `revision` from get_delivery as `expected_revision` (0 when empty)."""
         return delivery_reported(
             lambda: deliveries.write_delivery(
@@ -166,8 +171,11 @@ def add_package_tools(server: MCPServer, services: Services) -> None:
         post: PlatformPost,
         idempotency_key: IdempotencyKey = None,
     ) -> Annotated[CallToolResult, Delivery]:
-        """Set the post on one platform account: which cut went there, its link and when it went
-        live. Use it after publishing; it keeps the cuts and the other posts. The cut must
+        """Set the post on one platform account: which cut went there, its link, when it went
+        live and, optionally, its own `caption` (must carry the AI notice), `alt_text` and
+        `hashtags` (at most 5), refused naming the field otherwise. A text you leave out keeps
+        the earlier post's; an empty one goes back to the cut's. Use it after publishing; it
+        keeps the cuts and the other posts. The cut must
         already be in the package (write_delivery) and the channel must have an account on the
         platform. Needs content:write. A retry with the same `idempotency_key` returns the
         first result."""

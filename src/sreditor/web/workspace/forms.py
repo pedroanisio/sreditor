@@ -248,11 +248,14 @@ class CutFields(SubmittedFields):
 
 
 class PostFields(SubmittedFields):
-    """A post on one platform account: the cut, the link and when it went live."""
+    """A post on one platform account: the cut, the link, when it went live and its own text."""
 
     cut: str = ""
     url: str = ""
     published_at: str = ""
+    caption: str = ""
+    alt_text: str = ""
+    hashtags: str = ""
     revision: str = ""
 
 

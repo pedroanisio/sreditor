@@ -7,29 +7,38 @@ package only warn (they never block a status), so the warnings are computed on e
 
 from __future__ import annotations
 
+import re
+from collections.abc import Mapping
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, HttpUrl, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, ValidationError
 
 from sreditor.channels import Platform
 from sreditor.delivery import (
+    MAX_POST_HASHTAGS,
     VIDEO_FAMILY,
+    AltText,
+    Caption,
     Cut,
     CutName,
     Delivery,
     DeliveryInput,
+    Hashtag,
     Post,
     warnings_of,
 )
 from sreditor.deps import ChannelAccess, Services
 from sreditor.episode_operations import episode_access
+from sreditor.i18n import N_
 from sreditor.media import MediaFile
 from sreditor.media_operations import measured
 from sreditor.members import Permission
 from sreditor.operations import gated
+from sreditor.settings import DeliveryRules
 
 IMAGE_FAMILY = "image"
 VALUE_ERROR_PREFIX = "Value error, "
+POST_FIELD_DEPTH = 2  # skips "posts" and the index in a refusal's location
 
 
 class DeliveryOperation:
@@ -42,19 +51,46 @@ class DeliveryOperation:
 class DeliveryRefused(ValueError):
     """A package that names something the episode or channel does not have, or breaks a rule."""
 
-    def __init__(self, location: tuple[str | int, ...], detail: str) -> None:
+    def __init__(
+        self,
+        location: tuple[str | int, ...],
+        detail: str,
+        values: Mapping[str, str] | None = None,
+    ) -> None:
         super().__init__(detail)
         self.location = location
+        # What the message names, so pages can translate it with the same numbers or patterns.
+        self.values = dict(values or {})
 
 
 class PostInput(BaseModel):
-    """What one post says: the cut, the link and when it went live."""
+    """What one post says: the cut, the link, when it went live and its own text.
+
+    A text field left out keeps what the platform's earlier post had, so adding a link never
+    wipes the post's caption; an empty caption, alt text or list clears it back to the cut's.
+    """
 
     model_config = ConfigDict(frozen=True)
 
     cut: CutName
     url: HttpUrl | None = None
     published_at: datetime | None = None
+    caption: Caption | None = Field(
+        default=None,
+        description="The platform's own caption, which must carry the AI notice; empty uses the "
+        "cut's, left out keeps the earlier post's.",
+    )
+    alt_text: AltText | None = Field(
+        default=None,
+        description="The platform's own alt text; empty uses the cut's, left out keeps the "
+        "earlier post's.",
+    )
+    hashtags: list[Hashtag] | None = Field(
+        default=None,
+        max_length=MAX_POST_HASHTAGS,
+        description="The platform's own hashtags, at most 5; empty uses the cut's, left out "
+        "keeps the earlier post's.",
+    )
 
 
 NO_VIDEO = (
@@ -64,6 +100,10 @@ NO_VIDEO = (
 NO_COVER = (
     "%(id)s is not an image of this episode; upload one with the API's upload_media as kind cover,"
     " then pass its id from list_media with kind cover."
+)
+AI_NOTICE_REQUIRED = N_(
+    'The caption needs an AI notice, such as "Made with AI" or "Feito com IA"; it must match'
+    " the channel's pattern %(pattern)s."
 )
 NO_ACCOUNT = (
     "The channel has no %(platform)s account; get_channel lists its accounts, and"
@@ -117,6 +157,21 @@ def check_accounts(access: ChannelAccess, posts: list[Post]) -> None:
             )
 
 
+def check_post_texts(rules: DeliveryRules, posts: list[Post], stored: list[Post]) -> None:
+    """Refuse a post caption without the AI notice; one it already held is not checked again.
+
+    Skipping unchanged captions keeps a package editable after the channel's pattern changes.
+    """
+    if not rules.ai_notice_pattern:
+        return
+    held = {post.platform: post.caption for post in stored}
+    for index, post in enumerate(posts):
+        is_new = post.caption != held.get(post.platform)
+        if post.caption and is_new and not re.search(rules.ai_notice_pattern, post.caption):
+            values = {"pattern": rules.ai_notice_pattern}
+            raise DeliveryRefused(("posts", index, "caption"), AI_NOTICE_REQUIRED % values, values)
+
+
 def consistent(cuts: list[Cut], posts: list[Post]) -> DeliveryInput:
     """A package from cuts and posts; DeliveryRefused when they contradict each other."""
     try:
@@ -137,6 +192,7 @@ def write_delivery(
     slug = episode_access(app, access, number, Permission.WRITE_CONTENT)
     check_files(app, slug, number, data)
     check_accounts(access, data.posts)
+    check_post_texts(app.settings.delivery, data.posts, app.deliveries.delivery(slug, number).posts)
     written = gated(
         app,
         access,
@@ -170,6 +226,20 @@ def without_post(delivery: DeliveryInput, platform: Platform) -> DeliveryInput:
     return consistent(delivery.cuts, [p for p in delivery.posts if p.platform != platform])
 
 
+def merged_post(platform: Platform, post: PostInput, earlier: Post | None) -> Post:
+    """The post as recorded: text the input leaves out stays as the earlier post had it."""
+    held = earlier or Post(platform=platform, cut=post.cut)
+    return Post(
+        platform=platform,
+        cut=post.cut,
+        url=post.url,
+        published_at=post.published_at,
+        caption=held.caption if post.caption is None else post.caption,
+        alt_text=held.alt_text if post.alt_text is None else post.alt_text,
+        hashtags=held.hashtags if post.hashtags is None else post.hashtags,
+    )
+
+
 def record_post(
     app: Services,
     access: ChannelAccess,
@@ -180,9 +250,16 @@ def record_post(
     """Set the post of one platform account in the package, keeping the cuts and other posts."""
     slug = episode_access(app, access, number, Permission.WRITE_CONTENT)
     current = app.deliveries.delivery(slug, number)
-    chosen = Post(platform=platform, cut=post.cut, url=post.url, published_at=post.published_at)
+    earlier = next((other for other in current.posts if other.platform == platform), None)
+    chosen = merged_post(platform, post, earlier)
     changed = with_post(current, chosen)
     check_accounts(access, [chosen])
+    try:
+        check_post_texts(app.settings.delivery, [chosen], current.posts)
+    except DeliveryRefused as refused:
+        # The body of this call is one post, so the field is named without the list around it.
+        location = refused.location[POST_FIELD_DEPTH:]
+        raise DeliveryRefused(location, str(refused), refused.values) from refused
     written = gated(
         app,
         access,

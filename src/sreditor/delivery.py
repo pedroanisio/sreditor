@@ -3,7 +3,9 @@
 A cut is one version of the episode (main, vertical, teaser...) with its final video and cover,
 caption, alt text and hashtags; a post says which cut went to which platform account of the
 channel, with the post's link and publish time. The whole package is stored and revised on its
-own, with its own revision for the ETag. Missing pieces only warn, never block a status.
+own, with its own revision for the ETag. A post may carry its own text for its platform
+(caption, alt text, hashtags), refused when it has more than MAX_POST_HASHTAGS hashtags or no AI
+notice; a post without its own text uses its cut's. Missing pieces only warn, never block a status.
 """
 
 from __future__ import annotations
@@ -40,6 +42,7 @@ CUT_NAME_LENGTH = 40
 HASHTAG_LENGTH = 100
 MAX_CUTS = 10
 MAX_HASHTAGS = 30
+MAX_POST_HASHTAGS = 5  # a post's own text is refused above this, where a cut only warns
 HASHTAG_SIGIL = "#"
 VIDEO_FAMILY = "video"  # the media-type family of a cut's final video
 LOCATION_LENGTH = 500
@@ -87,6 +90,13 @@ class ExternalVideo(BaseModel):
     loudness_lufs: float | None = None
 
 
+def distinct_hashtags(hashtags: list[str]) -> None:
+    """Refuse the same hashtag twice, ignoring case, since platforms treat them as one."""
+    folded = [tag.casefold() for tag in hashtags]
+    if len(set(folded)) != len(folded):
+        raise ValueError(N_("Each hashtag may appear once, whatever its case"))
+
+
 class Cut(BaseModel):
     """One version of the episode, with the files and texts it is posted with."""
 
@@ -120,10 +130,8 @@ class Cut(BaseModel):
 
     @model_validator(mode="after")
     def has_distinct_hashtags(self) -> Self:
-        """Refuse the same hashtag twice, ignoring case, since platforms treat them as one."""
-        folded = [tag.casefold() for tag in self.hashtags]
-        if len(set(folded)) != len(folded):
-            raise ValueError(N_("Each hashtag may appear once, whatever its case"))
+        """Refuse the same hashtag twice, ignoring case."""
+        distinct_hashtags(self.hashtags)
         return self
 
 
@@ -136,6 +144,44 @@ class Post(BaseModel):
     cut: CutName = Field(description="The name of the cut that was posted.")
     url: HttpUrl | None = Field(default=None, description="The post's link, http or https.")
     published_at: Annotated[datetime, AfterValidator(in_utc)] | None = None
+    caption: Caption = Field(
+        default="",
+        description="This platform's own caption, which must carry the AI notice; empty uses "
+        "the cut's caption.",
+    )
+    alt_text: AltText = Field(
+        default="", description="This platform's own alt text; empty uses the cut's."
+    )
+    hashtags: list[Hashtag] = Field(
+        default_factory=list,
+        max_length=MAX_POST_HASHTAGS,
+        description="This platform's own hashtags, at most 5; empty uses the cut's.",
+    )
+
+    @model_validator(mode="after")
+    def has_distinct_hashtags(self) -> Self:
+        """Refuse the same hashtag twice, ignoring case."""
+        distinct_hashtags(self.hashtags)
+        return self
+
+
+class PostedText(BaseModel):
+    """The text that goes out on one platform: the post's own, field by field, else its cut's."""
+
+    model_config = ConfigDict(frozen=True)
+
+    caption: str
+    alt_text: str
+    hashtags: list[str]
+
+
+def posted_text(post: Post, cut: Cut) -> PostedText:
+    """What the post publishes; each field it leaves empty falls back to the cut's."""
+    return PostedText(
+        caption=post.caption or cut.caption,
+        alt_text=post.alt_text or cut.alt_text,
+        hashtags=post.hashtags or cut.hashtags,
+    )
 
 
 class DeliveryInput(BaseModel):
@@ -170,6 +216,8 @@ class DeliveryWarningKind(StrEnum):
     TOO_LONG = "too_long"
     TOO_MANY_HASHTAGS = "too_many_hashtags"
     NO_AI_NOTICE = "no_ai_notice"
+    POST_TOO_MANY_HASHTAGS = "post_too_many_hashtags"
+    POST_NO_AI_NOTICE = "post_no_ai_notice"
 
 
 WARNING_MESSAGES: dict[DeliveryWarningKind, str] = {
@@ -185,6 +233,12 @@ WARNING_MESSAGES: dict[DeliveryWarningKind, str] = {
         "The cut %(cut)s has %(count)s hashtags, over the limit of %(limit)s."
     ),
     DeliveryWarningKind.NO_AI_NOTICE: N_("The caption of the cut %(cut)s has no AI notice line."),
+    DeliveryWarningKind.POST_TOO_MANY_HASHTAGS: N_(
+        "The post on %(platform)s goes out with %(count)s hashtags, over the limit of %(limit)s."
+    ),
+    DeliveryWarningKind.POST_NO_AI_NOTICE: N_(
+        "The caption posted on %(platform)s has no AI notice line."
+    ),
 }
 
 
@@ -244,16 +298,35 @@ def cut_warnings(
     return found
 
 
+def post_warnings(post: Post, cut: Cut, rules: DeliveryRules) -> list[DeliveryWarning]:
+    """The gaps of one post: its link, and the text it goes out with, its own or its cut's."""
+    found: list[DeliveryWarning] = []
+    platform = post.platform.value
+    if post.url is None:
+        found.append(warning(DeliveryWarningKind.NO_LINK, platform=platform))
+    text = posted_text(post, cut)
+    if len(text.hashtags) > MAX_POST_HASHTAGS:
+        found.append(
+            warning(
+                DeliveryWarningKind.POST_TOO_MANY_HASHTAGS,
+                platform=platform,
+                count=len(text.hashtags),
+                limit=MAX_POST_HASHTAGS,
+            )
+        )
+    if rules.ai_notice_pattern and not re.search(rules.ai_notice_pattern, text.caption):
+        found.append(warning(DeliveryWarningKind.POST_NO_AI_NOTICE, platform=platform))
+    return found
+
+
 def warnings_of(
     delivery: DeliveryInput, durations: Mapping[UUID, float | None], rules: DeliveryRules
 ) -> list[DeliveryWarning]:
     """Gaps in cuts and posts; `durations` maps each of the episode's videos to its length."""
     found = [item for cut in delivery.cuts for item in cut_warnings(cut, durations, rules)]
-    found.extend(
-        warning(DeliveryWarningKind.NO_LINK, platform=post.platform.value)
-        for post in delivery.posts
-        if post.url is None
-    )
+    cuts = {cut.name: cut for cut in delivery.cuts}
+    for post in delivery.posts:
+        found.extend(post_warnings(post, cuts[post.cut], rules))
     return found
 
 

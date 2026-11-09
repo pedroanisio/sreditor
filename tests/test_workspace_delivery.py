@@ -181,6 +181,40 @@ def test_delivery_set_post_on_platform_without_account_shows_form_error(
     assert response.status_code == 422
 
 
+def test_delivery_set_post_with_own_text_shows_it_on_the_page(with_cut: TestClient) -> None:
+    page = flash_after(
+        with_cut, set_post(with_cut, caption="Para o TikTok. Feito com IA.", hashtags="#cao")
+    )
+    assert "Para o TikTok." in page and "#cao" in page
+
+
+def test_delivery_set_post_without_own_text_says_it_uses_the_cuts(with_cut: TestClient) -> None:
+    page = flash_after(with_cut, set_post(with_cut))
+    assert "the post uses the text of its cut." in page
+
+
+def test_delivery_set_post_caption_without_notice_shows_error_next_to_field(
+    with_cut: TestClient,
+) -> None:
+    response = set_post(with_cut, caption="Just a caption.")
+    assert response.status_code == 422 and 'id="tiktok-caption-error"' in response.text
+    assert "needs an AI notice" in response.text
+
+
+def test_delivery_set_post_with_too_many_hashtags_shows_error_next_to_field(
+    with_cut: TestClient,
+) -> None:
+    response = set_post(with_cut, hashtags="#a #b #c #d #e #f")
+    assert response.status_code == 422 and 'id="tiktok-hashtags-error"' in response.text
+    assert "Use at most 5 hashtags." in response.text
+
+
+def test_delivery_set_post_caption_error_is_translated_to_portuguese(with_cut: TestClient) -> None:
+    with_cut.get("/", params={"lang": "pt-BR"})
+    response = set_post(with_cut, caption="Just a caption.")
+    assert "A legenda precisa de um aviso de IA" in response.text
+
+
 def test_delivery_remove_post_takes_it_out(posted: TestClient) -> None:
     response = submit(posted, f"{DELIVERY}/posts/tiktok/remove", {"revision": "2"})
     assert "Not posted yet." in flash_after(posted, response)

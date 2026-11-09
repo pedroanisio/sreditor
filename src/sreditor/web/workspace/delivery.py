@@ -18,6 +18,7 @@ from sreditor.delivery import (
     ALT_TEXT_LENGTH,
     CAPTION_LENGTH,
     CUT_NAME_LENGTH,
+    MAX_POST_HASHTAGS,
     WARNING_MESSAGES,
     Cut,
     Delivery,
@@ -25,6 +26,7 @@ from sreditor.delivery import (
     Post,
 )
 from sreditor.delivery_operations import (
+    AI_NOTICE_REQUIRED,
     DeliveryRefused,
     episode_images,
     episode_videos,
@@ -158,7 +160,13 @@ def post_values(post: Post | None, revision: int) -> PostFields:
         return PostFields(revision=str(revision))
     moment = post.published_at.strftime(DATETIME_LOCAL) if post.published_at else ""
     return PostFields(
-        cut=post.cut, url=str(post.url or ""), published_at=moment, revision=str(revision)
+        cut=post.cut,
+        url=str(post.url or ""),
+        published_at=moment,
+        caption=post.caption,
+        alt_text=post.alt_text,
+        hashtags=hashtag_text(post.hashtags),
+        revision=str(revision),
     )
 
 
@@ -218,6 +226,7 @@ def delivery_context(
         "caption_limit": CAPTION_LENGTH,
         "alt_text_limit": ALT_TEXT_LENGTH,
         "name_limit": CUT_NAME_LENGTH,
+        "post_hashtag_limit": MAX_POST_HASHTAGS,
     }
 
 
@@ -250,6 +259,11 @@ def delivery(request: Request, app: ServicesDep, access: PageAccess, number: int
     return delivery_page(request, app, access, DeliveryView(number=number))
 
 
+def hashtag_list(text: str) -> list[str]:
+    """The hashtags in a form's one text, split on spaces and commas."""
+    return [tag for tag in HASHTAG_SEPARATORS.split(text.strip()) if tag]
+
+
 def as_cut(fields: CutFields, name: str) -> Cut:
     """What a form says about a cut; an empty file is none."""
     return Cut.model_validate(
@@ -259,7 +273,7 @@ def as_cut(fields: CutFields, name: str) -> Cut:
             "cover_id": fields.cover_id or None,
             "caption": fields.caption,
             "alt_text": fields.alt_text,
-            "hashtags": [tag for tag in HASHTAG_SEPARATORS.split(fields.hashtags.strip()) if tag],
+            "hashtags": hashtag_list(fields.hashtags),
         }
     )
 
@@ -272,6 +286,9 @@ def as_post(fields: PostFields, platform: Platform) -> Post:
             "cut": fields.cut,
             "url": fields.url.strip() or None,
             "published_at": fields.published_at or None,
+            "caption": fields.caption,
+            "alt_text": fields.alt_text,
+            "hashtags": hashtag_list(fields.hashtags),
         }
     )
 
@@ -281,6 +298,8 @@ def refusal_errors(refusal: DeliveryRefused, translate: Translator) -> dict[str,
     field = str(refusal.location[-1]) if refusal.location else "form"
     if field in FIELD_MESSAGES:
         return {field: translate(FIELD_MESSAGES[field])}
+    if field == "caption":
+        return {field: translate(AI_NOTICE_REQUIRED, **refusal.values)}
     # The package's own rules are static, N_-marked English, so the message is its msgid.
     return {"form": translate(str(refusal))}
 

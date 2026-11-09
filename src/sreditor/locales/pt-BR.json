@@ -1578,5 +1578,15 @@
   "What differs": "O que difere",
   "What was tried": "O que foi testado",
   "What you expect to happen and why. Markdown works here.": "O que você espera que aconteça e por quê. Aqui vale Markdown.",
-  "Your conclusion, in your words. The computed result stays apart. Markdown works here.": "Sua conclusão, em suas palavras. O resultado calculado fica à parte. Aqui vale Markdown."
+  "Your conclusion, in your words. The computed result stays apart. Markdown works here.": "Sua conclusão, em suas palavras. O resultado calculado fica à parte. Aqui vale Markdown.",
+  "Use at most %(count)s hashtags.": "Use no máximo %(count)s hashtags.",
+  "The post on %(platform)s goes out with %(count)s hashtags, over the limit of %(limit)s.": "A publicação em %(platform)s sai com %(count)s hashtags, acima do limite de %(limit)s.",
+  "The caption posted on %(platform)s has no AI notice line.": "A legenda publicada em %(platform)s não tem a linha de aviso de IA.",
+  "The caption needs an AI notice, such as \"Made with AI\" or \"Feito com IA\"; it must match the channel's pattern %(pattern)s.": "A legenda precisa de um aviso de IA, como \"Feito com IA\" ou \"Made with AI\"; ela deve corresponder ao padrão do canal %(pattern)s.",
+  "No text of its own: the post uses the text of its cut.": "Sem texto próprio: a publicação usa o texto do corte.",
+  "Caption for this platform": "Legenda para esta plataforma",
+  "Alt text for this platform": "Texto alternativo para esta plataforma",
+  "Hashtags for this platform": "Hashtags para esta plataforma",
+  "Leave the text empty to use the cut's. A caption written here needs the AI notice.": "Deixe o texto vazio para usar o do corte. Uma legenda escrita aqui precisa do aviso de IA.",
+  "At most %(count)s, separated by spaces, with or without #.": "No máximo %(count)s, separadas por espaços, com ou sem #."
 }

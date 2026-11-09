@@ -45,6 +45,11 @@
       {{ ui.meta(_("Cut %(cut)s", cut=account.post.cut) ~ (" · " ~ account.post.published_at.strftime("%Y-%m-%d %H:%M") ~ " UTC" if account.post.published_at else "")) }}
       {% if account.post.url %}<p><a href="{{ account.post.url }}" rel="noopener noreferrer" target="_blank">{{ account.post.url }}</a></p>
       {% else %}<p class="muted">{{ _("No link yet.") }}</p>{% endif %}
+      {% if account.post.caption or account.post.alt_text or account.post.hashtags %}
+      {% if account.post.caption %}<p>{{ account.post.caption }}</p>{% endif %}
+      {% if account.post.alt_text %}<p class="muted">{{ _("Alt text") }}: {{ account.post.alt_text }}</p>{% endif %}
+      {% for tag in account.post.hashtags %}{{ ui.tag("#" ~ tag) }}{% endfor %}
+      {% else %}<p class="muted">{{ _("No text of its own: the post uses the text of its cut.") }}</p>{% endif %}
       {% else %}
       <p class="muted">{{ _("Not posted yet.") }}</p>
       {% endif %}
@@ -103,6 +108,9 @@
     {{ ui.select("cut", _("Cut"), cut_options, shown_errors, value=values.cut, id=account.platform ~ "-cut") }}
     {{ ui.field("url", _("Post link"), shown_errors, type="url", value=values.url, required=false, id=account.platform ~ "-url", hint=_("Starting with https://. Leave it empty until the post is live.")) }}
     {{ ui.field("published_at", _("Published at (UTC)"), shown_errors, type="datetime-local", value=values.published_at, required=false, id=account.platform ~ "-published") }}
+    {{ ui.textarea("caption", _("Caption for this platform"), shown_errors, value=values.caption, limit=caption_limit, rows=4, id=account.platform ~ "-caption", hint=_("Leave the text empty to use the cut's. A caption written here needs the AI notice.")) }}
+    {{ ui.textarea("alt_text", _("Alt text for this platform"), shown_errors, value=values.alt_text, limit=alt_text_limit, rows=3, id=account.platform ~ "-alt") }}
+    {{ ui.field("hashtags", _("Hashtags for this platform"), shown_errors, value=values.hashtags, required=false, id=account.platform ~ "-hashtags", hint=_("At most %(count)s, separated by spaces, with or without #.", count=post_hashtag_limit)) }}
     {% call ui.panel_actions() %}{{ ui.button(_("Save post")) }}{% endcall %}
   {% endcall %}
   {% if account.post %}

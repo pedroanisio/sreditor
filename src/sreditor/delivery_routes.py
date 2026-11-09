@@ -52,10 +52,11 @@ def tagged(delivery: Delivery, response: Response) -> Delivery:
 @router.get(DELIVERY, summary="Read the delivery package")
 def get_delivery(number: Number, access: Access, app: ServicesDep, response: Response) -> Delivery:
     """Read an episode's delivery package: its cuts (final video, cover, caption, alt text,
-    hashtags) and the post on each platform account (cut, link, publish time).
+    hashtags) and the post on each platform account (cut, link, publish time and the post's
+    own caption, alt text and hashtags, which replace the cut's when not empty).
 
-    `warnings` lists a cut without a video and a post without a link; they never block a
-    status. Revision 0 (ETag "0") means nobody wrote the package yet.
+    `warnings` lists a cut without a video, a post without a link and a post whose text (its
+    own or its cut's) has no AI notice or more than 5 hashtags; they never block a status. Revision 0 (ETag "0") means nobody wrote the package yet.
     """
     return tagged(deliveries.get_delivery(app, access, number), response)
 
@@ -72,6 +73,9 @@ def write_delivery(
 
     A cut's video must be a video media file of the episode and its cover an image one; a post
     needs a platform the channel has an account on and the name of a cut in the same package.
+    A post's own caption must match the channel's AI notice pattern and its hashtags are at
+    most 5, or the call is refused with 422 naming the field; a post with no text of its own
+    uses its cut's.
     Send If-Match with the ETag you read ("0" when empty) so a change you have not seen is
     never overwritten.
     """
@@ -87,10 +91,13 @@ def record_post(
     app: ServicesDep,
     response: Response,
 ) -> Delivery:
-    """Set the post on one platform account: which cut, its link and when it went live.
+    """Set the post on one platform account: which cut, its link, when it went live and,
+    optionally, its own caption, alt text and hashtags (at most 5; the caption must carry the AI
+    notice, or the call is refused with 422 naming the field).
 
     Needs content:write. It replaces that platform's earlier post and keeps the cuts and the
-    other posts, so use it to add a link after publishing without rewriting the package.
+    other posts, so use it to add a link after publishing without rewriting the package. Text
+    you leave out stays as the earlier post had it; an empty text uses the cut's again.
     """
     return tagged(
         deliveries.record_post(app, access, target.number, target.platform, data), response

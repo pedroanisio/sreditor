@@ -10,7 +10,15 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from sreditor.delivery import Cut, DeliveryInput, DeliveryWarningKind, Post
+from sreditor.delivery import (
+    MAX_POST_HASHTAGS,
+    Cut,
+    DeliveryInput,
+    DeliveryStore,
+    DeliveryWarningKind,
+    Post,
+    delivery_key,
+)
 from tests import media_samples as sample
 from tests.test_agentic import PUBLIC_URL, agent, block, new_token, tool
 from tests.test_api import FUNNY_MEMES
@@ -106,6 +114,35 @@ def test_post_published_at_without_zone_is_read_as_utc() -> None:
         {"platform": "tiktok", "cut": "main", "published_at": "2026-11-07T10:30:00"}
     )
     assert post.published_at is not None and post.published_at.utcoffset().total_seconds() == 0  # type: ignore[union-attr]
+
+
+def test_post_without_own_text_has_empty_text() -> None:
+    post = Post.model_validate({"platform": "tiktok", "cut": "main"})
+    assert (post.caption, post.alt_text, post.hashtags) == ("", "", [])
+
+
+def test_post_hashtags_over_the_post_limit_are_refused() -> None:
+    tags = [f"tag{number}" for number in range(MAX_POST_HASHTAGS + 1)]
+    with pytest.raises(ValidationError, match="hashtags"):
+        Post.model_validate({"platform": "tiktok", "cut": "main", "hashtags": tags})
+
+
+def test_post_hashtags_repeated_ignoring_case_are_refused() -> None:
+    with pytest.raises(ValidationError, match="once"):
+        Post.model_validate({"platform": "tiktok", "cut": "main", "hashtags": ["#Dogs", "dogs"]})
+
+
+def test_delivery_store_reads_package_stored_before_post_text_existed(
+    app: FastAPI, owner: TestClient
+) -> None:
+    old = (
+        '{"cuts": [{"name": "main", "caption": "Feito com IA."}],'
+        ' "posts": [{"platform": "tiktok", "cut": "main", "url": "https://tiktok.test/v/1"}]}'
+    )
+    store: DeliveryStore = app.state.services.deliveries
+    store.texts.write(delivery_key("funny-memes", 1), old, None)
+    (post,) = store.delivery("funny-memes", 1).posts
+    assert (post.caption, post.hashtags) == ("", [])
 
 
 def test_delivery_input_with_post_for_missing_cut_is_refused() -> None:
@@ -252,6 +289,117 @@ def test_delivery_by_viewer_can_read_but_not_write(
     assert viewer.put(DELIVERY, json=package()).status_code == 403
 
 
+# Post text
+
+
+def post_with(**text: Any) -> dict[str, Any]:
+    return {"cut": "main", "url": "https://tiktok.test/v/1", **text}
+
+
+def test_record_post_with_own_text_stores_it_and_get_returns_it(owner: TestClient) -> None:
+    owner.put(DELIVERY, json=package())
+    text = {"caption": "Para o TikTok. Feito com IA.", "alt_text": "Um cão.", "hashtags": ["#cao"]}
+    owner.put(POST_ON_TIKTOK, json=post_with(**text))
+    (post,) = owner.get(DELIVERY).json()["posts"]
+    assert (post["caption"], post["alt_text"], post["hashtags"]) == (
+        "Para o TikTok. Feito com IA.",
+        "Um cão.",
+        ["cao"],
+    )
+
+
+def test_delivery_put_post_caption_without_ai_notice_is_refused_naming_the_field(
+    owner: TestClient,
+) -> None:
+    body = package()
+    body["posts"] = [{"platform": "tiktok", "cut": "main", "caption": "Just a caption."}]
+    response = owner.put(DELIVERY, json=body)
+    assert response.status_code == 422
+    error = response.json()["errors"][0]
+    assert error["location"] == ["posts", 0, "caption"] and "AI notice" in error["message"]
+
+
+def test_delivery_put_post_with_too_many_hashtags_is_refused_naming_the_field(
+    owner: TestClient,
+) -> None:
+    body = package()
+    tags = [f"tag{number}" for number in range(MAX_POST_HASHTAGS + 1)]
+    body["posts"] = [{"platform": "tiktok", "cut": "main", "hashtags": tags}]
+    response = owner.put(DELIVERY, json=body)
+    assert response.status_code == 422 and "hashtags" in str(response.json()["errors"])
+
+
+def test_record_post_caption_without_ai_notice_is_refused_naming_the_field(
+    owner: TestClient,
+) -> None:
+    owner.put(DELIVERY, json=package())
+    response = owner.put(POST_ON_TIKTOK, json=post_with(caption="Just a caption."))
+    assert response.status_code == 422
+    assert response.json()["errors"][0]["location"] == ["caption"]
+
+
+def test_delivery_put_cut_caption_without_ai_notice_is_still_accepted(owner: TestClient) -> None:
+    body = package()
+    body["cuts"][0]["caption"] = "No notice here."
+    assert owner.put(DELIVERY, json=body).status_code == 200
+
+
+def test_record_post_without_text_keeps_the_earlier_posts_text(owner: TestClient) -> None:
+    owner.put(DELIVERY, json=package())
+    owner.put(POST_ON_TIKTOK, json=post_with(caption="Feito com IA no TikTok."))
+    owner.put(POST_ON_TIKTOK, json={"cut": "main", "url": "https://tiktok.test/v/2"})
+    (post,) = owner.get(DELIVERY).json()["posts"]
+    assert post["caption"] == "Feito com IA no TikTok."
+
+
+def test_record_post_with_empty_text_returns_to_the_cuts_text(owner: TestClient) -> None:
+    owner.put(DELIVERY, json=package())
+    owner.put(POST_ON_TIKTOK, json=post_with(caption="Feito com IA no TikTok."))
+    owner.put(POST_ON_TIKTOK, json=post_with(caption=""))
+    (post,) = owner.get(DELIVERY).json()["posts"]
+    assert post["caption"] == ""
+
+
+def test_delivery_get_post_falling_back_to_cut_without_notice_warns(owner: TestClient) -> None:
+    body = package()
+    body["cuts"][0]["caption"] = "No notice here."
+    owner.put(DELIVERY, json=body)
+    owner.put(POST_ON_TIKTOK, json=post_with())
+    kinds = {item["kind"] for item in owner.get(DELIVERY).json()["warnings"]}
+    assert DeliveryWarningKind.POST_NO_AI_NOTICE.value in kinds
+
+
+def test_delivery_get_post_falling_back_to_cut_with_many_hashtags_warns(
+    owner: TestClient,
+) -> None:
+    body = package()
+    body["cuts"][0]["hashtags"] = [f"tag{number}" for number in range(MAX_POST_HASHTAGS + 1)]
+    owner.put(DELIVERY, json=body)
+    owner.put(POST_ON_TIKTOK, json=post_with())
+    kinds = {item["kind"] for item in owner.get(DELIVERY).json()["warnings"]}
+    assert DeliveryWarningKind.POST_TOO_MANY_HASHTAGS.value in kinds
+
+
+def test_delivery_get_post_with_own_valid_text_does_not_warn_about_text(owner: TestClient) -> None:
+    body = package()
+    body["cuts"][0]["caption"] = "No notice here."
+    owner.put(DELIVERY, json=body)
+    owner.put(POST_ON_TIKTOK, json=post_with(caption="Feito com IA.", hashtags=["a"]))
+    kinds = {item["kind"] for item in owner.get(DELIVERY).json()["warnings"]}
+    assert DeliveryWarningKind.POST_NO_AI_NOTICE.value not in kinds
+
+
+def test_episode_put_published_warns_about_post_text_without_notice(owner: TestClient) -> None:
+    body = package()
+    body["cuts"][0]["caption"] = "No notice here."
+    owner.put(DELIVERY, json=body)
+    owner.put(POST_ON_TIKTOK, json=post_with())
+    response = owner.put(EPISODE, json=episode_body("published"))
+    assert DeliveryWarningKind.POST_NO_AI_NOTICE.value in {
+        item["kind"] for item in response.json()["warnings"]
+    }
+
+
 # Published warnings
 
 
@@ -331,6 +479,29 @@ def test_mcp_record_post_without_cut_tells_to_write_it(mcp: TestClient) -> None:
     post = {"platform": "tiktok", "cut": "ghost"}
     result = tool(mcp, "record_post", {"slug": "funny-memes", "number": 1, "post": post})
     assert result["isError"] and "write_delivery" in result["content"][0]["text"]
+
+
+def test_mcp_record_post_with_own_text_returns_it(mcp: TestClient) -> None:
+    tool(mcp, "write_delivery", {"slug": "funny-memes", "number": 1, "delivery": package()})
+    post = {"platform": "tiktok", "cut": "main", "caption": "Feito com IA.", "hashtags": ["#a"]}
+    result = tool(mcp, "record_post", {"slug": "funny-memes", "number": 1, "post": post})
+    assert result["structuredContent"]["posts"][0]["hashtags"] == ["a"]
+
+
+def test_mcp_write_delivery_post_caption_without_notice_names_the_field(mcp: TestClient) -> None:
+    body = package()
+    body["posts"] = [{"platform": "tiktok", "cut": "main", "caption": "Just a caption."}]
+    result = tool(mcp, "write_delivery", {"slug": "funny-memes", "number": 1, "delivery": body})
+    text = result["content"][0]["text"]
+    assert result["isError"] and "posts.0.caption" in text and "AI notice" in text
+
+
+def test_mcp_record_post_with_too_many_hashtags_is_a_tool_error(mcp: TestClient) -> None:
+    tool(mcp, "write_delivery", {"slug": "funny-memes", "number": 1, "delivery": package()})
+    tags = [f"tag{number}" for number in range(MAX_POST_HASHTAGS + 1)]
+    post = {"platform": "tiktok", "cut": "main", "hashtags": tags}
+    result = tool(mcp, "record_post", {"slug": "funny-memes", "number": 1, "post": post})
+    assert result["isError"] and "hashtags" in result["content"][0]["text"]
 
 
 def test_mcp_delivery_tools_declare_all_four_annotations(mcp: TestClient) -> None:
