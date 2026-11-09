@@ -41,6 +41,7 @@ Rules for agents working in this repository. Each id names a statement in the st
 
 - Deploy on Docker: ship every service as a Docker image. (`deploy.docker`)
 - The development deployment is published at https://sreditor-dev.arc4d3.com through the Cloudflare tunnel sreditor-development (zone arc4d3.com); SREDITOR_PUBLIC_URL must match it, and `sreditor doctor` checks that it answers. Production subdomains stay one level deep (name.arc4d3.com), because the free certificate covers only *.arc4d3.com. (`deploy.dev.url`)
+- Git keeps the project's rules (stmt scope /) as store/rules.csv, which sreditor render writes from the local store (store/rules.sqlite, never committed) and sreditor rules load reads back. The app keeps its own store in the data volume, with channel guidelines and events, and loads the CSV into it at start; a rule missing from the CSV is disabled, never deleted. Channel data never goes into git. (`deploy.rules.store`)
 - Observe the app with Prometheus, Loki and Grafana in compose.yaml under the observability profile: the app serves request metrics labelled by route template on SREDITOR_METRICS_PORT, a port the tunnel never routes to; Grafana Alloy ships container logs to Loki; Grafana provisions both sources and the dashboards in deploy/observability, and only Grafana publishes a port, on loopback, behind a login. (`deploy.observability`)
 
 ## documentation

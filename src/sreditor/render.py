@@ -7,6 +7,7 @@ from itertools import groupby
 
 from pydantic import BaseModel, ConfigDict
 
+from sreditor.rules_file import RULES_CSV, render_rules_csv
 from sreditor.store import Statement, StoreSettings
 
 # Statements in these categories are prose for a document or page, not agent rules.
@@ -119,4 +120,6 @@ DOCUMENTS: dict[str, Document] = {
     "agents": Document(name="agents", path="AGENTS.md", render=render_agents),
     "claude": Document(name="claude", path="CLAUDE.md", render=render_claude),
     "readme": Document(name="readme", path="README.md", render=render_readme),
+    # Git keeps the rules as text, not as the binary store (rule deploy.rules.store).
+    "rules": Document(name="rules", path=RULES_CSV, render=render_rules_csv),
 }

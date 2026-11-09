@@ -171,6 +171,10 @@ class StmtClient:
         except (TypeError, KeyError, ValidationError) as invalid:
             raise StoreError(f"Unexpected resolve result: {invalid}") from invalid
 
+    def init(self) -> None:
+        """Create the store bound to its domain, or check an existing one is."""
+        self._call("init", scope="/")
+
     def add_scope(self, scope: str) -> None:
         """Register a scope. Adding an existing scope is a no-op."""
         self._call("scope-add", "--scope", scope)

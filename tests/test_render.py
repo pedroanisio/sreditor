@@ -116,7 +116,7 @@ def test_documents_registry_maps_document_name_to_path(name: str, path: str) -> 
 
 
 def test_documents_registry_lists_exactly_the_known_documents() -> None:
-    assert set(DOCUMENTS) == {"agents", "claude", "readme"}
+    assert set(DOCUMENTS) == {"agents", "claude", "readme", "rules"}
 
 
 def test_render_legal_prose_is_excluded_from_rules(settings: StoreSettings) -> None:

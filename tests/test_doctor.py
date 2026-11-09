@@ -63,8 +63,9 @@ def tools(is_up: bool = True, transport: Transport = cloudflare_answer) -> Tools
 
 @pytest.fixture
 def root(tmp_path: Path) -> Path:
+    (tmp_path / "var").mkdir()
     (tmp_path / "store").mkdir()
-    (tmp_path / "store" / "rules.sqlite").write_bytes(b"")
+    (tmp_path / "store" / "rules.csv").write_text("")
     (tmp_path / ".env.example").write_text(EXAMPLE)
     return tmp_path
 
@@ -100,12 +101,12 @@ def test_doctor_without_fix_leaves_env_file_unchanged(root: Path) -> None:
     assert (root / ".env").read_text() == EXAMPLE
 
 
-def test_doctor_owner_differing_from_store_is_fixable(root: Path) -> None:
+def test_doctor_owner_differing_from_data_folder_is_fixable(root: Path) -> None:
     with_env(root, "SREDITOR_UID=0\n")
     assert finding(doctor(root), "owner").status is CheckStatus.FIXABLE
 
 
-def test_doctor_fix_sets_owner_to_store_owner(root: Path) -> None:
+def test_doctor_fix_sets_owner_to_data_folder_owner(root: Path) -> None:
     with_env(root, "SREDITOR_UID=0\n")
     doctor(root, is_fixing=True)
     values = parse_env((root / ".env").read_text())
@@ -113,16 +114,15 @@ def test_doctor_fix_sets_owner_to_store_owner(root: Path) -> None:
     assert values["SREDITOR_GID"] == str(os.getgid())
 
 
-def test_doctor_without_store_reports_owner_problem(root: Path) -> None:
+def test_doctor_without_data_folder_reports_owner_problem(root: Path) -> None:
     with_env(root)
-    (root / "store" / "rules.sqlite").unlink()
-    (root / "store").rmdir()
+    (root / "var").rmdir()
     assert finding(doctor(root), "owner").status is CheckStatus.PROBLEM
 
 
-def test_doctor_without_rules_store_reports_problem(root: Path) -> None:
+def test_doctor_without_rules_file_reports_problem(root: Path) -> None:
     with_env(root)
-    (root / "store" / "rules.sqlite").unlink()
+    (root / "store" / "rules.csv").unlink()
     assert finding(doctor(root), "rules").status is CheckStatus.PROBLEM
 
 

@@ -21,13 +21,15 @@ WORKDIR /app
 COPY pyproject.toml ./
 COPY src ./src
 RUN pip install --no-cache-dir .
+# The project's rules; `serve --load-rules` loads them into the store in the data volume.
+COPY store/rules.csv ./store/rules.csv
 
 RUN useradd --uid 1000 --no-create-home --shell /usr/sbin/nologin app \
-    && mkdir -p /store /data \
-    && chown app:app /store /data
+    && mkdir -p /data \
+    && chown app:app /data
 
 ENV STMT_BIN=/opt/stmt-1.0.0/bin/stmt \
-    STMT_DB=/store/rules.sqlite \
+    STMT_DB=/data/rules.sqlite \
     SREDITOR_CHANNELS_DB=/data/channels.sqlite \
     SREDITOR_ASSETS_DIR=/data/assets \
     PYTHONUNBUFFERED=1
@@ -36,4 +38,4 @@ USER app
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
-CMD ["sreditor", "serve", "--root", "/app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sreditor", "serve", "--root", "/app", "--load-rules", "--host", "0.0.0.0", "--port", "8000"]

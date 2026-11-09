@@ -19,7 +19,8 @@ uv sync
 ## Usage
 
 ```sh
-uv run sreditor render            # regenerate every document from the store
+uv run sreditor rules load        # after a checkout: load store/rules.csv into store/rules.sqlite
+uv run sreditor render            # regenerate every document, store/rules.csv included, from the store
 uv run sreditor render --check    # exit 1 if a document is out of date (for CI)
 uv run sreditor serve --port 8000 # the public site at /, the API docs at /docs
 ```
@@ -35,7 +36,7 @@ Emails go out through SMTP2GO when `SREDITOR_SMTP2GO_API_KEY` is set, from `SRED
 
 ## Docker
 
-Copy `.env.example` to `.env`, set the user that owns `./store` and `./var`, then run `docker compose up --build`. The API listens on 127.0.0.1:8000.
+Copy `.env.example` to `.env`, set the user that owns `./var`, then run `docker compose up --build`. The API listens on 127.0.0.1:8000. The container keeps its stmt store in the data volume (`./var/rules.sqlite`) and loads the project's rules from `store/rules.csv` each time it starts.
 <!-- readme.50.docker -->
 
 To reach it over the internet, create a Cloudflare Tunnel, route its public hostname to `http://sreditor:8000`, and set `CLOUDFLARE_TUNNEL_TOKEN`, `COMPOSE_PROFILES=tunnel` and `SREDITOR_PUBLIC_URL=https://<that hostname>` in `.env`; no port is opened. Rate limits count each visitor by `SREDITOR_CLIENT_IP_HEADER` (`CF-Connecting-IP` in Docker), which Cloudflare sets, not by X-Forwarded-For, whose first entry the visitor writes.
@@ -46,7 +47,7 @@ To reach it over the internet, create a Cloudflare Tunnel, route its public host
 
 ## Changing a rule or this README
 
-Never edit a generated file. Revise the statement with `stmt create` or `stmt revise`, then run `uv run sreditor render`. Each statement's id is shown next to it.
+Never edit a generated file. Run `uv run sreditor rules load`, revise the statement with `stmt create` or `stmt revise`, then run `uv run sreditor render` and commit `store/rules.csv` with the documents. Each statement's id is shown next to it.
 <!-- readme.60.rules -->
 
 ## Terms and privacy
@@ -116,6 +117,7 @@ Raw values live only as tokens in `src/sreditor/web/static/tokens.css`; componen
 
 - Deploy on Docker: ship every service as a Docker image. (`deploy.docker`)
 - The development deployment is published at https://sreditor-dev.arc4d3.com through the Cloudflare tunnel sreditor-development (zone arc4d3.com); SREDITOR_PUBLIC_URL must match it, and `sreditor doctor` checks that it answers. Production subdomains stay one level deep (name.arc4d3.com), because the free certificate covers only *.arc4d3.com. (`deploy.dev.url`)
+- Git keeps the project's rules (stmt scope /) as store/rules.csv, which sreditor render writes from the local store (store/rules.sqlite, never committed) and sreditor rules load reads back. The app keeps its own store in the data volume, with channel guidelines and events, and loads the CSV into it at start; a rule missing from the CSV is disabled, never deleted. Channel data never goes into git. (`deploy.rules.store`)
 - Observe the app with Prometheus, Loki and Grafana in compose.yaml under the observability profile: the app serves request metrics labelled by route template on SREDITOR_METRICS_PORT, a port the tunnel never routes to; Grafana Alloy ships container logs to Loki; Grafana provisions both sources and the dashboards in deploy/observability, and only Grafana publishes a port, on loopback, behind a login. (`deploy.observability`)
 
 ### documentation

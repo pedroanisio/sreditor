@@ -5,7 +5,7 @@ services:
   sreditor:
     build: .
     image: sreditor:latest
-    # Run as the owner of ./store and ./var; set SREDITOR_UID and SREDITOR_GID in .env.
+    # Run as the owner of ./var; set SREDITOR_UID and SREDITOR_GID in .env.
     user: "${SREDITOR_UID:-1000}:${SREDITOR_GID:-1000}"
     ports:
       - "127.0.0.1:8000:8000"
@@ -33,8 +33,8 @@ services:
       # and the tunnel routes only to 8000, so metrics never reach the internet.
       SREDITOR_METRICS_PORT: "9100"
     volumes:
-      - ./store:/store
-      # Data and uploaded brand files (SREDITOR_ASSETS_DIR=/data/assets in the image).
+      # Data, the stmt store and uploaded files (STMT_DB=/data/rules.sqlite and
+      # SREDITOR_ASSETS_DIR=/data/assets in the image).
       - ./var:/data
     restart: unless-stopped
 

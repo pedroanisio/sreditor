@@ -13,13 +13,11 @@ from __future__ import annotations
 import os
 import re
 import socket
-import sqlite3
 import subprocess
 import time
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
-from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -94,16 +92,6 @@ def free_port() -> int:
         return port
 
 
-def copy_store(target: Path) -> None:
-    """A private copy of the rule store, so the legal pages have their real text."""
-    target.mkdir()
-    with (
-        closing(sqlite3.connect(ROOT / "store" / "rules.sqlite")) as source,
-        closing(sqlite3.connect(target / "rules.sqlite")) as copy,
-    ):
-        source.backup(copy)
-
-
 def wait_until_healthy(server: Server) -> None:
     deadline = time.monotonic() + STARTUP_SECONDS
     while time.monotonic() < deadline:
@@ -124,7 +112,6 @@ def image() -> str:
 
 @pytest.fixture
 def server(image: str, tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[Server]:
-    copy_store(tmp_path / "store")
     (tmp_path / "data").mkdir()
     port = free_port()
     url = f"http://127.0.0.1:{port}"
@@ -137,7 +124,8 @@ def server(image: str, tmp_path: Path, request: pytest.FixtureRequest) -> Iterat
     container = run(
         ["docker", "run", "--detach", "--user", f"{os.getuid()}:{os.getgid()}"]
         + ["--publish", f"127.0.0.1:{port}:{CONTAINER_PORT}"]
-        + ["--volume", f"{tmp_path / 'store'}:/store", "--volume", f"{tmp_path / 'data'}:/data"]
+        # The image loads the project's rules into /data, so the legal pages have their real text.
+        + ["--volume", f"{tmp_path / 'data'}:/data"]
         + [arg for name, value in environment.items() for arg in ("--env", f"{name}={value}")]
         + [image]
     )

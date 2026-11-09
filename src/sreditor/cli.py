@@ -1,4 +1,4 @@
-"""Command line: `sreditor render [--check]`, `sreditor serve`, `sreditor doctor` and `sreditor worker`."""
+"""Command line: `sreditor render [--check]`, `rules load`, `serve`, `doctor` and `worker`."""
 
 from __future__ import annotations
 
@@ -6,14 +6,15 @@ import argparse
 import os
 import sys
 import tomllib
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 from pydantic import ValidationError
 
 from sreditor.render import DOCUMENTS
+from sreditor.rules_file import RULES_CSV, LoadReport, RulesFileError, load_rules, parse_rules_csv
 from sreditor.settings import ENVIRONMENT, resolve_settings
-from sreditor.store import StmtClient, StoreError
+from sreditor.store import StmtClient, StoreError, StoreSettings
 
 EXIT_OK = 0
 EXIT_STALE = 1
@@ -30,8 +31,16 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     render.add_argument("--root", type=Path, default=Path.cwd(), help="project directory")
     for name, variable in ENVIRONMENT.items():
         render.add_argument(f"--{name}", help=f"overrides {variable} and pyproject.toml")
+    rules = commands.add_parser("rules", help="load store/rules.csv into the stmt store")
+    rules.add_argument("action", choices=["load"])
+    rules.add_argument("--root", type=Path, default=Path.cwd(), help="project directory")
+    for name, variable in ENVIRONMENT.items():
+        rules.add_argument(f"--{name}", help=f"overrides {variable} and pyproject.toml")
     serve = commands.add_parser("serve", help="run the HTTP API")
     serve.add_argument("--root", type=Path, default=Path.cwd(), help="project directory")
+    serve.add_argument(
+        "--load-rules", action="store_true", help=f"load {RULES_CSV} into the store first"
+    )
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
     admin = commands.add_parser("create-admin", help="create an active admin user")
@@ -86,6 +95,31 @@ def create_admin(args: argparse.Namespace, environ: Mapping[str, str]) -> int:
     return EXIT_OK
 
 
+def load_rules_file(root: Path, settings: StoreSettings) -> LoadReport:
+    """Bring the store's project rules in step with the CSV git keeps."""
+    text = (root / RULES_CSV).read_text(encoding="utf-8")
+    return load_rules(StmtClient(settings), parse_rules_csv(text))
+
+
+def rules(args: argparse.Namespace, environ: Mapping[str, str]) -> int:
+    """`sreditor rules load`: after a checkout, so the local store has the rules git holds."""
+    root: Path = args.root.resolve()
+    flags = {name: getattr(args, name) for name in ENVIRONMENT}
+    try:
+        report = load_rules_file(root, resolve_settings(root, flags, environ))
+    except (
+        OSError,
+        RulesFileError,
+        StoreError,
+        ValidationError,
+        tomllib.TOMLDecodeError,
+    ) as failure:
+        print(f"sreditor: {failure}", file=sys.stderr)
+        return EXIT_ERROR
+    print(report.summary())
+    return EXIT_OK
+
+
 def serve(args: argparse.Namespace, environ: Mapping[str, str]) -> int:
     """Run the API with uvicorn, with tokens redacted from logs."""
     import uvicorn
@@ -96,6 +130,9 @@ def serve(args: argparse.Namespace, environ: Mapping[str, str]) -> int:
     from sreditor.settings import AppSettings
 
     settings = AppSettings.load(args.root.resolve(), environ)
+    if args.load_rules:
+        # The container's store lives in the data volume; a new image brings new project rules.
+        print(load_rules_file(args.root.resolve(), settings.store).summary())
     # SREDITOR_MAIL_LOG_TOKENS is for development: emails are logged with their links intact.
     reveal = [MAIL_LOGGER] if settings.has_tokens_in_mail_log else []
     if settings.metrics_port is not None:
@@ -154,18 +191,8 @@ def worker(environ: Mapping[str, str]) -> int:
     return EXIT_OK
 
 
-def main(argv: Sequence[str] | None = None, environ: Mapping[str, str] | None = None) -> int:
-    """Run the subcommand named on the command line and return its exit code."""
-    args = parse_args(argv)
-    environ = os.environ if environ is None else environ
-    if args.command == "serve":
-        return serve(args, environ)
-    if args.command == "create-admin":
-        return create_admin(args, environ)
-    if args.command == "doctor":
-        return doctor(args, environ)
-    if args.command == "worker":
-        return worker(environ)
+def render(args: argparse.Namespace, environ: Mapping[str, str]) -> int:
+    """`sreditor render [--check]`: write or check the documents generated from the store."""
     root: Path = args.root.resolve()
     flags = {name: getattr(args, name) for name in ENVIRONMENT}
     try:
@@ -186,12 +213,29 @@ def main(argv: Sequence[str] | None = None, environ: Mapping[str, str] | None = 
         if args.check:
             stale.append(document.path)
         else:
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text, encoding="utf-8")
             print(f"wrote {document.path}")
     if stale:
         print(f"sreditor: out of date: {', '.join(stale)}; run `sreditor render`", file=sys.stderr)
         return EXIT_STALE
     return EXIT_OK
+
+
+COMMANDS: dict[str, Callable[[argparse.Namespace, Mapping[str, str]], int]] = {
+    "render": render,
+    "rules": rules,
+    "serve": serve,
+    "create-admin": create_admin,
+    "doctor": doctor,
+    "worker": lambda args, environ: worker(environ),
+}
+
+
+def main(argv: Sequence[str] | None = None, environ: Mapping[str, str] | None = None) -> int:
+    """Run the subcommand named on the command line and return its exit code."""
+    args = parse_args(argv)
+    return COMMANDS[args.command](args, os.environ if environ is None else environ)
 
 
 if __name__ == "__main__":  # pragma: no cover

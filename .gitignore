@@ -18,7 +18,9 @@ htmlcov/
 # Runtime data and local configuration
 var/
 .env
-store/*.sqlite-journal
+# The local stmt store: git keeps its rules as store/rules.csv (rule deploy.rules.store).
+store/*.sqlite
+store/*.sqlite-*
 
 # Playwright evidence: screenshots and failure traces (rule ui.e2e.evidence)
 e2e-evidence/

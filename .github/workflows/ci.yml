@@ -40,7 +40,9 @@ jobs:
       - name: Tests
         run: uv run pytest --ignore=e2e -n auto
       - name: Generated documents match the stmt store
-        run: uv run sreditor render --check
+        run: |
+          uv run sreditor rules load
+          uv run sreditor render --check
 
   # Rules ui.e2e.playwright and ui.e2e.evidence: every flow runs in a real browser against the
   # Docker build, and the screenshots and failure traces are attached to the run.

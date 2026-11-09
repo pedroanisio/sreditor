@@ -21,8 +21,8 @@ from sreditor.cloudflare import ensure_tunnel as cloudflare_tunnel
 ENV_FILE = ".env"
 ENV_EXAMPLE = ".env.example"
 PRIVATE_FILE_MODE = 0o600  # .env holds secrets
-STORE_DIR = "store"
-RULES_FILE = "rules.sqlite"
+DATA_DIR = "var"
+RULES_FILE = "store/rules.csv"
 HEALTH_PATH = "/health"
 PROBE_TIMEOUT_SECONDS = 5.0
 # Cloudflare refuses the default Python-urllib agent (error 1010), so the probe names itself.
@@ -199,21 +199,21 @@ def check_environment(context: Context) -> Finding:
 
 
 def check_owner(context: Context) -> Finding:
-    """The container runs as the owner of ./store so it can write the rules and data."""
-    store = context.options.root / STORE_DIR
-    if not store.is_dir():
-        return problem("owner", f"{store} is missing")
-    stat = store.stat()
+    """The container runs as the owner of ./var so it can write the stmt store and data."""
+    data = context.options.root / DATA_DIR
+    if not data.is_dir():
+        return problem("owner", f"{data} is missing; create it as the user the app runs as")
+    stat = data.stat()
     wanted = {Key.UID.value: str(stat.st_uid), Key.GID.value: str(stat.st_gid)}
     return fixable("owner", f"container runs as {stat.st_uid}:{stat.st_gid}", wanted)
 
 
 def check_rules_store(context: Context) -> Finding:
-    """The stmt store must be in place: doctor cannot recreate the rules."""
-    rules = context.options.root / STORE_DIR / RULES_FILE
+    """The project's rules must be in place: the app loads them into its store at start."""
+    rules = context.options.root / RULES_FILE
     if rules.is_file():
         return ok("rules", f"{rules} found")
-    return problem("rules", f"{rules} is missing; restore the stmt store before starting")
+    return problem("rules", f"{rules} is missing; restore it from git before starting")
 
 
 def wanted_public_url(context: Context) -> str | None:

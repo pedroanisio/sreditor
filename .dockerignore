@@ -4,7 +4,8 @@
 .pytest_cache
 .coverage
 **/__pycache__
-store
+store/*.sqlite
+store/*.sqlite-*
 var
 tests
 uv.lock
