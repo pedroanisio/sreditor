@@ -17,7 +17,7 @@ from mcp.types import CallToolResult
 from sreditor import file_operations as files
 from sreditor.deps import Services
 from sreditor.external_media_tools import external_reported
-from sreditor.file_operations import ExportCheck, FileOffer, FileTarget, UploadOffer, UploadRequest
+from sreditor.file_operations import ExportCheck, FileOffer, FileTarget, UploadOffer, UploadTarget
 from sreditor.mcp_idempotency import IdempotencyKey, IdempotentCall, issue_link_once
 from sreditor.mcp_server import Effect, tool_annotations
 from sreditor.media_operations import RenderNotUploadable
@@ -70,28 +70,40 @@ def add_file_tools(server: MCPServer, services: Services) -> None:
             )
         )
 
-    @server.tool(annotations=tool_annotations("Get an upload link for a media file", Effect.CREATE))
+    @server.tool(annotations=tool_annotations("Get an upload link for a file", Effect.CREATE))
     def create_upload_link(
         context: Context,
         slug: str,
-        upload: UploadRequest,
+        upload: UploadTarget,
         idempotency_key: IdempotencyKey = None,
     ) -> Annotated[CallToolResult, UploadOffer]:
-        """Get a single-use link to upload a file into an episode as media, such as the finished
-        MP4 master or a voice-over take. `upload` gives the episode `number`, the `kind`, a `name` and
-        an optional `note`. Your sandbox sends the file's bytes with `method` (PUT) to `url`,
-        with no credentials; the answer is the new media file. `kind` is voice_over,
-        sound_effect, score, visual_effect (MP4 or WebM), cover or still (PNG, JPEG or WebP) or
-        final_video (a finished MP4 or WebM master made outside sreditor, which is measured
-        on arrival: duration, resolution and loudness, shown by list_media; use its id as a
-        cut's `video_id` in write_delivery). A render is made with request_render, never
-        uploaded. To record a master without sending its bytes, give the cut an
-        `external_video` in write_delivery instead. The type is read from the file's content, and `accepted_types` and
-        `max_bytes` say what is allowed; a refused file leaves the link usable. The link works
-        once and expires in 15 minutes. Needs content:write. Each call issues another link
-        unless you pass an `idempotency_key`: a retry with the same key and arguments is marked
-        replayed and returns a fresh link to the same place, since a link's secret is never
-        stored."""
+        """Get a single-use link to upload one file, which your sandbox sends with `method`
+        (PUT) and the file's bytes as the body to `url`, with no credentials. `upload.target`
+        says where it goes, and each target takes only its own fields:
+        - episode_media (the default when `target` is left out, so the original arguments still
+        work): a file of an episode, with the episode `number`, the `kind`, a `name` and an
+        optional `note`. `kind` is voice_over, sound_effect, score, visual_effect (MP4 or
+        WebM), cover or still (PNG, JPEG or WebP) or final_video (a finished MP4 or WebM master
+        made outside sreditor, measured on arrival; use its id as a cut's `video_id` in
+        write_delivery). A render is made with request_render, never uploaded. The answer is
+        the new media file. Needs content:write.
+        - external_copy: the copy of a third-party item, with its `item_id` from
+        list_external_media, replacing any earlier copy. The accepted types follow the item's
+        kind (a 3D model GLB, FBX or BLEND, a shader UTF-8 text, and so on; a model, texture
+        or shader may be a ZIP package). The answer is the item. Remove a copy with
+        update_external_media and remove_copy. Needs content:write.
+        - brand_file: a file of the brand kit, with the `slot` (avatar, which must be square,
+        logo, banner, watermark, thumbnail_template, intro for the opening sting, outro for the
+        closing sting, or font) and, for a font, its `role` (heading, body or caption), whose
+        family update_brand must have set first. Add `platform` to fill an account's
+        overrides. It replaces the file in the slot; the answer is the brand kit. Empty a
+        slot with update_brand and clear_files. Needs owner or editor role and channels:write.
+        Waivers are never sent through links.
+        The type is read from the file's content, and `accepted_types` and `max_bytes` say
+        what is allowed; a refused file leaves the link usable. The link works once and
+        expires in 15 minutes. Each call issues another link unless you pass an
+        `idempotency_key`: a retry with the same key and arguments is marked replayed and
+        returns a fresh link to the same place, since a link's secret is never stored."""
         call = IdempotentCall(
             operation=f"create_upload_link/{slug}", arguments=upload, key=idempotency_key
         )

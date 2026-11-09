@@ -1,10 +1,11 @@
 """Signed file links for agents: who may get one, and what a link delivers (rule agentic.mcp.files).
 
 Issuing a link asks the same role and scope as the API call it stands for: reading a file needs
-channels:read (an export or book too, as the API's downloads), uploading one needs content:write
-and exporting for srstudio needs the right to change the channel. A link is only another way to run that call, so redeeming it checks the
-issuing token again: a revoked token, or a member who left, makes its links useless. Waivers
-have no link kind at all.
+channels:read (an export or book too, as the API's downloads), uploading episode media or a
+third-party copy needs content:write, and uploading a brand file or exporting for srstudio needs
+the right to change the channel (channels:write). A link is only another way to run that call, so
+redeeming it checks the issuing token again: a revoked token, or a member who left, makes its
+links useless. Waivers have no link kind at all.
 """
 
 from __future__ import annotations
@@ -12,20 +13,33 @@ from __future__ import annotations
 import base64
 import shutil
 import tempfile
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path, PurePath
-from typing import BinaryIO
+from typing import Annotated, BinaryIO, Literal
 from uuid import UUID
 
 from fastapi import status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag
 
-from sreditor import external_media_operations, media_operations, render_operations
-from sreditor.assets import BYTES_PER_MEGABYTE, AssetMissing, BrandSlot, StoredFile
-from sreditor.brand import file_in, referenced_assets
+from sreditor import (
+    brand_file_operations,
+    external_media_operations,
+    media_operations,
+    render_operations,
+)
+from sreditor.assets import (
+    BYTES_PER_MEGABYTE,
+    AssetMissing,
+    BrandSlot,
+    FileFormat,
+    StoredFile,
+    accepted_formats,
+)
+from sreditor.brand import BrandFileRef, file_in, referenced_assets
+from sreditor.brand_file_operations import BrandFileChange, BrandFileSlot
 from sreditor.channels import Asset, Platform
 from sreditor.deps import ChannelAccess, Services, access_for
 from sreditor.episode_operations import episode_access
@@ -36,14 +50,15 @@ from sreditor.export_requests import (
     check_request,
     export_filename,
 )
+from sreditor.external_media import COPY_FORMATS
 from sreditor.external_media import EXTENSIONS as COPY_EXTENSIONS
+from sreditor.external_media_operations import ItemChange
 from sreditor.field_types import MediaType
 from sreditor.file_links import FileLink, LinkGone, LinkKind, NewLink
 from sreditor.media import (
     EXTENSIONS,
     KIND_FORMATS,
     UPLOADABLE_KINDS,
-    MediaFile,
     MediaInput,
     MediaKind,
     MediaName,
@@ -102,15 +117,82 @@ class FileTarget(BaseModel):
     )
 
 
+EPISODE_MEDIA_TARGET: Literal["episode_media"] = "episode_media"
+EXTERNAL_COPY_TARGET = "external_copy"
+BRAND_FILE_TARGET = "brand_file"
+
+
 class UploadRequest(BaseModel):
-    """A file an agent will send: where it goes and what to call it."""
+    """A file an agent will send into an episode as media: where it goes and what to call it.
+
+    This is the original shape of create_upload_link's `upload`, still valid without `target`.
+    """
 
     model_config = ConfigDict(frozen=True)
 
-    number: int
-    kind: MediaKind
+    target: Literal["episode_media"] = Field(
+        default=EPISODE_MEDIA_TARGET,
+        description="episode_media: a file of an episode (the default when `target` is left out).",
+    )
+    number: int = Field(description="The episode's number.")
+    kind: MediaKind = Field(description="The media kind, which decides the accepted types.")
     name: MediaName
     note: MediaNote = ""
+
+
+class ExternalCopyRequest(BaseModel):
+    """A copy of a third-party item an agent will send."""
+
+    model_config = ConfigDict(frozen=True)
+
+    target: Literal["external_copy"] = Field(
+        description="external_copy: the uploaded copy of a third-party item, replacing any earlier one."
+    )
+    item_id: UUID = Field(description="The item's id from list_external_media.")
+
+
+class BrandFileRequest(BrandFileRef):
+    """A brand file an agent will send: the slot (a font by its role) and whose kit it is in."""
+
+    target: Literal["brand_file"] = Field(
+        description="brand_file: a file of the brand kit, replacing the one in the slot."
+    )
+    platform: Platform | None = Field(
+        default=None, description="Put the file in this account's overrides, not the channel's."
+    )
+
+
+def upload_tag(value: object) -> str:
+    """Which target an upload argument names; one with no `target` is the original episode shape."""
+    found = value.get("target") if isinstance(value, Mapping) else getattr(value, "target", None)
+    return found if isinstance(found, str) else EPISODE_MEDIA_TARGET
+
+
+UploadTarget = Annotated[
+    Annotated[UploadRequest, Tag(EPISODE_MEDIA_TARGET)]
+    | Annotated[ExternalCopyRequest, Tag(EXTERNAL_COPY_TARGET)]
+    | Annotated[BrandFileRequest, Tag(BRAND_FILE_TARGET)],
+    Discriminator(upload_tag),
+]
+
+
+class UploadPlan(BaseModel):
+    """What a signed upload link stands for and what it accepts."""
+
+    model_config = ConfigDict(frozen=True)
+
+    link: NewLink
+    formats: tuple[FileFormat, ...]
+    max_bytes: int
+
+
+class StoredUpload(BaseModel):
+    """What an upload created or changed, and the revision its ETag is built from."""
+
+    model_config = ConfigDict(frozen=True)
+
+    payload: BaseModel
+    revision: int
 
 
 class FileOffer(BaseModel):
@@ -429,12 +511,12 @@ def issue_download(
     )
 
 
-def issue_upload(app: Services, access: ChannelAccess, request: UploadRequest) -> UploadOffer:
-    """A single-use link to upload one media file into an episode (project.media rules apply)."""
+def media_plan(app: Services, access: ChannelAccess, request: UploadRequest) -> UploadPlan:
+    """A link to upload one media file into an episode (project.media rules apply)."""
     if request.kind not in UPLOADABLE_KINDS:
         raise RenderNotUploadable
     episode_access(app, access, request.number, Permission.WRITE_CONTENT)
-    new = base_link(access, LinkKind.MEDIA_UPLOAD).model_copy(
+    link = base_link(access, LinkKind.MEDIA_UPLOAD).model_copy(
         update={
             "number": request.number,
             "reference": request.kind.value,
@@ -442,13 +524,56 @@ def issue_upload(app: Services, access: ChannelAccess, request: UploadRequest) -
             "note": request.note,
         }
     )
-    issued = app.file_links.issue(new)
+    return UploadPlan(
+        link=link, formats=tuple(KIND_FORMATS[request.kind]), max_bytes=app.media.max_bytes
+    )
+
+
+def external_plan(app: Services, access: ChannelAccess, request: ExternalCopyRequest) -> UploadPlan:
+    """A link to upload a third-party item's copy; its kind decides the accepted types."""
+    access.require(Permission.WRITE_CONTENT)
+    item = external_media_operations.get_item(app, access, request.item_id)
+    link = base_link(access, LinkKind.EXTERNAL_UPLOAD).model_copy(
+        update={"reference": str(item.id)}
+    )
+    return UploadPlan(link=link, formats=COPY_FORMATS[item.kind], max_bytes=app.media.max_bytes)
+
+
+def brand_plan(app: Services, access: ChannelAccess, request: BrandFileRequest) -> UploadPlan:
+    """A link to upload a brand file into a slot of the channel's kit or an account's overrides."""
+    slot = BrandFileSlot(
+        file=BrandFileRef(slot=request.slot, role=request.role), platform=request.platform
+    )
+    brand_file_operations.check_target(access, slot)
+    link = base_link(access, LinkKind.BRAND_UPLOAD).model_copy(
+        update={"reference": slot.model_dump_json()}
+    )
+    return UploadPlan(
+        link=link, formats=accepted_formats(request.slot), max_bytes=app.assets.max_bytes
+    )
+
+
+def plan_upload(app: Services, access: ChannelAccess, request: UploadTarget) -> UploadPlan:
+    """The link a target asks for, once its permission is held and its place exists."""
+    match request:
+        case UploadRequest():
+            return media_plan(app, access, request)
+        case ExternalCopyRequest():
+            return external_plan(app, access, request)
+        case BrandFileRequest():
+            return brand_plan(app, access, request)
+
+
+def issue_upload(app: Services, access: ChannelAccess, request: UploadTarget) -> UploadOffer:
+    """A single-use link to upload one file, after the role, scope and place are checked."""
+    plan = plan_upload(app, access, request)
+    issued = app.file_links.issue(plan.link)
     return UploadOffer(
         url=file_url(app, issued.secret),
         method=UPLOAD_METHOD,
         expires_at=issued.link.expires_at,
-        max_bytes=app.media.max_bytes,
-        accepted_types=[item.media_type for item in KIND_FORMATS[request.kind]],
+        max_bytes=plan.max_bytes,
+        accepted_types=[item.media_type for item in plan.formats],
     )
 
 
@@ -560,7 +685,12 @@ def redeem_download(app: Services, secret: str) -> FileDelivery:
         return deliver(app, link)
 
 
-def store_upload(app: Services, link: FileLink, source: BinaryIO) -> MediaFile:
+def upload_limit(app: Services, link: FileLink) -> int:
+    """The most bytes the link's upload may carry: a brand file's limit, or the media limit."""
+    return app.assets.max_bytes if link.kind is LinkKind.BRAND_UPLOAD else app.media.max_bytes
+
+
+def store_media(app: Services, link: FileLink, source: BinaryIO) -> StoredUpload:
     """Store an uploaded file as upload_media would, with the issuing token as author."""
     access = issuer_access(app, link)
     new = NewMedia(
@@ -569,4 +699,30 @@ def store_upload(app: Services, link: FileLink, source: BinaryIO) -> MediaFile:
         kind=MediaKind(link.reference),
         data=MediaInput(name=link.name, note=link.note),
     )
-    return media_operations.add_media(app, access, new, source)
+    added = media_operations.add_media(app, access, new, source)
+    return StoredUpload(payload=added, revision=added.revision)
+
+
+def store_copy(app: Services, link: FileLink, source: BinaryIO) -> StoredUpload:
+    """Store an uploaded file as upload_external_media_copy would."""
+    change = ItemChange(media_id=UUID(link.reference))
+    item = external_media_operations.attach_copy(app, issuer_access(app, link), change, source)
+    return StoredUpload(payload=item, revision=item.revision)
+
+
+def store_brand_file(app: Services, link: FileLink, source: BinaryIO) -> StoredUpload:
+    """Store an uploaded file as upload_brand_file would."""
+    slot = BrandFileSlot.model_validate_json(link.reference)
+    change = BrandFileChange(target=slot)
+    revised = brand_file_operations.put_brand_file(app, issuer_access(app, link), change, source)
+    return StoredUpload(payload=revised.channel.brand_for(slot.platform), revision=revised.revision)
+
+
+def store_upload(app: Services, link: FileLink, source: BinaryIO) -> StoredUpload:
+    """Run the operation an upload link stands for, with the issuing token as author."""
+    stores: dict[LinkKind, Callable[[Services, FileLink, BinaryIO], StoredUpload]] = {
+        LinkKind.MEDIA_UPLOAD: store_media,
+        LinkKind.EXTERNAL_UPLOAD: store_copy,
+        LinkKind.BRAND_UPLOAD: store_brand_file,
+    }
+    return stores[link.kind](app, link, source)

@@ -6,7 +6,7 @@ Channel.brand_for applies on top of the channel's kit.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from sreditor.assets import BrandSlot
 from sreditor.channels import (
@@ -70,6 +70,46 @@ def file_in(brand: BrandKit, slot: BrandSlot) -> Asset | None:
     return brand.assets.get(AssetKind(slot.value))
 
 
+def without_font_file(brand: BrandKit, role: FontRole) -> BrandKit:
+    """The kit with a role's font file removed; the family and weight stay."""
+    spec = brand.fonts.get(role)
+    if spec is None:
+        return brand
+    return brand.model_copy(
+        update={"fonts": {**brand.fonts, role: spec.model_copy(update={"file": None})}}
+    )
+
+
+class BrandFileRef(BaseModel):
+    """One brand file slot; a font file is addressed by its role as well (rule project.brand)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    slot: BrandSlot = Field(
+        description="avatar, logo, banner, watermark, intro (the opening sting), outro (the "
+        "closing sting), thumbnail_template or font."
+    )
+    role: FontRole | None = Field(
+        default=None, description="For slot font only: heading, body or caption."
+    )
+
+    @model_validator(mode="after")
+    def role_goes_with_font(self) -> BrandFileRef:
+        """A font file names its role; no other slot takes one."""
+        if self.slot is BrandSlot.FONT and self.role is None:
+            raise ValueError("A font file needs a role: heading, body or caption")
+        if self.slot is not BrandSlot.FONT and self.role is not None:
+            raise ValueError("Only a font file takes a role")
+        return self
+
+
+def without_file_at(brand: BrandKit, ref: BrandFileRef) -> BrandKit:
+    """The kit with the file at a slot removed, whether a font role's file or another slot's."""
+    if ref.role is not None:
+        return without_font_file(brand, ref.role)
+    return with_file(brand, ref.slot, None)
+
+
 def with_color(brand: BrandKit, color: Color) -> BrandKit:
     """The kit with a color added, or recolored when one has the same name.
 
@@ -96,7 +136,8 @@ class BrandPatch(BaseModel):
     `colors` replaces the whole palette. `fonts` sets the fonts of the roles it names and
     removes the role whose value is null; other roles stay. `narrator_voice` sets the voice a
     short script speaks with when it names none, and an explicit null clears it (rule
-    project.voice.estimate); left out, it stays.
+    project.voice.estimate); left out, it stays. `clear_files` empties the file slots it names;
+    uploading a file is a PUT of the slot.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -113,13 +154,19 @@ class BrandPatch(BaseModel):
         default=None,
         description="The default narrator voice; null clears it, leaving it out keeps it.",
     )
+    clear_files: list[BrandFileRef] | None = Field(
+        default=None,
+        description="Brand file slots to empty (a font file by its role); the font's family "
+        "stays. Upload a file with PUT on the slot, or through create_upload_link in MCP.",
+    )
 
     @property
     def is_empty(self) -> bool:
-        """Whether the patch changes nothing: no palette, no fonts and no narrator voice named."""
+        """Whether the patch changes nothing: no palette, fonts, narrator voice or files named."""
         return (
             self.colors is None
             and self.fonts is None
+            and not self.clear_files
             and "narrator_voice" not in self.model_fields_set
         )
 
@@ -165,6 +212,8 @@ def with_patch(brand: BrandKit, patch: BrandPatch) -> BrandKit:
         updated = BrandKit.model_validate({**updated.model_dump(), "colors": patch.colors})
     if "narrator_voice" in patch.model_fields_set:
         updated = updated.model_copy(update={"narrator_voice": patch.narrator_voice})
+    for ref in patch.clear_files or []:
+        updated = without_file_at(updated, ref)
     return updated
 
 

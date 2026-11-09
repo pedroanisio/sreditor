@@ -4,7 +4,8 @@ An agent in a sandbox cannot use the MCP connection's OAuth token to fetch or se
 tool hands it a link instead. Like API tokens and OAuth codes, a link is random and only its
 hash is stored. It works once, for 15 minutes, for the one target it was issued for: a brand
 file, an episode media file, a third-party media copy, an episode's srstudio export, an export or
-book of an episode or the channel, or an upload of one media kind into one episode. Waivers have no link kind, so none can reach them.
+book of an episode or the channel, or an upload into one place: one media kind of one episode, one
+third-party item's copy or one brand file slot. Waivers have no link kind, so none can reach them.
 """
 
 from __future__ import annotations
@@ -34,11 +35,13 @@ class LinkKind(StrEnum):
     SRSTUDIO_ZIP = "srstudio_zip"
     EXPORT_FILE = "export_file"
     MEDIA_UPLOAD = "media_upload"
+    EXTERNAL_UPLOAD = "external_upload"
+    BRAND_UPLOAD = "brand_upload"
 
     @property
     def is_upload(self) -> bool:
         """Whether the link receives a file rather than sends one."""
-        return self is LinkKind.MEDIA_UPLOAD
+        return self in {LinkKind.MEDIA_UPLOAD, LinkKind.EXTERNAL_UPLOAD, LinkKind.BRAND_UPLOAD}
 
 
 class NewLink(BaseModel):
@@ -51,8 +54,9 @@ class NewLink(BaseModel):
     channel: ChannelSlug
     kind: LinkKind
     number: int | None = None
-    # The brand file's path, the media id, the item id, an upload's media kind, or an export's
-    # request as JSON, which is all an export link stores: the file is built when it is opened.
+    # The brand file's path, the media id, the item id, an upload's media kind, a brand upload's
+    # slot as JSON, or an export's request as JSON, which is all an export link stores: the file
+    # is built when it is opened.
     reference: str = ""
     # An upload's name and note for the media file it creates.
     name: str = ""

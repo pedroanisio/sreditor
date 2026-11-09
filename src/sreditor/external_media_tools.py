@@ -2,7 +2,8 @@
 
 A few task-sized tools (agentic.mcp.tools.outcomes): find items, add or update one, use one in
 an episode, drop a use, and read what the episode must credit with its rights warnings.
-Uploading a copy is a file transfer, so it stays on the API (upload_external_media_copy).
+Uploading a copy is a file transfer: create_upload_link with target external_copy hands out the
+link, and remove_external_media_copy takes a copy off an item.
 """
 
 from __future__ import annotations
@@ -183,6 +184,21 @@ def add_library_items(server: MCPServer, services: Services) -> None:
 
         return external_reported(delete)
 
+    @server.tool(annotations=tool_annotations("Remove a third-party copy", Effect.REMOVE))
+    def remove_external_media_copy(
+        context: Context, slug: str, media_id: UUID, expected_revision: int | None = None
+    ) -> ExternalMedia:
+        """Take the uploaded copy off a third-party item (an id from list_external_media),
+        for example one uploaded by mistake; the item with its link, creator and rights stays,
+        so a copy may be uploaded again with create_upload_link, target external_copy. Works
+        while episodes use the item, since their uses refer to the item, not the file. Answers
+        the item, now without a copy. Needs content:write. Pass the item's `revision` as
+        `expected_revision` to refuse the change if the item moved on."""
+        change = ItemChange(media_id=media_id, expected_revision=expected_revision)
+        return external_reported(
+            lambda: external.detach_copy(services, access(context, slug), change)
+        )
+
     @server.tool(annotations=tool_annotations("Update third-party media", Effect.REPLACE))
     def update_external_media(
         context: Context,
@@ -192,7 +208,8 @@ def add_library_items(server: MCPServer, services: Services) -> None:
         expected_revision: int | None = None,
     ) -> ExternalMedia:
         """Replace an item's details, for example to record its license or credit line once
-        known; its uploaded copy stays. Needs content:write. Pass the item's `revision` from
+        known; its uploaded copy stays (upload one with create_upload_link, remove it with
+        remove_external_media_copy). Needs content:write. Pass the item's `revision` from
         list_external_media as `expected_revision` so you never overwrite unseen changes."""
         change = ItemChange(media_id=media_id, expected_revision=expected_revision)
         return external_reported(

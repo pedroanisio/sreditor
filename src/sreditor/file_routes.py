@@ -20,8 +20,10 @@ from starlette.background import BackgroundTask
 
 from sreditor import file_operations
 from sreditor.assets import BYTES_PER_MEGABYTE, CHUNK_BYTES, FileTooLarge
+from sreditor.channels import BrandKit
 from sreditor.deps import ServicesDep
 from sreditor.etags import etag
+from sreditor.external_media import ExternalMedia
 from sreditor.file_links import FileLinkNotFound, LinkGone
 from sreditor.file_operations import FILES_PATH
 from sreditor.media import MediaFile
@@ -88,8 +90,8 @@ async def copy_body(request: Request, target: BinaryIO, max_bytes: int) -> None:
 @router.put(
     LINK,
     status_code=status.HTTP_201_CREATED,
-    response_model=MediaFile,
-    summary="Upload a media file with a signed link",
+    response_model=MediaFile | ExternalMedia | BrandKit,
+    summary="Upload a file with a signed link",
     responses={
         404: {"description": "No such link."},
         410: {"description": "The link was used already, or has expired."},
@@ -101,19 +103,20 @@ async def send_file_by_link(link: str, request: Request, app: ServicesDep) -> JS
 
     Send the file's bytes as the request body and no Authorization header. The type comes from
     the content, never the name; a wrong type or a file over the limit is refused with 422 and
-    the link stays usable. A success creates the episode's media file and answers with it.
+    the link stays usable. A success answers as the call the link stands for: the new media file
+    of an episode, the third-party item with its new copy, or the brand kit with the new file.
     """
     with (
         file_operations.claimed(app, link, is_upload=True) as upload,
         closing(spooled()) as body,
     ):
-        await copy_body(request, body, app.media.max_bytes)
+        await copy_body(request, body, file_operations.upload_limit(app, upload))
         body.seek(0)
-        found = await run_in_threadpool(file_operations.store_upload, app, upload, body)
+        stored = await run_in_threadpool(file_operations.store_upload, app, upload, body)
     return JSONResponse(
-        found.model_dump(mode="json"),
+        stored.payload.model_dump(mode="json"),
         status.HTTP_201_CREATED,
-        headers={"ETag": etag(found.revision)},
+        headers={"ETag": etag(stored.revision)},
     )
 
 

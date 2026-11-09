@@ -2,8 +2,9 @@
 
 Task-sized tools (agentic.mcp.tools.outcomes, project.brand): rename the channel or change its
 language, move it between draft, active, paused and archived, and set its palette, fonts and
-default narrator voice. Reading the kit is get_brand. Files (logo, avatar, stings, font files)
-are read with get_file_link and uploaded on the brand page, not through these tools.
+default narrator voice, and empty file slots. Reading the kit is get_brand. Files (logo, avatar,
+stings, font files) are read with get_file_link and uploaded with create_upload_link, target
+brand_file.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from sreditor import operations
-from sreditor.brand import BrandPatch
+from sreditor.brand import BrandFileRef, BrandPatch
 from sreditor.channels import (
     ChannelIdentity,
     Color,
@@ -35,13 +36,13 @@ NO_IDENTITY_CHANGE = (
     "Pass a new `name`, a new `language` or both; get_channel shows the current ones"
 )
 NOTHING_TO_CHANGE = (
-    "Pass colors, fonts, narrator_voice or several in `brand`; call get_brand to see what the "
-    "kit has now"
+    "Pass colors, fonts, narrator_voice, clear_files or several in `brand`; call get_brand to "
+    "see what the kit has now"
 )
 
 
 class BrandChanges(BaseModel):
-    """The colors, fonts and narrator voice update_brand sets; what is left out stays as it is."""
+    """What update_brand sets or empties: palette, fonts, narrator voice and file slots."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -59,6 +60,14 @@ class BrandChanges(BaseModel):
             "The voice that narrates a short script that names none: a voice_id from "
             "list_voices, an optional voice_name and tuning (stability, similarity_boost and "
             "style from 0 to 1, speed from 0.7 to 1.2, use_speaker_boost). null clears it."
+        ),
+    )
+    clear_files: list[BrandFileRef] | None = Field(
+        default=None,
+        description=(
+            "File slots to empty, each a `slot` (avatar, logo, banner, watermark, "
+            "thumbnail_template, intro, outro or font) and, for a font, its `role`; the "
+            "font's family stays. To put a file in a slot use create_upload_link."
         ),
     )
 
@@ -140,7 +149,9 @@ def add_brand_tools(server: MCPServer, services: Services) -> None:
 
         return reported(write)
 
-    @server.tool(annotations=tool_annotations("Update brand colors and fonts", Effect.REPLACE))
+    @server.tool(
+        annotations=tool_annotations("Update brand colors, fonts and files", Effect.REPLACE)
+    )
     def update_brand(
         context: Context,
         slug: str,
@@ -148,7 +159,8 @@ def add_brand_tools(server: MCPServer, services: Services) -> None:
         platform: Platform | None = None,
         expected_revision: int | None = None,
     ) -> BrandView:
-        """Set the brand's colors, fonts and default narrator voice, as data, inside `brand`.
+        """Set the brand's colors, fonts, default narrator voice and empty file slots, inside
+        `brand`.
 
         `colors` is the WHOLE palette, replacing the old one: each is a name, a #RRGGBB hex and
         a role (primary, secondary, accent, text, background); each role is used once, only
@@ -159,13 +171,17 @@ def add_brand_tools(server: MCPServer, services: Services) -> None:
         `voice_name` and `tuning` (all of stability, similarity_boost and style from 0 to 1,
         speed from 0.7 to 1.2 and use_speaker_boost; leave `tuning` out to keep the voice's own
         settings); set it to null to clear it. Short scripts use the channel's narrator voice,
-        so set it without `platform`. What you leave out stays as it is.
+        so set it without `platform`. `clear_files` empties the file slots it names (each `slot`:
+        avatar, logo, banner, watermark, thumbnail_template, intro, outro or font with its
+        `role`; a font's family stays); on an account, the channel's file shows again. What you
+        leave out stays as it is.
         With `platform`, only that account's overrides change (it needs that account first,
         put_account). Read the current kit and its `revision` with get_brand first; pass the
         revision as `expected_revision` to refuse the change if someone else changed the
-        channel. Not for the logo, avatar, stings or font files: read them with get_file_link and
-        upload them on the brand page; this tool cannot upload files. Needs owner or editor role
-        and the channels:write scope."""
+        channel. This tool cannot upload a file: to put a logo, avatar, sting (intro is the
+        opening, outro the closing) or font file in a slot, call create_upload_link with target
+        brand_file; read one back with get_file_link. Needs owner or editor role and the
+        channels:write scope."""
 
         def write() -> BrandView:
             patch = brand_patch(brand)

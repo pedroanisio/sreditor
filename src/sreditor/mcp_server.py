@@ -118,7 +118,8 @@ INSTRUCTIONS = (
     "remove_account change them; list_members, invite_member, change_role and remove_member "
     "manage who belongs. Read get_editorial before writing content for a channel, and change "
     "it with write_guideline and retire_guideline. get_brand and update_brand read and set "
-    "its colors (with roles), fonts and default narrator voice. "
+    "its colors (with roles), fonts and default narrator voice, and update_brand empties a file "
+    "slot (put a file in with create_upload_link). "
     "Episodes are numbered from 1: list_episodes (with readiness true it counts each "
     "episode's blockers and warnings), get_episode, create_episode and "
     "update_episode (status idea, research, script, production, published); "
@@ -162,14 +163,16 @@ INSTRUCTIONS = (
     "through single-use links valid 15 minutes: get_file_link downloads a brand file, media "
     "file, render, third-party copy or srstudio export, and also an episode's whole data in one "
     "call (source export, scope episode, format json) or a channel summary or book (pdf, xlsx "
-    "or json); create_upload_link uploads a media file; check_srstudio_export shows what an "
+    "or json); create_upload_link uploads an episode media file, a third-party copy or a brand "
+    "file (logo, avatar, stings, font files); check_srstudio_export shows what an "
     "srstudio export lacks. list_waivers shows an episode's signed waivers to owners and "
     "editors; waivers are not sent through links. "
     "Media made by others lives in the third-party library: list_external_media, "
     "add_external_media and update_external_media; record each use with use_external_media, "
     "change it with update_external_media_use or drop it with remove_external_media_use and "
     "read get_episode_credits for credits and rights warnings; list_external_media_episodes "
-    "shows which episodes use an item, and delete_external_media removes one that none uses. "
+    "shows which episodes use an item, and delete_external_media removes one that none uses; "
+    "remove_external_media_copy takes an uploaded copy off an item. "
     "Propose a classification with classify_episode (values from "
     "get_classification_vocabulary; a person confirms it), read it with "
     "get_episode_classification and compare the channel's declared and observed profile with "
@@ -592,7 +595,9 @@ def add_channel_tools(server: MCPServer, services: Services) -> None:
     def get_brand(context: Context, slug: str, platform: Platform | None = None) -> BrandView:
         """The channel's brand kit: colors with roles, fonts by role, logo, avatar and opening
         and closing stings. With a platform, that platform's overrides are applied. Its
-        `revision` is the expected_revision for update_brand and update_channel."""
+        `revision` is the expected_revision for update_brand and update_channel. Read a file
+        with get_file_link (source brand_file) and put one in with create_upload_link (target
+        brand_file)."""
 
         def read() -> BrandView:
             found = access(context, slug)
