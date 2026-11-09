@@ -27,7 +27,7 @@ from sreditor.settings import AppSettings
 from tests import media_samples as sample
 from tests import test_srstudio_export as srstudio_export
 from tests.conftest import RecordingMailer, fast_passwords
-from tests.test_agentic import PUBLIC_URL, agent, block, mcp_call, new_token, tool
+from tests.test_agentic import PUBLIC_URL, agent, block, new_token, operation_specs, tool
 from tests.test_srstudio_export import HAS_FFMPEG
 
 SLUG = "funny-memes"
@@ -689,8 +689,8 @@ def test_check_srstudio_export_zip_link_is_single_use(
 # Tool catalogue
 
 
-def test_file_tools_declare_their_annotations(mcp: TestClient) -> None:
-    listed = mcp_call(mcp, "tools/list", {})["result"]["tools"]
+def test_file_tools_declare_their_annotations(app: FastAPI) -> None:
+    listed = list(operation_specs(app).values())
     hints = {
         item["name"]: item["annotations"]
         for item in listed

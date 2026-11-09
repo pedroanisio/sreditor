@@ -7,8 +7,7 @@ personal API tokens as the REST API; a token's scopes and its user's roles apply
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Sequence
-from datetime import date
+from collections.abc import Callable
 from enum import StrEnum
 from http import HTTPStatus
 from typing import Annotated
@@ -77,7 +76,8 @@ from sreditor.library import (
     StyleNotInLibrary,
 )
 from sreditor.library_operations import Cast, EntryChange
-from sreditor.mcp_aliases import RENAMED_TOOLS, AliasingServer, ToolRename
+from sreditor.mcp_catalog import GROUPS
+from sreditor.mcp_groups import AddedTool, RecordingServer, add_groups
 from sreditor.mcp_idempotency import IdempotencyKey, IdempotentCall, run_once
 from sreditor.mcp_principal import PRINCIPAL, Principal, principal
 from sreditor.media import MediaFile, MediaInput, MediaKind, MediaNotFound
@@ -112,7 +112,14 @@ LOCAL_HOSTS = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
 LOCAL_ORIGINS = ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"]
 INSTRUCTIONS = (
     "sreditor manages social media channels (platform accounts, brand kit, Editorial) and "
-    "produces their episodes. Start with list_channels and get_channel; whoami says which user "
+    "produces their episodes. Its tools group operations by task: read_channel, read_library and "
+    "read_episode only read; manage_channel, edit_pitches, edit_library, edit_episode, "
+    "edit_research, edit_script, edit_media and publish change things; voice_over reaches "
+    "ElevenLabs; render queues a video; files moves files through links. Call a tool with "
+    "`request`: the operation's name in `request.operation` and its arguments beside it; the "
+    "result comes back under `result`. Every operation named below, or in a message, readiness "
+    "item or search hit, is listed in exactly one tool's description. "
+    "Start with list_channels and get_channel; whoami says which user "
     "and token you act as and your role on each channel. create_channel, update_channel (name or "
     "language), set_channel_status (draft, active, paused, archived), put_account and "
     "remove_account change them; list_members, invite_member, change_role and remove_member "
@@ -137,7 +144,7 @@ INSTRUCTIONS = (
     "list_events lists what changed in a channel since your last cursor (writes by people, "
     "agents and render workers, render status changes), with the tool that reads each; "
     "it carries no content. "
-    "primary source only warn. add_review records a review of an episode (verdict, notes, the "
+    "add_review records a review of an episode (verdict, notes, the "
     "file and time ranges seen); reviews are append-only and get_episode shows the latest, "
     "while an episode published without an approving review only warns. "
     "search_channel finds where a channel wrote about something (titles, research, sources, "
@@ -454,15 +461,22 @@ class MediaTarget(BaseModel):
     media_id: UUID
 
 
-def build(
-    services: Services,
-    renames: Sequence[ToolRename] = RENAMED_TOOLS,
-    today: Callable[[], date] = date.today,
-) -> AliasingServer:
+def build(services: Services) -> MCPServer:
     """The MCP server with sreditor's tools, bound to the app's services.
 
-    `renames` and `today` are parameters so tests can check an alias before and after it ends.
+    Clients see only the tools that group the operations (mcp_catalog.GROUPS).
     """
+    operations = record_operations(services)
+    grouped = {operation for group in GROUPS for operation in group.operations}
+    if grouped != set(operations):
+        raise RuntimeError(f"Operations not grouped exactly once: {grouped ^ set(operations)}")
+    served = MCPServer(name="sreditor", instructions=INSTRUCTIONS)
+    add_groups(served, GROUPS, operations)
+    return served
+
+
+def record_operations(services: Services) -> dict[str, AddedTool]:
+    """Every operation with its function and hints, recorded on a server that is never served."""
     # Imported here: pitch_tools builds on this module's helpers, so a top-level import
     # would be circular.
     from sreditor.account_tools import add_account_tools
@@ -487,8 +501,7 @@ def build(
     from sreditor.srstudio_tools import add_srstudio_tools
     from sreditor.style_tools import add_style_data_tools
 
-    server = AliasingServer(name="sreditor", instructions=INSTRUCTIONS)
-    # Registration order is the order clients list the tools in.
+    server = RecordingServer()
     add_channel_tools(server, services)
     add_account_tools(server, services)
     add_brand_tools(server, services)
@@ -520,8 +533,7 @@ def build(
     add_waiver_tools(server, services)
     add_member_tools(server, services)
     add_member_change_tools(server, services)
-    server.add_aliases(renames, today())
-    return server
+    return server.added
 
 
 def add_channel_tools(server: MCPServer, services: Services) -> None:

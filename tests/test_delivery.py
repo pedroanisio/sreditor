@@ -20,7 +20,7 @@ from sreditor.delivery import (
     delivery_key,
 )
 from tests import media_samples as sample
-from tests.test_agentic import PUBLIC_URL, agent, block, new_token, tool
+from tests.test_agentic import PUBLIC_URL, agent, block, new_token, operation_specs, tool
 from tests.test_api import FUNNY_MEMES
 
 EPISODE = "/channels/funny-memes/episodes/1"
@@ -504,10 +504,8 @@ def test_mcp_record_post_with_too_many_hashtags_is_a_tool_error(mcp: TestClient)
     assert result["isError"] and "hashtags" in result["content"][0]["text"]
 
 
-def test_mcp_delivery_tools_declare_all_four_annotations(mcp: TestClient) -> None:
-    from tests.test_agentic import mcp_call
-
-    tools = mcp_call(mcp, "tools/list", {})["result"]["tools"]
+def test_mcp_delivery_tools_declare_all_four_annotations(app: FastAPI) -> None:
+    tools = list(operation_specs(app).values())
     wanted = {"get_delivery", "write_delivery", "record_post"}
     found = [item for item in tools if item["name"] in wanted]
     assert len(found) == len(wanted)

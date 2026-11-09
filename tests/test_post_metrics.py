@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from tests.conftest import RecordingMailer
-from tests.test_agentic import PUBLIC_URL, agent, block, mcp_call, new_token, tool
+from tests.test_agentic import PUBLIC_URL, agent, block, new_token, operation_specs, tool
 from tests.test_api import FUNNY_MEMES
 from tests.test_episodes import joined
 
@@ -270,8 +270,8 @@ def test_mcp_compare_posts_returns_a_page(mcp: TestClient) -> None:
     assert page["items"][0]["latest"]["views"] == 5 and page["next_cursor"] is None
 
 
-def test_mcp_metrics_tools_declare_all_four_annotations(mcp: TestClient) -> None:
-    tools = mcp_call(mcp, "tools/list", {})["result"]["tools"]
+def test_mcp_metrics_tools_declare_all_four_annotations(app: FastAPI) -> None:
+    tools = list(operation_specs(app).values())
     wanted = {"record_post_metrics", "import_retention_csv", "compare_posts"}
     found = [item for item in tools if item["name"] in wanted]
     keys = {"readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"}

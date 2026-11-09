@@ -10,7 +10,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from tests.test_agentic import PUBLIC_URL, agent, mcp_call, new_token, tool
+from tests.test_agentic import PUBLIC_URL, agent, new_token, operation_specs, tool
 from tests.test_api import FUNNY_MEMES
 
 CHANNEL = "/channels/funny-memes"
@@ -349,8 +349,8 @@ def test_mcp_what_worked_without_dimension_returns_tool_error_naming_the_fix(
     assert result["isError"] and "get_classification_vocabulary" in result["content"][0]["text"]
 
 
-def test_mcp_what_worked_is_read_only_and_declares_an_output_schema(mcp: TestClient) -> None:
-    listed = mcp_call(mcp, "tools/list", {})["result"]["tools"]
+def test_mcp_what_worked_is_read_only_and_declares_an_output_schema(app: FastAPI) -> None:
+    listed = list(operation_specs(app).values())
     (found,) = [item for item in listed if item["name"] == "what_worked"]
     assert (
         found["annotations"]["readOnlyHint"] is True

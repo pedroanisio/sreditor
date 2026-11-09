@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from tests.conftest import RecordingMailer
-from tests.test_agentic import PUBLIC_URL, agent, mcp_call, new_token, tool
+from tests.test_agentic import PUBLIC_URL, agent, new_token, operation_specs, tool
 from tests.test_api import FUNNY_MEMES
 from tests.test_classification_api import present
 from tests.test_episodes import joined
@@ -493,8 +493,8 @@ def test_mcp_whoami_without_channels_scope_names_the_scope(app: FastAPI, owner: 
         assert "channels:read scope" in failure(tool(client, "whoami", {}))
 
 
-def test_mcp_new_tools_declare_every_annotation(mcp: TestClient) -> None:
-    listed = {item["name"]: item for item in mcp_call(mcp, "tools/list", {})["result"]["tools"]}
+def test_mcp_new_tools_declare_every_annotation(app: FastAPI) -> None:
+    listed = operation_specs(app)
     removals = ("remove_account", "delete_pitch", "delete_external_media", "remove_member")
     assert all(listed[name]["annotations"]["destructiveHint"] for name in removals)
     assert listed["whoami"]["annotations"]["readOnlyHint"] is True

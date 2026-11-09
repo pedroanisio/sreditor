@@ -36,7 +36,7 @@ from sreditor.external_media_tools import external_media_error_message
 from sreditor.settings import AppSettings
 from tests import media_samples as sample
 from tests.conftest import RecordingMailer
-from tests.test_agentic import PUBLIC_URL, agent, block, mcp_call, new_token, tool
+from tests.test_agentic import PUBLIC_URL, agent, block, new_token, operation_specs, tool
 from tests.test_api import FUNNY_MEMES
 from tests.test_episodes import joined
 
@@ -577,7 +577,7 @@ def test_mcp_update_external_media_use_unknown_item_points_at_list_external_medi
 
 
 def test_mcp_get_episode_credits_description_points_use_warnings_at_update_use(
-    mcp: TestClient,
+    app: FastAPI,
 ) -> None:
-    listed = {item["name"]: item for item in mcp_call(mcp, "tools/list", {})["result"]["tools"]}
+    listed = operation_specs(app)
     assert "update_external_media_use" in listed["get_episode_credits"]["description"]

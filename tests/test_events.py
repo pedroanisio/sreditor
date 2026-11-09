@@ -15,7 +15,7 @@ from sreditor.events import READ_WITH, Event
 from sreditor.pagination import encode_cursor
 from tests import media_samples as sample
 from tests.conftest import RecordingMailer
-from tests.test_agentic import ALL_SCOPES, PUBLIC_URL, agent, new_token, tool
+from tests.test_agentic import ALL_SCOPES, PUBLIC_URL, agent, new_token, operation_specs, tool
 from tests.test_api import FUNNY_MEMES
 from tests.test_episodes import joined
 from tests.test_mcp_contract import registered
@@ -268,8 +268,8 @@ def test_events_cursor_at_the_last_pruned_event_is_not_expired(
 # MCP
 
 
-def test_mcp_list_events_is_read_only_with_an_output_schema(mcp: TestClient) -> None:
-    listed = registered(mcp)["list_events"]
+def test_mcp_list_events_is_read_only_with_an_output_schema(app: FastAPI) -> None:
+    listed = operation_specs(app)["list_events"]
     assert listed["annotations"] == {
         "title": "List what changed in a channel",
         "readOnlyHint": True,

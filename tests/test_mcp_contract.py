@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import asyncio
 import copy
 import re
 from collections.abc import Callable, Iterator
-from datetime import date, timedelta
+from datetime import date
 from typing import Any
 
 import pytest
@@ -16,13 +15,13 @@ from pydantic import BaseModel
 
 from sreditor.deps import RoleMissing, ScopeMissing
 from sreditor.idempotency import Idempotency
-from sreditor.mcp_aliases import ALIAS_DAYS, ToolRename
+from sreditor.mcp_catalog import GROUPS, OPERATION_TOOL
 from sreditor.mcp_idempotency import REPLAYED_META
-from sreditor.mcp_server import INSTRUCTIONS, build, error_message
+from sreditor.mcp_server import INSTRUCTIONS, error_message, record_operations
 from sreditor.members import Permission, Role, minimum_role
 from sreditor.tokens import Scope
 from tests.conftest import RecordingMailer
-from tests.test_agentic import PUBLIC_URL, agent, mcp_call, new_token, tool
+from tests.test_agentic import PUBLIC_URL, agent, call_tool, mcp_call, new_token, tool
 from tests.test_api import FUNNY_MEMES
 from tests.test_delivery import package
 from tests.test_elevenlabs import VOICES, ok
@@ -40,7 +39,6 @@ UNMENTIONED = {"set_episode_pitch"}  # the one-pitch form of set_episode_pitches
 CLAIM_SOURCE = {"url": "https://example.com/claims", "title": "Claims", "claim": "A figure."}
 RETENTION_CSV = "second,percent\n0,100\n1,90\n2,75\n"
 TODAY = date(2026, 11, 7)
-RENAME = ToolRename(old_name="get_notes", new_name="get_research", renamed_on=TODAY)
 
 
 @pytest.fixture
@@ -62,9 +60,36 @@ def mcp(
         yield client
 
 
-def registered(client: TestClient) -> dict[str, dict[str, Any]]:
+def served(client: TestClient) -> dict[str, dict[str, Any]]:
+    """The tools a client lists, by name."""
     listed = mcp_call(client, "tools/list", {})["result"]["tools"]
     return {item["name"]: item for item in listed}
+
+
+def operation_refs(request: dict[str, Any]) -> list[str]:
+    """The request models a grouped tool accepts: one, or several told apart by operation."""
+    members = request.get("oneOf") or request.get("anyOf") or [request]
+    return [member["$ref"].rsplit("/", 1)[-1] for member in members]
+
+
+def registered(client: TestClient) -> dict[str, dict[str, Any]]:
+    """Each operation as a tool of its own: its description, its request schema and its tool."""
+    operations: dict[str, dict[str, Any]] = {}
+    for item in served(client).values():
+        definitions = item["inputSchema"].get("$defs", {})
+        for ref in operation_refs(item["inputSchema"]["properties"]["request"]):
+            member = definitions[ref]
+            name = member["properties"]["operation"]["const"]
+            schema = {**member, "$defs": definitions}
+            description = member.get("description", "")
+            operations[name] = {
+                **item,
+                "name": name,
+                "description": description,
+                "inputSchema": schema,
+                "tool": item["name"],
+            }
+    return operations
 
 
 # Discovery: the instructions
@@ -516,12 +541,13 @@ def test_mcp_request_render_description_says_it_is_idempotent(mcp: TestClient) -
     assert "idempotent" in description
 
 
-def test_mcp_every_tool_that_creates_takes_a_key_or_is_listed(mcp: TestClient) -> None:
-    creating = {
-        name
-        for name, item in registered(mcp).items()
-        if item["annotations"]["idempotentHint"] is False
+def test_mcp_every_tool_that_creates_takes_a_key_or_is_listed(
+    mcp: TestClient, app: FastAPI
+) -> None:
+    hints = {
+        name: added.annotations for name, added in record_operations(app.state.services).items()
     }
+    creating = {name for name, hint in hints.items() if hint and not hint.idempotent_hint}
     keyed = {
         name
         for name, item in registered(mcp).items()
@@ -531,53 +557,58 @@ def test_mcp_every_tool_that_creates_takes_a_key_or_is_listed(mcp: TestClient) -
     assert creating - keyed == {"get_file_link", "check_srstudio_export"}
 
 
-# Renames: aliases
+# Tools grouped by outcome
 
 
-def build_names(app: FastAPI, today: date, renames: tuple[ToolRename, ...] = (RENAME,)) -> set[str]:
-    server = build(app.state.services, renames, lambda: today)
-    return set(server.added)
+def test_build_serves_only_the_grouped_tools(mcp: TestClient) -> None:
+    assert set(served(mcp)) == {group.name for group in GROUPS}
 
 
-def test_build_registers_the_old_name_while_the_alias_is_active(app: FastAPI) -> None:
-    assert "get_notes" in build_names(app, TODAY + timedelta(days=ALIAS_DAYS))
+def test_instructions_name_every_served_tool() -> None:
+    assert [group.name for group in GROUPS if group.name not in INSTRUCTIONS] == []
 
 
-def test_build_drops_the_old_name_after_the_end_date(app: FastAPI) -> None:
-    assert "get_notes" not in build_names(app, TODAY + timedelta(days=ALIAS_DAYS + 1))
+def test_build_serves_every_operation_in_one_tool(mcp: TestClient) -> None:
+    assert {name: item["tool"] for name, item in registered(mcp).items()} == OPERATION_TOOL
 
 
-def test_build_without_renames_registers_no_alias(app: FastAPI) -> None:
-    server = build(app.state.services)
-    assert server.alias_names == []
+def test_grouped_tool_description_lists_its_operations(mcp: TestClient) -> None:
+    description = served(mcp)["edit_research"]["description"]
+    assert "add_source" in description and "remove_claim" in description
 
 
-def test_alias_ends_ninety_days_after_the_rename() -> None:
-    assert RENAME.ends_on == date(2027, 2, 5)
+def test_grouped_read_tool_is_read_only(mcp: TestClient) -> None:
+    hints = served(mcp)["read_episode"]["annotations"]
+    assert (hints["readOnlyHint"], hints["destructiveHint"], hints["openWorldHint"]) == (
+        True,
+        False,
+        False,
+    )
 
 
-def test_alias_description_names_the_new_tool_and_the_end_date() -> None:
-    description = RENAME.description()
-    assert "get_research" in description and "2027-02-05" in description
+def test_grouped_tool_with_a_removal_is_destructive(mcp: TestClient) -> None:
+    assert served(mcp)["edit_research"]["annotations"]["destructiveHint"] is True
 
 
-def test_alias_answers_with_the_same_arguments_as_the_new_tool(
-    app: FastAPI, owner: TestClient
-) -> None:
-    server = build(app.state.services, (RENAME,), lambda: TODAY)
-    assert server.alias_names == ["get_notes"]
-    # The alias shares the function, so its schema and result are the new tool's.
-    assert server.added["get_notes"].function is server.added["get_research"].function
+def test_grouped_tool_that_reaches_elevenlabs_is_open_world(mcp: TestClient) -> None:
+    assert served(mcp)["voice_over"]["annotations"]["openWorldHint"] is True
 
 
-def test_instructions_never_mention_an_alias() -> None:
-    assert RENAME.old_name not in INSTRUCTIONS
+def test_grouped_tool_returns_the_operation_result_under_result(mcp: TestClient) -> None:
+    answer = call_tool(mcp, "read_channel", {"request": {"operation": "get_channel", "slug": SLUG}})
+    assert SLUG in str(answer["structuredContent"]["result"])
 
 
-def test_alias_listing_shows_the_alias_description_and_title(app: FastAPI) -> None:
-    server = build(app.state.services, (RENAME,), lambda: TODAY)
-    listed = {item.name: item for item in asyncio.run(server.list_tools())}
-    alias = listed["get_notes"]
-    assert alias.description == RENAME.description()
-    assert alias.input_schema == listed["get_research"].input_schema
-    assert alias.annotations is not None and alias.annotations.title.endswith("(old name)")
+def test_grouped_tool_unknown_operation_is_refused(mcp: TestClient) -> None:
+    answer = mcp_call(
+        mcp,
+        "tools/call",
+        {"name": "read_channel", "arguments": {"request": {"operation": "add_source"}}},
+    )
+    assert answer.get("error") or answer["result"]["isError"]
+
+
+def test_grouped_tool_extra_argument_is_refused(mcp: TestClient) -> None:
+    request = {"operation": "get_channel", "slug": SLUG, "number": 1}
+    answer = call_tool(mcp, "read_channel", {"request": request})
+    assert answer["isError"]

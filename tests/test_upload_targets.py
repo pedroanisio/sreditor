@@ -23,7 +23,7 @@ from sreditor.settings import AppSettings
 from tests import media_samples as sample
 from tests import test_file_links as links
 from tests.conftest import PASSWORD, RecordingMailer, fast_passwords
-from tests.test_agentic import PUBLIC_URL, agent, mcp_call, new_token, tool
+from tests.test_agentic import PUBLIC_URL, agent, new_token, operation_specs, tool
 from tests.test_file_links import error_text
 
 SLUG = "funny-memes"
@@ -673,8 +673,8 @@ def test_update_brand_clearing_a_slot_keeps_the_file_other_kits_still_use(
     assert offer["structuredContent"]["media_type"] == "image/png"
 
 
-def test_update_brand_description_points_to_create_upload_link(mcp: TestClient) -> None:
-    listed = mcp_call(mcp, "tools/list", {})["result"]["tools"]
+def test_update_brand_description_points_to_create_upload_link(app: FastAPI) -> None:
+    listed = list(operation_specs(app).values())
     brand = next(item for item in listed if item["name"] == "update_brand")
     assert "create_upload_link" in brand["description"]
     assert "cannot upload" in brand["description"]

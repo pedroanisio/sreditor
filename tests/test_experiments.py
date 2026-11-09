@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from sreditor.database import MIGRATIONS, Database
 from sreditor.migrations import current_version, run_migrations
 from tests.conftest import RecordingMailer
-from tests.test_agentic import PUBLIC_URL, agent, mcp_call, new_token, tool
+from tests.test_agentic import PUBLIC_URL, agent, new_token, operation_specs, tool
 from tests.test_api import FUNNY_MEMES
 from tests.workspace_helpers import ORIGIN, submit
 
@@ -592,8 +592,8 @@ def test_mcp_get_experiment_pages_with_a_cursor(owner: TestClient, mcp: TestClie
     ]
 
 
-def test_mcp_experiment_tools_declare_their_annotations(mcp: TestClient) -> None:
-    listed = mcp_call(mcp, "tools/list", {})["result"]["tools"]
+def test_mcp_experiment_tools_declare_their_annotations(app: FastAPI) -> None:
+    listed = list(operation_specs(app).values())
     found = {item["name"]: item for item in listed if item["name"].endswith("_experiment")}
     reading, saving = found["get_experiment"], found["save_experiment"]
     assert reading["annotations"]["readOnlyHint"] is True

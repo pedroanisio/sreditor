@@ -34,7 +34,7 @@ from sreditor.channels import (
     Platform,
     PlatformAccount,
 )
-from tests.test_agentic import PUBLIC_URL, agent, mcp_call, new_token, tool
+from tests.test_agentic import PUBLIC_URL, agent, new_token, operation_specs, tool
 from tests.test_api import FUNNY_MEMES
 
 CHANNEL = "/channels/funny-memes"
@@ -526,8 +526,8 @@ def test_api_patch_brand_sets_and_clears_the_narrator_voice(owner: TestClient) -
     assert (set_voice["voice_id"], cleared) == ("brand1", None)
 
 
-def test_mcp_update_brand_description_points_files_to_get_file_link(mcp: TestClient) -> None:
-    listed = {item["name"]: item for item in mcp_call(mcp, "tools/list", {})["result"]["tools"]}
+def test_mcp_update_brand_description_points_files_to_get_file_link(app: FastAPI) -> None:
+    listed = operation_specs(app)
     description = listed["update_brand"]["description"]
     assert "get_file_link" in description and "signed upload links" not in description
 
@@ -561,8 +561,8 @@ def test_mcp_update_brand_with_read_only_token_is_a_tool_error(
         assert update_brand(reader, colors=PALETTE)["isError"]
 
 
-def test_mcp_brand_tool_descriptions_are_fixed_in_code(mcp: TestClient) -> None:
-    listed = {item["name"]: item for item in mcp_call(mcp, "tools/list", {})["result"]["tools"]}
+def test_mcp_brand_tool_descriptions_are_fixed_in_code(app: FastAPI) -> None:
+    listed = operation_specs(app)
     assert "never changes" in listed["update_channel"]["description"]
     assert "WHOLE palette" in listed["update_brand"]["description"]
     assert listed["update_brand"]["annotations"]["idempotentHint"] is True

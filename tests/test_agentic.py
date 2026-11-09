@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import os
 import subprocess
@@ -13,13 +14,15 @@ from uuid import UUID
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 
 from sreditor.api import create_app
 from sreditor.database import Database, utc_now
 from sreditor.idempotency import Idempotency
 from sreditor.idempotency_store import IdempotencyStore, KeyInProgress, StoredResponse
-from sreditor.mcp_server import Effect, tool_annotations
+from sreditor.mcp_catalog import OPERATION_TOOL
+from sreditor.mcp_groups import result_type
+from sreditor.mcp_server import Effect, record_operations, tool_annotations
 from sreditor.pagination import MAX_LIMIT, decode_cursor, encode_cursor
 from sreditor.problems import ProblemError
 from sreditor.security import RateLimiter
@@ -537,10 +540,35 @@ def mcp_call(client: TestClient, method: str, params: dict[str, Any]) -> dict[st
     return payload
 
 
-def tool(client: TestClient, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+def call_tool(client: TestClient, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    """Call a served tool by its own name, as a client does."""
     result: dict[str, Any] = mcp_call(client, "tools/call", {"name": name, "arguments": arguments})[
         "result"
     ]
+    return result
+
+
+def operation_specs(app: FastAPI) -> dict[str, dict[str, Any]]:
+    """Each operation's description, hints and result schema, as it had them as a tool."""
+    described: dict[str, dict[str, Any]] = {}
+    for name, added in record_operations(app.state.services).items():
+        hints = added.annotations
+        described[name] = {
+            "name": name,
+            "description": inspect.cleandoc(added.function.__doc__ or ""),
+            "annotations": hints.model_dump(by_alias=True, exclude_none=True) if hints else {},
+            "outputSchema": TypeAdapter(result_type(added)).json_schema(),
+        }
+    return described
+
+
+def tool(client: TestClient, operation: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    """Run one operation through the tool that groups it; its result comes back unwrapped."""
+    request = {"operation": operation, **arguments}
+    result = call_tool(client, OPERATION_TOOL[operation], {"request": request})
+    structured = result.get("structuredContent")
+    if isinstance(structured, dict) and "result" in structured:
+        result["structuredContent"] = structured["result"]
     return result
 
 
@@ -564,7 +592,7 @@ def test_mcp_with_session_token_returns_401(app: FastAPI, owner: TestClient) -> 
 
 def test_mcp_tools_list_includes_main_operations(mcp: TestClient) -> None:
     tools = {item["name"] for item in mcp_call(mcp, "tools/list", {})["result"]["tools"]}
-    assert {"list_channels", "get_channel", "get_editorial", "write_guideline"} <= tools
+    assert {"read_channel", "manage_channel", "read_episode", "edit_episode"} <= tools
 
 
 def test_mcp_list_channels_returns_visible_channels(mcp: TestClient) -> None:
@@ -789,7 +817,7 @@ CHANNEL_TOOL_EFFECTS = {
     "list_members": Effect.READ,
 }
 ANNOTATION_HINTS = ("readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint")
-OPEN_WORLD_TOOLS = {"list_voices", "generate_voice_over"}  # they call ElevenLabs
+OPEN_WORLD_TOOLS = {"voice_over"}  # it calls ElevenLabs
 
 
 @pytest.mark.parametrize(
@@ -809,8 +837,8 @@ def test_tool_annotations_effect_sets_every_hint(
     assert annotations["title"] == "A tool"
 
 
-def test_mcp_channel_tools_declare_title_and_every_hint(mcp: TestClient) -> None:
-    listed = {item["name"]: item for item in mcp_call(mcp, "tools/list", {})["result"]["tools"]}
+def test_mcp_channel_tools_declare_title_and_every_hint(app: FastAPI) -> None:
+    listed = operation_specs(app)
     for name, effect in CHANNEL_TOOL_EFFECTS.items():
         expected = tool_annotations(listed[name]["annotations"]["title"], effect)
         assert listed[name]["annotations"] == expected.model_dump(by_alias=True, exclude_none=True)

@@ -15,7 +15,7 @@ from sreditor.episode_facts import EpisodeFacts
 from sreditor.overview_operations import DEFAULT_SECTIONS, DIGESTS, Section
 from sreditor.readiness import Area, ReadinessItem, ReadinessSource
 from tests.conftest import RecordingMailer
-from tests.test_agentic import PUBLIC_URL, agent, new_token, tool
+from tests.test_agentic import PUBLIC_URL, agent, new_token, operation_specs, tool
 from tests.test_api import FUNNY_MEMES
 from tests.test_episodes import joined
 from tests.test_mcp_contract import registered
@@ -327,8 +327,8 @@ def test_mcp_get_episode_overview_include_picks_sections(mcp: TestClient) -> Non
     assert body["sections"] == ["context"] and body["readiness"] is None
 
 
-def test_mcp_get_episode_overview_is_read_only_with_an_output_schema(mcp: TestClient) -> None:
-    described = registered(mcp)["get_episode_overview"]
+def test_mcp_get_episode_overview_is_read_only_with_an_output_schema(app: FastAPI) -> None:
+    described = operation_specs(app)["get_episode_overview"]
     assert described["annotations"]["readOnlyHint"] is True
     assert described["annotations"]["destructiveHint"] is False
     assert described["annotations"]["openWorldHint"] is False
