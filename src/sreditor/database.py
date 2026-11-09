@@ -899,8 +899,51 @@ def add_events(connection: sqlite3.Connection) -> None:
 
 
 EVENTS = Migration(version=4, name="change feed events", apply=add_events)
+
+EPISODE_REVIEWS_SQL = """
+-- A review may name a file of its own episode only: the key carries channel and episode.
+CREATE UNIQUE INDEX IF NOT EXISTS episode_media_in_episode
+    ON episode_media (channel_slug, number, id);
+CREATE TABLE IF NOT EXISTS episode_reviews (
+    position INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT NOT NULL UNIQUE,
+    channel_slug TEXT NOT NULL,
+    number INTEGER NOT NULL,
+    reviewer_id TEXT NOT NULL,
+    token_id TEXT,
+    reviewed_at TEXT NOT NULL,
+    verdict TEXT NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    media_id TEXT,
+    FOREIGN KEY (channel_slug, number) REFERENCES episodes (channel_slug, number)
+        ON DELETE CASCADE,
+    FOREIGN KEY (channel_slug, number, media_id)
+        REFERENCES episode_media (channel_slug, number, id)
+);
+CREATE INDEX IF NOT EXISTS episode_reviews_by_episode
+    ON episode_reviews (channel_slug, number, reviewed_at, position);
+CREATE TABLE IF NOT EXISTS review_ranges (
+    review_id TEXT NOT NULL REFERENCES episode_reviews (id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    start_s REAL NOT NULL,
+    end_s REAL NOT NULL,
+    PRIMARY KEY (review_id, position)
+);
+-- A review outlives the file it looked at; it just stops pointing to it.
+CREATE TRIGGER IF NOT EXISTS episode_media_forget_reviews AFTER DELETE ON episode_media BEGIN
+    UPDATE episode_reviews SET media_id = NULL WHERE media_id = OLD.id;
+END;
+"""
+
+
+def create_episode_reviews(connection: sqlite3.Connection) -> None:
+    """Migration 6: an episode's reviews, each its own row, with the time ranges seen."""
+    execute_script(connection, EPISODE_REVIEWS_SQL)
+
+
+EPISODE_REVIEWS = Migration(version=6, name="episode reviews", apply=create_episode_reviews)
 # Append new migrations here, numbered in order; never change one that has been released.
-MIGRATIONS = (BASELINE, SEARCH_INDEX, OAUTH_CLIENT_USE, EVENTS, EXPERIMENTS)
+MIGRATIONS = (BASELINE, SEARCH_INDEX, OAUTH_CLIENT_USE, EVENTS, EXPERIMENTS, EPISODE_REVIEWS)
 
 
 def open_connection(path: Path, *, is_autocommit: bool = False) -> sqlite3.Connection:

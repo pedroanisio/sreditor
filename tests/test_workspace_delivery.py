@@ -11,7 +11,7 @@ from httpx2 import Response
 
 from tests import media_samples as sample
 from tests.conftest import RecordingMailer
-from tests.workspace_helpers import flash_after, join, member, new_channel, submit
+from tests.workspace_helpers import approve_episode, flash_after, join, member, new_channel, submit
 
 CHANNEL = "/app/channels/funny-memes"
 EPISODE = f"{CHANNEL}/episodes/1"
@@ -250,6 +250,7 @@ def test_delivery_page_without_session_redirects_to_sign_in(app: FastAPI) -> Non
 def test_episode_save_published_with_gaps_saves_and_says_the_package_is_incomplete(
     with_cut: TestClient,
 ) -> None:
+    approve_episode(with_cut, EPISODE)
     response = submit(
         with_cut, EPISODE, {"title": "Pilot", "summary": "", "status": "published", "revision": "1"}
     )
@@ -257,6 +258,7 @@ def test_episode_save_published_with_gaps_saves_and_says_the_package_is_incomple
 
 
 def test_episode_save_published_complete_says_changes_saved(owner: TestClient) -> None:
+    approve_episode(owner, EPISODE)
     response = submit(
         owner, EPISODE, {"title": "Pilot", "summary": "", "status": "published", "revision": "1"}
     )
@@ -266,6 +268,7 @@ def test_episode_save_published_complete_says_changes_saved(owner: TestClient) -
 def test_board_move_to_published_with_gaps_says_the_package_is_incomplete(
     with_cut: TestClient,
 ) -> None:
+    approve_episode(with_cut, EPISODE)
     response = submit(with_cut, f"{EPISODE}/move", {"status": "published"})
     assert "its delivery package is incomplete" in flash_after(with_cut, response)
 

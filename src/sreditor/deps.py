@@ -45,6 +45,7 @@ from sreditor.render_upload import PartStore
 from sreditor.renders import RenderStore
 from sreditor.repository import ChannelNotFound, ChannelRepository
 from sreditor.research import ResearchStore
+from sreditor.reviews import ReviewStore
 from sreditor.screenplay import ScreenplayStore
 from sreditor.search import SearchStore
 from sreditor.security import Passwords, RateLimiter
@@ -111,6 +112,7 @@ class Services:
     file_links: FileLinkStore
     claims: ClaimStore
     events: EventStore
+    reviews: ReviewStore
     voice: ElevenLabs | None = None  # None: SREDITOR_ELEVENLABS_API_KEY is not set
 
     def accounts(self, locale: str = BASE_LOCALE) -> Accounts:

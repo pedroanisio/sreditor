@@ -186,6 +186,7 @@ def more_keyed_calls(mcp: TestClient) -> dict[str, dict[str, Any]]:
     episode = {"slug": SLUG, "number": 1}
     return {
         "add_claim": {**episode, "claim": claim},
+        "add_review": {**episode, "review": {"verdict": "approved", "notes": "Looks right."}},
         "record_post": {**episode, "post": {**post, "url": "https://tiktok.test/v/1"}},
         "record_post_metrics": {
             **episode,
@@ -301,6 +302,7 @@ KEYED_TOOLS = [
     "save_prop",
     "save_relationship",
     "save_experiment",
+    "add_review",
 ]
 # How to change each call's arguments so that the same key no longer matches: a path to a value.
 CHANGED_ARGUMENT: dict[str, tuple[tuple[str, ...], Any]] = {
@@ -323,6 +325,7 @@ CHANGED_ARGUMENT: dict[str, tuple[tuple[str, ...], Any]] = {
     "save_prop": (("prop", "description"), "Another laptop"),
     "save_relationship": (("relationship", "relation"), "rivals"),
     "save_experiment": (("experiment", "title"), "Renamed"),
+    "add_review": (("review", "notes"), "Another look"),
 }
 # A replayed link result carries a fresh link: these fields differ between the two answers.
 LINK_FIELDS = {"url", "expires_at"}

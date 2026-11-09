@@ -656,6 +656,11 @@
 <span class="meta">{{ text }}</span>
 {%- endmacro %}
 
+{# A file's SHA-256, kept whole so it can be compared or copied; it wraps on narrow screens. #}
+{% macro digest(label, value) -%}
+<span class="meta">{{ label }} <code class="digest">{{ value }}</code></span>
+{%- endmacro %}
+
 {# Says a value comes from a higher level, such as the channel's kit on an account. #}
 {% macro inherited(text) -%}
 <p class="inherited">{{ text }}</p>

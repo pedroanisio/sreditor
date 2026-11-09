@@ -640,6 +640,7 @@ kbd {
 .badge.success { background: var(--color-success-soft); color: var(--color-success); border-color: transparent; }
 .badge.warning { background: var(--color-warning-soft); color: var(--color-warning); border-color: transparent; }
 .badge.accent { background: var(--color-accent-soft); color: var(--color-accent); border-color: transparent; }
+.badge.danger { background: var(--color-danger-soft); color: var(--color-danger); border-color: transparent; }
 
 /* Menu: a disclosure that opens a short list of links or forms, with no script. */
 .menu { position: relative; }
@@ -880,6 +881,7 @@ textarea.input { resize: vertical; }
 .read-only { font-size: var(--font-size-sm); }
 
 .meta { color: var(--color-text-muted); font-size: var(--font-size-sm); }
+.digest { font-family: var(--font-mono); font-size: var(--font-size-xs); overflow-wrap: anywhere; }
 .text-block { white-space: pre-wrap; overflow-wrap: anywhere; }
 /* Markdown someone wrote, such as research notes (rule project.text.markdown). */
 .markdown { overflow-wrap: anywhere; }

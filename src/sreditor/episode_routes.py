@@ -45,18 +45,22 @@ WriteTarget = Annotated[EpisodeWrite, Depends(episode_write)]
 def with_etag(revised: RevisedEpisode, response: Response) -> Episode:
     """The episode, with its revision as the response's ETag and any warning as a Warning header."""
     response.headers["ETag"] = etag(revised.revision)
-    if revised.claims_warning:
-        response.headers[WARNING_HEADER] = (
-            f'{MISCELLANEOUS_WARNING} sreditor "{revised.claims_warning}"'
+    texts = [text for text in (revised.claims_warning, revised.review_warning) if text]
+    if texts:
+        response.headers[WARNING_HEADER] = ", ".join(
+            f'{MISCELLANEOUS_WARNING} sreditor "{text}"' for text in texts
         )
     return revised.episode
 
 
 def written_with_etag(revised: RevisedEpisode, response: Response) -> WrittenEpisode:
-    """The written episode with its delivery and claims warnings, its revision as the ETag."""
+    """The written episode with its delivery, claims and review warnings, its revision as the ETag."""
     episode = with_etag(revised, response)
     return WrittenEpisode(
-        **episode.model_dump(), warnings=revised.warnings, claims_warning=revised.claims_warning
+        **episode.model_dump(),
+        warnings=revised.warnings,
+        claims_warning=revised.claims_warning,
+        review_warning=revised.review_warning,
     )
 
 
@@ -100,9 +104,10 @@ def replace_episode(
     """Replace an episode's title, summary and status. Send If-Match to keep others' changes.
 
     Moving the episode to published never fails for a gap in its delivery package or an
-    unchecked claim: `warnings` lists each cut without a video and each post without a link,
-    and `claims_warning` (also sent as a Warning header) says how many claims lack a checked
-    primary source.
+    unchecked claim or a missing approval: `warnings` lists each cut without a video and each
+    post without a link, `claims_warning` says how many claims lack a checked primary source and
+    `review_warning` says the latest review is not an approval or there is none (both are also
+    sent as Warning headers).
     """
     revised = episode_operations.replace_episode(
         app, access, target.number, data, target.expected_revision

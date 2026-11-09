@@ -35,8 +35,15 @@ from sreditor.i18n import N_, Translator
 from sreditor.members import Permission
 from sreditor.pagination import DEFAULT_LIMIT, MAX_LIMIT
 from sreditor.problems import ProblemError
+from sreditor.review_operations import review_summary
 from sreditor.web.forms import field_errors
-from sreditor.web.labels import EPISODE_STATUS_LABELS, EPISODE_STATUS_TONES, episode_options
+from sreditor.web.labels import (
+    EPISODE_STATUS_LABELS,
+    EPISODE_STATUS_TONES,
+    VERDICT_LABELS,
+    VERDICT_TONES,
+    episode_options,
+)
 from sreditor.web.routes import rejected_form, translator
 from sreditor.web.workspace.episode_readiness import readiness_rows
 from sreditor.web.workspace.forms import EpisodeFields, MoveFields, RevisionFields, revision_of
@@ -80,6 +87,7 @@ MEDIA_TAB = N_("Media")
 THIRD_PARTY_TAB = N_("Third-party")
 CLASSIFICATION_TAB = N_("Classification")
 CLAIMS_TAB = N_("Claims")
+REVIEWS_TAB = N_("Reviews")
 WAIVERS_TAB = N_("Waivers")
 DELIVERY_TAB = N_("Delivery")
 RENDER_TAB = N_("Render")
@@ -88,6 +96,7 @@ EPISODE_TABS = (
     ("", DETAILS_TAB, "details", Permission.READ),
     ("/research", RESEARCH_TAB, "research", Permission.READ),
     ("/claims", CLAIMS_TAB, "claims", Permission.READ),
+    ("/reviews", REVIEWS_TAB, "reviews", Permission.READ),
     ("/screenplay", SCREENPLAY_TAB, "screenplay", Permission.READ),
     ("/short-script", SHORT_SCRIPT_TAB, "short-script", Permission.READ),
     ("/media", MEDIA_TAB, "media", Permission.READ),
@@ -122,6 +131,7 @@ def episode_frame(
         "tab_counts": {
             "research": counts.sources,
             "claims": count_claims(app, access, number),
+            "reviews": review_summary(app, access, number).count,
             "media": counts.media,
             "external-media": counts.uses,
             "waivers": counts.waivers,
@@ -238,8 +248,12 @@ def new_episode(
 
 
 def flash_after(revised: RevisedEpisode, usual: Flash) -> Flash:
-    """The note after a save or move: reaching published repeats any delivery gap or unchecked
-    claim, which never block the change (rules project.delivery and project.claims)."""
+    """The note after a save or move: reaching published repeats any delivery gap, unchecked
+    claim or missing approval, which never block the change (rules project.delivery,
+    project.claims and project.reviews)."""
+    if revised.review_warning:
+        has_other_gaps = bool(revised.warnings or revised.claims_warning)
+        return Flash.PUBLISHED_WITH_WARNINGS if has_other_gaps else Flash.REVIEW_MISSING
     if revised.warnings and revised.claims_warning:
         return Flash.PUBLISHED_WITH_GAPS
     if revised.warnings:
@@ -276,6 +290,10 @@ def episode_page(
         "episode": current.episode,
         "episode_revision": current.revision,
         "readiness": readiness_rows(app, access, shown.number, translator(request)),
+        "latest_review": review_summary(app, access, shown.number).latest,
+        "reviews_link": episodes_url(access.channel.slug, shown.number) + "/reviews",
+        "verdict_labels": VERDICT_LABELS,
+        "verdict_tones": VERDICT_TONES,
         "values": shown.sent or current.episode,
         "errors": shown.outcome.errors,
         "status_options": episode_options(translator(request)),

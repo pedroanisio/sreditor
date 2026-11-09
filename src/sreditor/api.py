@@ -39,6 +39,7 @@ from sreditor import (
     problems,
     render_routes,
     research_routes,
+    review_routes,
     screenplay_routes,
     search_routes,
     short_script_routes,
@@ -93,6 +94,7 @@ from sreditor.repository import (
     RevisionMismatch,
 )
 from sreditor.research import ResearchStore, SourceNotFound
+from sreditor.reviews import ReviewStore
 from sreditor.screenplay import ScreenplayStore
 from sreditor.search import SearchStore
 from sreditor.security import Passwords, RateLimiter
@@ -187,6 +189,7 @@ def create_app(
         file_links=FileLinkStore(database),
         claims=ClaimStore(database),
         events=EventStore(database, timedelta(days=settings.events_retention_days)),
+        reviews=ReviewStore(database),
         voice=build_voice(settings.voice),
     )
     mcp = mcp_server.build(services)
@@ -224,6 +227,7 @@ def create_app(
     pitch_routes.install_error_handlers(app)
     experiment_routes.install_error_handlers(app)
     claim_routes.install_error_handlers(app)
+    review_routes.install_error_handlers(app)
     context_routes.install_error_handlers(app)
     external_media_routes.install_error_handlers(app)
     short_script_routes.install_short_script_error_handlers(app)
@@ -241,6 +245,7 @@ def create_app(
     app.include_router(pitch_routes.router)
     app.include_router(experiment_routes.router)
     app.include_router(claim_routes.router)
+    app.include_router(review_routes.router)
     app.include_router(brand_routes.router)
     app.include_router(context_routes.router)
     app.include_router(screenplay_routes.router)

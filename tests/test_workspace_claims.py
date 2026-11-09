@@ -9,7 +9,14 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from tests.conftest import RecordingMailer
-from tests.workspace_helpers import flash_after, join, member, new_channel, submit
+from tests.workspace_helpers import (
+    approve_episode,
+    flash_after,
+    join,
+    member,
+    new_channel,
+    submit,
+)
 
 EPISODE = "/app/channels/funny-memes/episodes/1"
 CLAIMS = f"{EPISODE}/claims"
@@ -176,6 +183,7 @@ def test_episode_page_warns_about_unchecked_claims_with_a_link(
 def test_episode_published_with_unchecked_claims_saves_and_repeats_the_warning(
     owner: TestClient, claim: str
 ) -> None:
+    approve_episode(owner, EPISODE)
     form = {"title": "Pilot", "summary": "", "status": "published", "revision": "1"}
     response = submit(owner, EPISODE, form)
     page = flash_after(owner, response)
@@ -186,11 +194,13 @@ def test_episode_published_with_unchecked_claims_saves_and_repeats_the_warning(
 def test_episode_moved_to_published_from_the_board_repeats_the_warning(
     owner: TestClient, claim: str
 ) -> None:
+    approve_episode(owner, EPISODE)
     response = submit(owner, f"{EPISODE}/move", {"status": "published"})
     assert "some claims still have no checked primary source" in flash_after(owner, response)
 
 
 def test_episode_published_without_claims_says_it_was_saved_as_usual(owner: TestClient) -> None:
+    approve_episode(owner, EPISODE)
     form = {"title": "Pilot", "summary": "", "status": "published", "revision": "1"}
     assert "Changes saved." in flash_after(owner, submit(owner, EPISODE, form))
 

@@ -16,6 +16,11 @@
   <p class="muted">{{ _("Nothing holds this episode back.") }}</p>
   {% endif %}
 {% endcall %}
+{% if latest_review %}
+<p>{{ ui.badge(_(verdict_labels[latest_review.verdict.value]), verdict_tones[latest_review.verdict.value]) }} {{ ui.meta(_("Latest review on %(date)s", date=_.day(latest_review.reviewed_at.date()))) }} <a href="{{ reviews_link }}">{{ _("See the reviews") }}</a></p>
+{% else %}
+<p class="muted">{{ _("No review yet.") }} <a href="{{ reviews_link }}">{{ _("See the reviews") }}</a></p>
+{% endif %}
 {% if can("write_content") %}
 {% call ui.panel(_("Episode"), id="episode") %}
   {% call ui.form(channel_link ~ "/episodes/" ~ episode.number, csrf_field, csrf_token) %}

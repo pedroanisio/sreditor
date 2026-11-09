@@ -7,6 +7,7 @@ from sreditor.channels import ColorRole, FontRole, Platform, Status
 from sreditor.editorial import GuidelineKind
 from sreditor.episodes import EpisodeStatus
 from sreditor.i18n import N_, Translator
+from sreditor.reviews import Verdict
 from sreditor.tokens import Scope
 
 # Brand names, written the way each platform writes its own; never translated.
@@ -32,6 +33,19 @@ STATUS_TONES: dict[Status, str] = {
     Status.ACTIVE: "success",
     Status.PAUSED: "warning",
     Status.ARCHIVED: "",
+}
+
+VERDICT_LABELS: dict[Verdict, str] = {
+    Verdict.APPROVED: N_("Approved"),
+    Verdict.CHANGES_REQUESTED: N_("Changes requested"),
+    Verdict.REJECTED: N_("Rejected"),
+}
+
+# The badge tone of each verdict (a class of the badge component).
+VERDICT_TONES: dict[Verdict, str] = {
+    Verdict.APPROVED: "success",
+    Verdict.CHANGES_REQUESTED: "warning",
+    Verdict.REJECTED: "danger",
 }
 
 EPISODE_STATUS_LABELS: dict[EpisodeStatus, str] = {

@@ -22,6 +22,7 @@
       {% set cover = files.get(cut.cover_id | string) %}
       {{ ui.meta((video.name if video else _("No video yet")) ~ " · " ~ (cover.name if cover else _("No cover"))) }}
       {% if video %}{{ ui.player(media_link ~ "/" ~ video.id ~ "/file", video.media_type, video.name) }}{% endif %}
+      {% if video %}{{ ui.digest("SHA-256", video.sha256) }}{% endif %}
       {% if cover %}{{ ui.player(media_link ~ "/" ~ cover.id ~ "/file", cover.media_type, cover.name) }}{% endif %}
       {% if cut.caption %}<p>{{ cut.caption }}</p>{% endif %}
       {% if cut.alt_text %}<p class="muted">{{ _("Alt text") }}: {{ cut.alt_text }}</p>{% endif %}

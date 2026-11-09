@@ -99,8 +99,9 @@
 
   <h4>{{ _("Workspace") }}</h4>
   <div class="row">
-    {{ ui.badge(_("Draft")) }}{{ ui.badge(_("Active"), "success") }}{{ ui.badge(_("Paused"), "warning") }}{{ ui.badge(_("Set here"), "accent") }}
+    {{ ui.badge(_("Draft")) }}{{ ui.badge(_("Active"), "success") }}{{ ui.badge(_("Paused"), "warning") }}{{ ui.badge(_("Set here"), "accent") }}{{ ui.badge(_("Rejected"), "danger") }}
     {{ ui.meta("@memes") }}
+    {{ ui.digest("SHA-256", "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08") }}
   </div>
   {{ ui.text_block(_("Facts, open questions and leads. Cite each fact's source below.") ~ "\n" ~ _("No sources yet.")) }}
   {{ ui.text_block("INT. KITCHEN - DAY\n\nANA\nIs it Monday again?", mono=true) }}

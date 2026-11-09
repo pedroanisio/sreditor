@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from fastapi import status
 
-from sreditor.claims import warning_text
+from sreditor.claims import warning_text as claims_warning
 from sreditor.delivery import delivery_gaps
 from sreditor.deps import ChannelAccess, Services
 from sreditor.episodes import Episode, EpisodeInput, EpisodeStatus, PartCounts, RevisedEpisode
@@ -17,6 +17,7 @@ from sreditor.members import Permission
 from sreditor.operations import gated
 from sreditor.pagination import INVALID_CURSOR, Page, decode_cursor, encode_cursor
 from sreditor.problems import ProblemError
+from sreditor.reviews import warning_text as review_warning
 
 
 class EpisodeOperation:
@@ -97,8 +98,8 @@ def replace_episode(
 ) -> RevisedEpisode:
     """Replace an episode's title, summary and status.
 
-    Moving to published is never refused for unchecked claims (rule project.claims); the result
-    carries a warning that names how many there are.
+    Moving to published is never refused for unchecked claims or a missing approval (rules
+    project.claims and project.reviews); the result carries a warning for each.
     """
     access.require(Permission.WRITE_CONTENT)
     slug = access.channel.slug
@@ -111,11 +112,16 @@ def replace_episode(
     )
     if data.status is not EpisodeStatus.PUBLISHED:
         return revised
-    # Warn, never refuse: neither a delivery gap nor an unchecked claim holds back a status
-    # (rules project.delivery and project.claims).
+    # Warn, never refuse: no delivery gap, unchecked claim or missing approval holds back a
+    # status (rules project.delivery, project.claims and project.reviews).
     gaps = delivery_gaps(app.deliveries, app.media, app.settings.delivery, slug, number)
-    warning = warning_text(app.claims.unchecked(slug, number).count)
-    return revised.model_copy(update={"warnings": gaps, "claims_warning": warning})
+    return revised.model_copy(
+        update={
+            "warnings": gaps,
+            "claims_warning": claims_warning(app.claims.unchecked(slug, number).count),
+            "review_warning": review_warning(app.reviews.summary(slug, number).latest),
+        }
+    )
 
 
 def refuse_while_compared(app: Services, slug: str, number: int) -> None:

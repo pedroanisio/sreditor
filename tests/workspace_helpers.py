@@ -74,3 +74,9 @@ def flash_after(client: TestClient, response: Response) -> str:
     """The page a redirect leads to, as the browser would open it next."""
     assert response.status_code == 303, response.text
     return client.get(response.headers["location"]).text
+
+
+def approve_episode(client: TestClient, episode_path: str) -> None:
+    """Add an approving review through the Reviews page, so publishing warns only about the rest."""
+    form = {"verdict": "approved", "notes": "", "media_id": "", "seen": ""}
+    assert submit(client, f"{episode_path}/reviews", form).status_code == 303

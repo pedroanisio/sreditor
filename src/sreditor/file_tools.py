@@ -81,7 +81,7 @@ def add_file_tools(server: MCPServer, services: Services) -> None:
         MP4 master or a voice-over take. `upload` gives the episode `number`, the `kind`, a `name` and
         an optional `note`. Your sandbox sends the file's bytes with `method` (PUT) to `url`,
         with no credentials; the answer is the new media file. `kind` is voice_over,
-        sound_effect, score, visual_effect (MP4 or WebM), cover (PNG, JPEG or WebP) or
+        sound_effect, score, visual_effect (MP4 or WebM), cover or still (PNG, JPEG or WebP) or
         final_video (a finished MP4 or WebM master made outside sreditor, which is measured
         on arrival: duration, resolution and loudness, shown by list_media; use its id as a
         cut's `video_id` in write_delivery). A render is made with request_render, never

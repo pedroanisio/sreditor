@@ -1,4 +1,4 @@
-"""An episode's media: voice-over, sound effects, score, visual effects and covers (rule project.media).
+"""An episode's media: voice-over, sound effects, score, visual effects, covers and stills (rule project.media).
 
 Each file is checked by its content and stored by hash in the assets directory; the episode
 keeps a row per file with its kind, a name people chose and a note. Renaming or removing one
@@ -56,6 +56,7 @@ class MediaKind(StrEnum):
     RENDER = "render"  # a finished video from a render worker, never uploaded by hand
     COVER = "cover"  # a still for a delivery cut (rule project.delivery), checked by content
     FINAL_VIDEO = "final_video"  # a master made outside sreditor, measured when it arrives
+    STILL = "still"  # a frame kept as evidence, such as one a review looked at; checked by content
 
 
 KIND_FORMATS: dict[MediaKind, tuple[FileFormat, ...]] = {
@@ -66,6 +67,7 @@ KIND_FORMATS: dict[MediaKind, tuple[FileFormat, ...]] = {
     MediaKind.RENDER: VIDEO_FORMATS,
     MediaKind.COVER: IMAGE_FORMATS,
     MediaKind.FINAL_VIDEO: VIDEO_FORMATS,
+    MediaKind.STILL: IMAGE_FORMATS,
 }
 # Kinds a person or agent may upload; a render arrives only from a worker (rule project.render).
 UPLOADABLE_KINDS = tuple(kind for kind in MediaKind if kind is not MediaKind.RENDER)

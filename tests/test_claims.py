@@ -301,6 +301,8 @@ def test_episode_published_with_every_claim_checked_has_no_warning(
     owner: TestClient, claim: dict[str, Any], source: str
 ) -> None:
     checked(owner, claim, source)
+    approval = {"verdict": "approved", "notes": "Fine."}
+    assert owner.post(f"{EPISODE}/reviews", json=approval).status_code == 201
     assert "warning" not in publish(owner).headers
 
 

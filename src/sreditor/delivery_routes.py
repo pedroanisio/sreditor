@@ -55,6 +55,7 @@ def get_delivery(number: Number, access: Access, app: ServicesDep, response: Res
     hashtags) and the post on each platform account (cut, link, publish time and the post's
     own caption, alt text and hashtags, which replace the cut's when not empty).
 
+    `files` lists the media files the cuts use as video or cover, each with its `sha256`.
     `warnings` lists a cut without a video, a post without a link and a post whose text (its
     own or its cut's) has no AI notice or more than 5 hashtags; they never block a status. Revision 0 (ETag "0") means nobody wrote the package yet.
     """

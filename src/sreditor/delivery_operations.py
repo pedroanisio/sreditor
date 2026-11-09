@@ -22,6 +22,7 @@ from sreditor.delivery import (
     Cut,
     CutName,
     Delivery,
+    DeliveryFile,
     DeliveryInput,
     Hashtag,
     Post,
@@ -121,14 +122,34 @@ def episode_images(app: Services, slug: str, number: int) -> list[MediaFile]:
     return app.media.of_family(slug, number, IMAGE_FAMILY)
 
 
+def files_of(delivery: Delivery, media: list[MediaFile]) -> list[DeliveryFile]:
+    """The media files the cuts use as video or cover, with their SHA-256."""
+    used = {file_id for cut in delivery.cuts for file_id in (cut.video_id, cut.cover_id) if file_id}
+    return [
+        DeliveryFile(
+            id=file.id,
+            kind=file.kind,
+            name=file.name,
+            media_type=file.media_type,
+            size_bytes=file.size_bytes,
+            sha256=file.sha256,
+        )
+        for file in media
+        if file.id in used
+    ]
+
+
 def with_warnings(app: Services, delivery: Delivery) -> Delivery:
-    """The package with the gaps that weaken it, for a person or agent to read."""
+    """The package with the gaps that weaken it and the files it uses, for a reader."""
+    videos = episode_videos(app, delivery.channel, delivery.number)
     durations = {}
-    for video in episode_videos(app, delivery.channel, delivery.number):
+    for video in videos:
         measures = measured(app, video).measures
         durations[video.id] = None if measures is None else measures.duration_seconds
     found = warnings_of(delivery, durations, app.settings.delivery)
-    return delivery.model_copy(update={"warnings": found})
+    images = episode_images(app, delivery.channel, delivery.number)
+    files = files_of(delivery, [*videos, *images])
+    return delivery.model_copy(update={"warnings": found, "files": files})
 
 
 def get_delivery(app: Services, access: ChannelAccess, number: int) -> Delivery:

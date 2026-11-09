@@ -1,0 +1,53 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% block page_title %}{{ _("Reviews") }} · {{ episode.title }}{% endblock %}
+{% block page %}
+{% set may_write = can("write_editorial") %}
+{% set lead = _("Who reviewed the episode, what they watched and what they decided. Reviews are records: they are added, never edited.") %}
+{% include "workspace/_episode_header.html" %}
+{{ ui.form_error(errors) }}
+{% if not latest %}
+{% call ui.alert("warning") %}{{ _("The episode has no review yet. This does not block the episode.") }}{% endcall %}
+{% elif latest.verdict.value != "approved" %}
+{% call ui.alert("warning") %}{{ _("The latest review is not an approval. This does not block the episode.") }}{% endcall %}
+{% endif %}
+{% call ui.panel(_("Reviews"), id="reviews") %}
+  {% if reviews %}
+  {% call(review) ui.items(reviews, _("Reviews")) %}
+    {% call ui.item_body() %}
+      <p>{{ ui.badge(_(verdict_labels[review.verdict.value]), verdict_tones[review.verdict.value]) }}
+      {{ ui.meta(_("by %(name)s on %(date)s", name=reviewers.get(review.reviewer_id | string, _("someone who left")), date=_.day(review.reviewed_at.date()))) }}
+      {% if review.token_id %}{{ ui.meta(_("through %(name)s", name=an_api_token)) }}{% endif %}</p>
+      {% if review.notes %}{{ ui.markdown_block(review.notes) }}{% endif %}
+      {% if review.media_id %}
+      {{ ui.meta(_("File reviewed")) }} {{ ui.digest("SHA-256", review.media_sha256) }}
+      {% endif %}
+      {% if review.seen %}
+      {{ ui.tags(seen_labels[review.id | string], label=_("Time ranges seen")) }}
+      {% endif %}
+    {% endcall %}
+    {% if review.id | string in deletable %}
+    {% call ui.item_side() %}
+      {{ ui.confirm(_("Delete"), _("Delete this review? This cannot be undone."), reviews_link ~ "/delete", csrf_field, csrf_token, _("Delete review"), fields=[("review_id", review.id)], target=_(verdict_labels[review.verdict.value])) }}
+    {% endcall %}
+    {% endif %}
+  {% endcall %}
+  {% if next_cursor %}{{ ui.pager(reviews_link ~ "?cursor=" ~ next_cursor, _("More reviews")) }}{% endif %}
+  {% else %}
+  <p class="muted">{{ _("No reviews yet.") }}</p>
+  {% endif %}
+  {% if may_write %}{% call ui.panel_actions() %}{{ ui.dialog_button("new-review", _("Add a review"), plus=true) }}{% endcall %}{% endif %}
+{% endcall %}
+{% if may_write %}
+{% call ui.dialog("new-review", _("Add a review"), _("Close"), open=sent_review is not none) %}
+  {% set values = sent_review %}
+  {% call ui.form(reviews_link, csrf_field, csrf_token) %}
+    {{ ui.select("verdict", _("Verdict"), verdict_options, errors, value=values.verdict if values else "approved", id="review-verdict") }}
+    {{ ui.textarea("notes", _("Notes"), errors, value=values.notes if values else "", limit=notes_limit, rows=5, id="review-notes", hint=_("What you found, in Markdown.")) }}
+    {{ ui.select("media_id", _("File reviewed"), file_options, errors, value=values.media_id if values else "", id="review-media", hint=_("A render or a cut's video of this episode, to record what was watched.")) }}
+    {{ ui.textarea("seen", _("Time ranges seen"), errors, value=values.seen if values else "", rows=3, id="review-seen", mono=true, hint=_("One range per line, in seconds, such as 0 - 3.5. Needs a file.")) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Add review")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% endif %}
+{% endblock %}

@@ -33,7 +33,7 @@ from sreditor.database import Database
 from sreditor.episode_texts import EpisodeTexts, PartChanged, TextKey, TextPart
 from sreditor.field_types import SLUG_PATTERN, ChannelSlug, Sha256
 from sreditor.i18n import N_
-from sreditor.media import MediaStore
+from sreditor.media import MediaKind, MediaStore
 from sreditor.settings import DeliveryRules
 
 CAPTION_LENGTH = 1000
@@ -330,6 +330,19 @@ def warnings_of(
     return found
 
 
+class DeliveryFile(BaseModel):
+    """A media file a cut uses, with the SHA-256 of its content, to tell masters apart."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: UUID
+    kind: MediaKind
+    name: str
+    media_type: str
+    size_bytes: int
+    sha256: Sha256
+
+
 class Delivery(DeliveryInput):
     """An episode's delivery package with its revision and the warnings it raises."""
 
@@ -338,6 +351,11 @@ class Delivery(DeliveryInput):
     revision: int
     updated_at: datetime | None = None
     warnings: list[DeliveryWarning] = Field(default_factory=list)
+    files: list[DeliveryFile] = Field(
+        default_factory=list,
+        description="Read-only: the media files the cuts use as video or cover, by id, with "
+        "their SHA-256; ignored on write.",
+    )
 
 
 def delivery_key(channel: str, number: int) -> TextKey:

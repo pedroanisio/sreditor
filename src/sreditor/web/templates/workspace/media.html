@@ -26,6 +26,7 @@
     {% call ui.item_body() %}
       <strong>{{ file.name }}</strong>
       {{ ui.meta(file.size_bytes | filesizeformat) }}
+      {{ ui.digest("SHA-256", file.sha256) }}
       {% if file.note %}<p>{{ file.note }}</p>{% endif %}
       {{ ui.player(media_link ~ "/" ~ file.id ~ "/file", file.media_type, file.name) }}
     {% endcall %}

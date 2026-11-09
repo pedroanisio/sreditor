@@ -124,7 +124,7 @@ def add_package_tools(server: MCPServer, services: Services) -> None:
         `warnings` for a cut without a video, a video over the length limit (24 s by default),
         more than 5 hashtags, a caption with no AI notice line, a post without a link and a post
         whose text, its own or its cut's, has no AI notice or more than 5 hashtags. They
-        never block a status. Revision 0 means nobody wrote it yet. For the files themselves use list_media."""
+        never block a status. `files` lists the media files the cuts use, each with its `sha256`. Revision 0 means nobody wrote it yet. For the files themselves use list_media."""
         return delivery_reported(
             lambda: deliveries.get_delivery(
                 services, channel_access(services, context, slug), number

@@ -62,6 +62,7 @@ class WrittenEpisode(Episode):
 
     warnings: list[DeliveryWarning] = Field(default_factory=list)
     claims_warning: str | None = None
+    review_warning: str | None = None
 
 
 class RevisedEpisode(BaseModel):
@@ -79,6 +80,8 @@ class RevisedEpisode(BaseModel):
     # Set when a write moves the episode to published and claims still lack a checked primary
     # source: a heads-up that never blocks the change (rule project.claims).
     claims_warning: str | None = None
+    # Likewise when the latest review is not an approval or there is none (rule project.reviews).
+    review_warning: str | None = None
 
 
 class EpisodeNotFound(LookupError):

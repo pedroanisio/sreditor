@@ -96,6 +96,7 @@ from sreditor.research import (
     SourceNotFound,
 )
 from sreditor.research_operations import SourceChange
+from sreditor.review_operations import ReadEpisode, read_episode
 from sreditor.screenplay import Screenplay, ScreenplayInput
 from sreditor.srstudio import EpisodeStyleDetail
 from sreditor.srstudio_operations import NotInLibrary
@@ -135,6 +136,9 @@ INSTRUCTIONS = (
     "list_events lists what changed in a channel since your last cursor (writes by people, "
     "agents and render workers, render status changes), with the tool that reads each; "
     "it carries no content. "
+    "primary source only warn. add_review records a review of an episode (verdict, notes, the "
+    "file and time ranges seen); reviews are append-only and get_episode shows the latest, "
+    "while an episode published without an approving review only warns. "
     "search_channel finds where a channel wrote about something (titles, research, sources, "
     "screenplays, short scripts, pitches, library, third-party media, context) and says which tool "
     "opens each hit. "
@@ -473,6 +477,7 @@ def build(
     from sreditor.pitch_tools import add_pitch_tools
     from sreditor.prop_tools import add_prop_tools
     from sreditor.render_tools import add_render_tools
+    from sreditor.review_tools import add_review_tools
     from sreditor.search_tools import add_search_tools
     from sreditor.short_script_tools import add_short_script_tools
     from sreditor.source_tools import add_source_tools
@@ -493,6 +498,7 @@ def build(
     add_search_tools(server, services)
     add_source_tools(server, services)
     add_claim_tools(server, services)
+    add_review_tools(server, services)
     add_screenplay_tools(server, services)
     add_short_script_tools(server, services)
     add_library_tools(server, services)
@@ -812,13 +818,12 @@ def add_episode_tools(server: MCPServer, services: Services) -> None:
         return reported(read)
 
     @server.tool(annotations=tool_annotations("Read an episode", Effect.READ))
-    def get_episode(context: Context, slug: str, number: int) -> RevisedEpisode:
+    def get_episode(context: Context, slug: str, number: int) -> ReadEpisode:
         """Read one episode's title, summary and status, with the revision to pass as
-        `expected_revision` to update_episode. For its research or screenplay, use get_research
-        or get_screenplay instead."""
-        return reported(
-            lambda: episode_operations.get_episode(services, access(context, slug), number)
-        )
+        `expected_revision` to update_episode, and `reviews`: how many reviews it has and the
+        latest one, whose verdict is the episode's (add_review records one). For its research
+        or screenplay, use get_research or get_screenplay instead."""
+        return reported(lambda: read_episode(services, access(context, slug), number))
 
     @server.tool(annotations=tool_annotations("Create an episode", Effect.CREATE))
     def create_episode(
@@ -1164,8 +1169,9 @@ def add_media_tools(server: MCPServer, services: Services) -> None:
         limit: ToolLimit = DEFAULT_LIMIT,
     ) -> Page[MediaFile]:
         """List an episode's media files (voice-over, sound effect, score, visual effect,
-        cover, render and final video), each with its kind, name, note, media type and size.
-        Pass `kind` to list only one kind, such as cover or final_video for write_delivery. To
+        cover, still, render and final video), each with its kind, name, note, media type, size
+        and `sha256` (the SHA-256 of its content). Pass `kind` to list only one kind, such as
+        cover or final_video for write_delivery, or still for frames kept as evidence. To
         get a file's bytes call get_file_link with source episode_media and the `id` listed
         here; to add a file call create_upload_link. Pass `next_cursor` as `cursor` for more."""
         query = MediaQuery(number=number, kind=kind, cursor=cursor, limit=limit)
