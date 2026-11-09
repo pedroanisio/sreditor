@@ -16,15 +16,17 @@ from sreditor.deps import ChannelAccess, Services, ServicesDep
 from sreditor.editorial import (
     GUIDELINE_LENGTH,
     SINGLE_KINDS,
+    CitedStatementNotFound,
     Editorial,
     Guideline,
     GuidelineInput,
     GuidelineKind,
+    GuidelineNotCited,
     GuidelineNotFound,
 )
 from sreditor.i18n import N_, Translator
 from sreditor.members import Permission
-from sreditor.operations import retire_guideline, write_guideline
+from sreditor.operations import retire_guideline, take_cited_text, write_guideline
 from sreditor.problems import ProblemError
 from sreditor.store import StoreError
 from sreditor.web.forms import field_errors
@@ -55,6 +57,9 @@ CHOOSE_KIND = N_("Choose what this guideline is about.")
 NOT_SAVED = N_("The guideline could not be saved. Try again in a moment.")
 BAD_GATEWAY = status.HTTP_502_BAD_GATEWAY
 ALREADY_RETIRED = N_("This guideline was already retired. Reload the page.")
+NOT_CITED = N_("This guideline cites no statement, so there is no text to take.")
+CITED_GONE = N_("The statement this guideline cites no longer exists, so its text cannot be taken.")
+CITED_UNKNOWN = N_("No enabled statement has this id.")
 
 
 def editorial_url(slug: str, platform: Platform | None) -> str:
@@ -119,7 +124,9 @@ def editorial_page(
 ) -> Response:
     """The guidelines at one level, with the tabs for the others."""
     channel = access.channel
-    editorial = app.editorials.editorial(channel, shown.platform)
+    editorial = app.editorials.with_drift(
+        app.editorials.editorial(channel, shown.platform), channel
+    )
     context = {
         "errors": shown.outcome.errors,
         "sent": shown.sent,
@@ -129,6 +136,12 @@ def editorial_page(
         "kinds": kind_rows(app, channel, shown.platform, editorial),
         "limit": GUIDELINE_LENGTH,
         "here": HERE,
+        "drift": {warning.guideline_id: warning for warning in editorial.warnings},
+        "cited": {
+            item.id: item.citation.statement_id
+            for item in editorial.all_guidelines()
+            if item.citation is not None
+        },
     }
     view = View(
         template="workspace/editorial.html",
@@ -164,10 +177,17 @@ def write_outcome(
         return Outcome.invalid({"kind": translate(CHOOSE_KIND)})
     platform = platform_or_none(fields.platform)
     try:
-        data = GuidelineInput(kind=GuidelineKind(fields.kind), text=fields.text, platform=platform)
+        data = GuidelineInput(
+            kind=GuidelineKind(fields.kind),
+            text=fields.text,
+            platform=platform,
+            cited_statement_id=fields.cited_statement_id.strip() or None,
+        )
         write_guideline(app, access, data)
     except ValidationError as invalid:
         return Outcome.invalid(field_errors(invalid, translate))
+    except CitedStatementNotFound:
+        return Outcome.invalid({"cited_statement_id": translate(CITED_UNKNOWN)})
     except StoreError:
         return Outcome.refused({"form": translate(NOT_SAVED)}, BAD_GATEWAY)
     except ProblemError as problem:
@@ -226,3 +246,41 @@ def retire(
         shown = EditorialView(platform=platform, outcome=outcome)
         return editorial_page(request, app, access, shown)
     return done(request, app, editorial_url(access.channel.slug, platform), Flash.REMOVED)
+
+
+def take_outcome(
+    app: Services, access: ChannelAccess, fields: RetireFields, translate: Translator
+) -> Outcome | None:
+    """Take the cited statement's text; the error to show, or None when the guideline is revised."""
+    try:
+        take_cited_text(app, access, fields.statement_id, platform_or_none(fields.platform))
+    except GuidelineNotFound:
+        return Outcome.conflict({"form": translate(ALREADY_RETIRED)})
+    except GuidelineNotCited:
+        return Outcome.conflict({"form": translate(NOT_CITED)})
+    except CitedStatementNotFound:
+        return Outcome.conflict({"form": translate(CITED_GONE)})
+    except StoreError:
+        return Outcome.refused({"form": translate(NOT_SAVED)}, BAD_GATEWAY)
+    except ProblemError as problem:
+        return refused(problem, translate)
+    return None
+
+
+@router.post("/app/channels/{slug}/editorial/take-cited-text")
+def take_text(
+    request: Request,
+    app: ServicesDep,
+    access: PageAccess,
+    fields: Annotated[RetireFields, Form()],
+) -> Response:
+    """Revise a guideline to the current text of the statement it cites."""
+    if rejected := rejected_form(request, app, fields.csrf_token):
+        return rejected
+    require(access, Permission.WRITE_EDITORIAL)
+    platform = level(access, fields.platform)
+    outcome = take_outcome(app, access, fields, translator(request))
+    if outcome is not None:
+        shown = EditorialView(platform=platform, outcome=outcome)
+        return editorial_page(request, app, access, shown)
+    return done(request, app, editorial_url(access.channel.slug, platform), Flash.SAVED)

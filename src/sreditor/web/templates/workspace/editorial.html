@@ -4,6 +4,31 @@
 {% block page %}
 {% set may_write = can("write_editorial") %}
 {% set level = platform.value if platform else "" %}
+{% macro drift_notice(guideline, source, may_write, level) -%}
+{% set warning = drift.get(guideline.id) %}
+{% if warning %}
+{% set kind_ = warning.kind.value %}
+{% if kind_ == "changed" %}
+{% set title = _("The statement changed.") %}
+{% set detail = _("Statement %(id)s is at revision %(statement)s; this copy follows revision %(copy)s.", id=warning.statement_id, statement=warning.statement_revision, copy=warning.copy_revision) %}
+{% elif kind_ == "missing" %}
+{% set title = _("The statement is gone.") %}
+{% set detail = _("Statement %(id)s no longer exists or was retired. This copy stays as it is.", id=warning.statement_id) %}
+{% else %}
+{% set title = _("The statement cannot be read now.") %}
+{% set detail = _("Statement %(id)s could not be read right now, so this copy cannot be checked.", id=warning.statement_id) %}
+{% endif %}
+{% call ui.drift(title, detail, _("This copy"), warning.copy_text, _("The statement"), warning.statement_text) %}
+  {% if kind_ == "changed" and may_write and source == here %}
+  {% call ui.form(channel_link ~ "/editorial/take-cited-text", csrf_field, csrf_token) %}
+    {{ ui.hidden("statement_id", guideline.id) }}
+    {{ ui.hidden("platform", level) }}
+    {{ ui.button(_("Use the statement's text"), size="small") }}
+  {% endcall %}
+  {% endif %}
+{% endcall %}
+{% endif %}
+{%- endmacro %}
 {% call ui.page_header(_("Editorial"), _("What the channel is for, how it sounds and what it talks about. Guidelines set on a platform replace the channel's for that platform; house rules apply everywhere.")) %}{% endcall %}
 {{ ui.tabs(tabs, level, _("Editorial levels")) }}
 {{ ui.form_error(errors) }}
@@ -19,6 +44,8 @@
   {% if section_row.entries %}
   {% set guideline, source = section_row.entries[0] %}
   {{ ui.markdown_block(guideline.text) }}
+  {% if cited.get(guideline.id) %}{{ ui.meta(_("Copy of %(id)s", id=cited[guideline.id])) }}{% endif %}
+  {{ drift_notice(guideline, source, may_write, level) }}
   {% call ui.panel_actions() %}
     {{ ui.badge(_(source), "accent" if source == here else "") }}
     {% if may_write %}
@@ -39,7 +66,11 @@
   {% if section_row.entries %}
   {% call(entry) ui.items(section_row.entries, _(section_row.label)) %}
     {% set guideline, source = entry %}
-    {% call ui.item_body() %}{{ ui.markdown_block(guideline.text) }}{% endcall %}
+    {% call ui.item_body() %}
+      {{ ui.markdown_block(guideline.text) }}
+      {% if cited.get(guideline.id) %}{{ ui.meta(_("Copy of %(id)s", id=cited[guideline.id])) }}{% endif %}
+      {{ drift_notice(guideline, source, may_write, level) }}
+    {% endcall %}
     {% call ui.item_side() %}
       {{ ui.badge(_(source), "accent" if source == here else "") }}
       {% if may_write and source == here %}
@@ -63,6 +94,8 @@
     {% set text = sent.text if is_sent else (inherited_text if section_row.is_single else "") %}
     {% set hint = "" if own or not section_row.is_single or not section_row.entries else (_("Saving sets it on %(platform)s only; the channel's stays as it is.", platform=platform_names[platform]) if platform else _("Saving sets it for this channel; the house rule stays as it is.")) %}
     {{ ui.textarea("text", _(section_row.hint), kind_errors, value=text, limit=limit, rows=3, id=kind ~ "-text", hint=hint) }}
+    {% set own_cited = cited.get(section_row.entries[0][0].id, "") if own else "" %}
+    {{ ui.field("cited_statement_id", _("Copied from statement"), kind_errors, value=sent.cited_statement_id if is_sent else own_cited, required=false, hint=_("Optional. The id of a stmt statement this text copies; the page warns when that statement changes."), id=kind ~ "-cited") }}
     {% call ui.panel_actions() %}{{ ui.button(_("Save") if section_row.is_single else _("Add")) }}{% endcall %}
   {% endcall %}
   {% if own %}

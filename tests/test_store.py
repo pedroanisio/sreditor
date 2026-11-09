@@ -96,6 +96,12 @@ def test_get_error_other_than_not_found_reraises_with_code(settings: StoreSettin
     assert caught.value.code == "BUSY"
 
 
+def test_get_malformed_statement_raises_store_error(settings: StoreSettings) -> None:
+    runner = FakeStmt(ok_output({"id": "x"}))
+    with pytest.raises(StoreError, match="Unexpected statement"):
+        StmtClient(settings, runner=runner).get("x", "/")
+
+
 SCOPE = "/a"
 DOCUMENT = {"statement": "Hi.", "owner": {"type": "user", "id": "t"}, "category": "c"}
 

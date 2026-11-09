@@ -615,6 +615,20 @@ def test_mcp_written_guideline_is_the_editorial_purpose(
     assert editorial["purpose"]["id"] == written_statement_id
 
 
+def test_mcp_get_editorial_warns_when_the_cited_statement_changed(
+    mcp: TestClient, app: FastAPI
+) -> None:
+    client = app.state.services.stmt
+    house = {"statement": "Cut at 0.5 s.", "owner": {"type": "user", "id": "x"}, "category": "o"}
+    client.write("house.cut", house, "/", None)
+    guideline = {**PURPOSE, "text": "Cut at 0.5 s.", "cited_statement_id": "house.cut"}
+    tool(mcp, "write_guideline", {"slug": "funny-memes", "guideline": guideline})
+    client.write("house.cut", {**house, "statement": "Cut at 0.25 s."}, "/", 1)
+    editorial = tool(mcp, "get_editorial", {"slug": "funny-memes"})["structuredContent"]
+    (warning,) = editorial["warnings"]
+    assert warning["kind"] == "changed" and warning["statement_revision"] == 2
+
+
 def test_mcp_retire_guideline_reports_no_error(mcp: TestClient, written_statement_id: str) -> None:
     arguments = {"slug": "funny-memes", "statement_id": written_statement_id}
     assert not tool(mcp, "retire_guideline", arguments).get("isError")

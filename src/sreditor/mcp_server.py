@@ -49,6 +49,7 @@ from sreditor.deps import (
     agent_retry_after,
 )
 from sreditor.editorial import (
+    CitedStatementNotFound,
     Editorial,
     Guideline,
     GuidelineChanged,
@@ -267,6 +268,11 @@ def error_message(error: Exception) -> str:
         return (
             f"Guideline {error} changed; it is now at revision {error.current}. Read it again "
             "with get_editorial, then retry with that revision as expected_revision"
+        )
+    if isinstance(error, CitedStatementNotFound):
+        return (
+            f"Statement {error} does not exist or was retired, so a guideline cannot cite it. "
+            "Check the id, or leave cited_statement_id out"
         )
     if isinstance(error, RevisionMismatch):
         return (
@@ -579,8 +585,14 @@ def add_editorial_tools(server: MCPServer, services: Services) -> None:
         """The channel's Editorial: purpose, voice, audience, pillars and what to avoid.
 
         Read it before writing content for the channel; with a platform, its overrides apply.
+        `warnings` lists each guideline that cites a stmt statement whose text now differs from
+        its copy (statement id, both revisions, both texts) or that could not be checked. A
+        person decides: to adopt the statement's text, call write_guideline with that text and
+        the same cited_statement_id; to keep the copy, leave it. Do not use it to read stmt.
         """
-        return reported(lambda: operations.get_editorial(services, access(context, slug), platform))
+        return reported(
+            lambda: operations.read_editorial_checked(services, access(context, slug), platform)
+        )
 
     @server.tool(annotations=tool_annotations("Write guideline", Effect.CREATE))
     def write_guideline(
@@ -594,7 +606,9 @@ def add_editorial_tools(server: MCPServer, services: Services) -> None:
         may use Markdown (headings, emphasis, lists, quotes, links), which pages and PDF books
         show formatted.
 
-        Needs the editorial:write scope, and the channel's rules must allow it. When setting
+        Set `cited_statement_id` to the id of a stmt statement the guideline copies; get_editorial
+        then warns when that statement's text differs from the copy. The id must name an enabled
+        statement. Needs the editorial:write scope, and the channel's rules must allow it. When setting
         purpose, voice or audience, pass its `revision` from get_editorial as
         `expected_revision` (0 when it is not set yet) so you never overwrite a text you have
         not read. Each pillar or avoid call adds another guideline unless you pass an

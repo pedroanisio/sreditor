@@ -78,6 +78,21 @@
 <div class="alert {{ tone }}" role="{{ 'alert' if tone == 'error' else 'status' }}">{{ caller() }}</div>
 {%- endmacro %}
 
+{# A copied text that no longer matches its source (rule project.editorial.drift): the notice and,
+   when the source's text is known, both texts side by side; the caller's action goes below. #}
+{% macro drift(title, detail, copy_label="", copy_text="", source_label="", source_text=none) -%}
+<div class="alert warning drift" role="status">
+  <p><strong>{{ title }}</strong> {{ detail }}</p>
+  {% if source_text is not none %}
+  <div class="drift-texts">
+    <section aria-label="{{ copy_label }}"><h4>{{ copy_label }}</h4><p class="text-block">{{ copy_text }}</p></section>
+    <section aria-label="{{ source_label }}"><h4>{{ source_label }}</h4><p class="text-block">{{ source_text }}</p></section>
+  </div>
+  {% endif %}
+  {{ caller() }}
+</div>
+{%- endmacro %}
+
 {# Errors sit next to their field (web.forms.errors); a form-wide one sits above the form. #}
 {% macro form_error(errors) -%}
 {% if errors.get("form") %}{% call alert("error") %}{{ errors["form"] }}{% endcall %}{% endif %}

@@ -320,6 +320,7 @@ def test_editorial_write_purpose_returns_created_statement(editorial_api: TestCl
         "text": "Make everyday frustrations funny.",
         "scope": "/funny-memes",
         "revision": 1,
+        "citation": None,
     }
 
 

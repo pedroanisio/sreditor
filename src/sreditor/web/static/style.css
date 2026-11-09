@@ -219,6 +219,13 @@ p.error { color: var(--color-danger); }
 .alert.info { background: var(--color-accent-soft); color: var(--color-accent); }
 .alert.warning { background: var(--color-warning-soft); color: var(--color-warning); }
 
+/* Drift: a copy and its source side by side */
+
+.drift p { margin: var(--space-0); }
+.drift-texts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(var(--width-split-min), var(--width-full)), 1fr)); gap: var(--space-4); margin-top: var(--space-3); }
+.drift-texts h4 { margin: var(--space-0) var(--space-0) var(--space-1); font-size: var(--font-size-sm); }
+.drift form { margin-top: var(--space-3); }
+
 /* Button: hover, focus-visible, pressed and loading states (rule ui.microinteractions). */
 
 .button {

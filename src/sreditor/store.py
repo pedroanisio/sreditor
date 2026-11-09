@@ -183,7 +183,10 @@ class StmtClient:
             if error.code == "NOT_FOUND":
                 return None
             raise
-        return Statement.model_validate(result)
+        try:
+            return Statement.model_validate(result)
+        except ValidationError as invalid:
+            raise StoreError(f"Unexpected statement: {invalid}") from invalid
 
     def write(
         self, statement_id: str, document: dict[str, Any], scope: str, revision: int | None = None

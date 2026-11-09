@@ -53,11 +53,13 @@ from sreditor.database import Clock, Database, utc_now
 from sreditor.delivery import DeliveryStore
 from sreditor.deps import Access, CurrentUser, Services, ServicesDep, request_token
 from sreditor.editorial import (
+    CitedStatementNotFound,
     Editorial,
     EditorialService,
     Guideline,
     GuidelineChanged,
     GuidelineInput,
+    GuidelineNotCited,
     GuidelineNotFound,
 )
 from sreditor.elevenlabs import build_voice
@@ -288,6 +290,26 @@ def install_error_handlers(app: FastAPI) -> None:
     async def guideline_not_found(request: Request, missing: GuidelineNotFound) -> JSONResponse:
         return problem_response(
             request, status.HTTP_404_NOT_FOUND, f"Guideline {missing} not found"
+        )
+
+    @app.exception_handler(CitedStatementNotFound)
+    async def cited_statement_not_found(
+        request: Request, missing: CitedStatementNotFound
+    ) -> JSONResponse:
+        return problem_response(
+            request,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"Statement {missing} does not exist or was retired; cite an enabled statement id",
+            problem_type("cited-statement-not-found"),
+        )
+
+    @app.exception_handler(GuidelineNotCited)
+    async def guideline_not_cited(request: Request, uncited: GuidelineNotCited) -> JSONResponse:
+        return problem_response(
+            request,
+            status.HTTP_409_CONFLICT,
+            f"Guideline {uncited} cites no statement; set cited_statement_id when writing it",
+            problem_type("guideline-not-cited"),
         )
 
     @app.exception_handler(RevisionMismatch)
@@ -523,8 +545,13 @@ def add_brand_and_editorial_routes(app: FastAPI) -> None:
     def get_editorial(
         access: Access, services: ServicesDep, platform: Platform | None = None
     ) -> Editorial:
-        """House rules, the channel's guidelines and, with a platform, its overrides."""
-        return operations.get_editorial(services, access, platform)
+        """House rules, the channel's guidelines and, with a platform, its overrides.
+
+        `warnings` lists each guideline that cites a stmt statement whose text now differs
+        from the guideline's copy, or that cannot be checked: statement id, both revisions and
+        both texts. Nothing is overwritten; call take_cited_text to adopt the statement's text.
+        """
+        return operations.read_editorial_checked(services, access, platform)
 
     @app.post(
         "/channels/{slug}/editorial",
@@ -551,6 +578,30 @@ def add_brand_and_editorial_routes(app: FastAPI) -> None:
             lambda: operations.write_guideline(services, access, data, expected),
             status.HTTP_201_CREATED,
         )
+
+    @app.post(
+        "/channels/{slug}/editorial/{statement_id}/take-cited-text",
+        response_model=Guideline,
+        tags=["editorial"],
+        summary="Take the cited statement's text",
+    )
+    def take_cited_text(
+        statement_id: str,
+        access: Access,
+        services: ServicesDep,
+        platform: Platform | None = None,
+        if_match: IfMatch = None,
+    ) -> Guideline:
+        """Revise a guideline to the current text of the stmt statement it cites.
+
+        Use it when get_editorial shows a `changed` warning for the guideline and you want the
+        statement's text. It is an ordinary revision recorded under your name; it needs
+        editorial:write and answers 409 when the guideline cites nothing and 422 when the cited
+        statement is gone. Send the guideline's `revision` as If-Match to refuse the change
+        when someone revised it since you read it.
+        """
+        revision = expected_revision(if_match)
+        return operations.take_cited_text(services, access, statement_id, platform, revision)
 
     @app.delete(
         "/channels/{slug}/editorial/{statement_id}",

@@ -117,10 +117,11 @@ class GuidelineFields(SubmittedFields):
     kind: str = ""
     text: str = ""
     platform: str = ""
+    cited_statement_id: str = ""
 
 
 class RetireFields(SubmittedFields):
-    """Retire one guideline."""
+    """Retire one guideline, or take the text of the statement it cites."""
 
     statement_id: str = ""
     platform: str = ""

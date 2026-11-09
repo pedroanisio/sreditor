@@ -290,6 +290,14 @@ def get_editorial(app: Services, access: ChannelAccess, platform: Platform | Non
     return app.editorials.editorial(access.channel, platform)
 
 
+def read_editorial_checked(
+    app: Services, access: ChannelAccess, platform: Platform | None
+) -> Editorial:
+    """The Editorial with drift warnings for guidelines whose cited statement changed."""
+    editorial = get_editorial(app, access, platform)
+    return app.editorials.with_drift(editorial, access.channel)
+
+
 def write_guideline(
     app: Services,
     access: ChannelAccess,
@@ -327,6 +335,27 @@ def retire_guideline(
         access,
         Operation.EDITORIAL_RETIRE,
         lambda: app.editorials.retire(
+            access.channel, statement_id, platform, owner, expected_revision
+        ),
+    )
+
+
+def take_cited_text(
+    app: Services,
+    access: ChannelAccess,
+    statement_id: str,
+    platform: Platform | None,
+    expected_revision: int | None = None,
+) -> Guideline:
+    """Revise a guideline to the current text of the statement it cites (an ordinary edit)."""
+    access.require(Permission.WRITE_EDITORIAL)
+    require_account(access.channel, platform)
+    owner = owner_of(access.user, access.token)
+    return gated(
+        app,
+        access,
+        Operation.EDITORIAL_WRITE,
+        lambda: app.editorials.take_cited_text(
             access.channel, statement_id, platform, owner, expected_revision
         ),
     )

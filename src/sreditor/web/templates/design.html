@@ -47,6 +47,12 @@
   <h4>{{ _("Alerts") }}</h4>
   {% for tone in tones %}{% call ui.alert(tone) %}{{ _("Too many attempts. Wait a minute and try again.") }}{% endcall %}{% endfor %}
 
+  <h4>{{ _("Copy drift") }}</h4>
+  {% call ui.drift(_("The statement changed."), _("Statement %(id)s is at revision %(statement)s; this copy follows revision %(copy)s.", id="project.render", statement=4, copy=3), _("This copy"), _("First line at 0.5 s."), _("The statement"), _("First line at 0.25 s.")) %}
+    {{ ui.button(_("Use the statement's text"), size="small", type="button") }}
+  {% endcall %}
+  {% call ui.drift(_("The statement is gone."), _("Statement %(id)s no longer exists or was retired. This copy stays as it is.", id="project.render")) %}{% endcall %}
+
   <h4>{{ _("Status icons") }}</h4>
   <div class="row">{% for tone in tones %}{{ ui.status_icon(tone) }}{% endfor %}</div>
 

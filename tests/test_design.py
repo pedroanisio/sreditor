@@ -177,6 +177,7 @@ def test_design_page_with_dev_pages_shows_every_state(dev_app: FastAPI) -> None:
         "icon-button is-active",
         "menu is-active",
         "tiles",
+        "alert warning drift",
     ):
         assert f'class="{component}' in response.text
     assert "counter over" in response.text and 'class="button danger is-loading"' in response.text
