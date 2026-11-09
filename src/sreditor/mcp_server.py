@@ -65,6 +65,7 @@ from sreditor.episodes import (
     EpisodeNotFound,
     RevisedEpisode,
 )
+from sreditor.experiments import EpisodeInExperiment
 from sreditor.i18n import BASE_LOCALE, match_locale
 from sreditor.library import (
     EntryExists,
@@ -180,6 +181,9 @@ INSTRUCTIONS = (
     "numbers, compare_posts ranks the channel's posts, what_worked compares them by "
     "classification, hook or length and list_post_snapshots shows one post's numbers day by "
     "day. "
+    "An A/B experiment links two episodes with the change between them: save_experiment plans, "
+    "starts or reads one and get_experiment lists them or shows one with its result computed "
+    "from those numbers. "
     "Tools that create something or spend credits take an optional idempotency_key: retry with "
     "the same key and arguments after a timeout and you get the first result, marked replayed "
     "in the result's _meta, never a second copy. A call your token or role may not make says "
@@ -209,6 +213,7 @@ EXPECTED_ERRORS = (
     AssetRejected,
     NotInLibrary,
     StoreError,
+    EpisodeInExperiment,
 )
 
 
@@ -329,6 +334,12 @@ def production_error_message(error: Exception) -> str | None:
         )
     if isinstance(error, AssetRejected | NotInLibrary):
         return str(error)
+    if isinstance(error, EpisodeInExperiment):
+        return (
+            f"Episode {error} is compared by experiments "
+            f"{', '.join(map(str, error.experiments))}; an experiment is deleted on its page or "
+            "with the API's delete_experiment, after which the episode can go"
+        )
     return not_found_message(error)
 
 
@@ -454,6 +465,7 @@ def build(
     from sreditor.context_tools import add_context_tools
     from sreditor.delivery_tools import add_delivery_tools
     from sreditor.event_tools import add_event_tools
+    from sreditor.experiment_tools import add_experiment_tools
     from sreditor.external_media_tools import add_external_media_tools
     from sreditor.file_tools import add_file_tools
     from sreditor.member_tools import add_member_change_tools
@@ -491,6 +503,7 @@ def build(
     add_media_tools(server, services)
     add_render_tools(server, services)
     add_delivery_tools(server, services)
+    add_experiment_tools(server, services)
     add_file_tools(server, services)
     add_external_media_tools(server, services)
     add_classification_tools(server, services)

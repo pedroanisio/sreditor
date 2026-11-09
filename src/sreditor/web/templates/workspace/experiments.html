@@ -1,0 +1,34 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% from "workspace/_experiment_form.html" import experiment_fields with context %}
+{% block page_title %}{{ _("Experiments") }}{% endblock %}
+{% block page %}
+{% set may_write = can("write_editorial") %}
+{% call ui.page_header(_("Experiments"), _("Two episodes compared on purpose: what changed between them, what you expected, and what the numbers say.")) %}
+  {% if may_write and experiments %}{{ ui.dialog_button("new-experiment", _("New experiment"), plus=true) }}{% endif %}
+{% endcall %}
+{{ ui.tabs(status_filters, status_filter, _("Experiment status")) }}
+{{ ui.form_error(errors) }}
+{% if experiments %}
+{% call(row) ui.items(experiments, _("Experiments")) %}
+  {{ ui.item_main(row.title, _("A #%(a)s against B #%(b)s", a=row.episode_a, b=row.episode_b), experiments_link ~ "/" ~ row.id) }}
+  {% call ui.item_side() %}
+    {{ ui.badge(_(status_labels[row.status]), status_tones[row.status]) }}
+    {% if row.verdict %}{{ ui.badge(_(verdict_labels[row.verdict]), "success") }}{% endif %}
+  {% endcall %}
+{% endcall %}
+{% if next_cursor %}{{ ui.pager(experiments_link ~ "?cursor=" ~ next_cursor ~ ("&status=" ~ status_filter if status_filter else ""), _("More experiments")) }}{% endif %}
+{% else %}
+{% call ui.empty(_("No experiments yet"), _("Plan one to compare two episodes that differ in one thing, such as the hook.") if may_write else _("Nobody has planned an experiment yet.")) %}
+  {% if may_write %}{{ ui.dialog_button("new-experiment", _("New experiment"), plus=true) }}{% endif %}
+{% endcall %}
+{% endif %}
+{% if may_write %}
+{% call ui.dialog("new-experiment", _("New experiment"), _("Close"), open=sent is not none) %}
+  {% call ui.form(experiments_link, csrf_field, csrf_token) %}
+    {{ experiment_fields(sent, errors) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Plan experiment")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% endif %}
+{% endblock %}

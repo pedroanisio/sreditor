@@ -22,6 +22,7 @@ from sreditor import (
     delivery_routes,
     episode_routes,
     event_routes,
+    experiment_routes,
     export_routes,
     external_media_routes,
     file_routes,
@@ -70,6 +71,7 @@ from sreditor.episode_texts import PartChanged
 from sreditor.episodes import EpisodeChanged, EpisodeNotFound, EpisodeStore
 from sreditor.etags import IfMatch, etag, expected_revision
 from sreditor.events import EventStore
+from sreditor.experiments import ExperimentStore
 from sreditor.external_media import ExternalMediaStore
 from sreditor.file_links import FileLinkStore
 from sreditor.idempotency import IdempotencyDep
@@ -154,6 +156,7 @@ def create_app(
         episodes=EpisodeStore(database),
         research=ResearchStore(database),
         pitches=PitchStore(database),
+        experiments=ExperimentStore(database),
         screenplays=ScreenplayStore(database),
         short_scripts=ShortScriptStore(database),
         takes=TakeStore(database),
@@ -219,6 +222,7 @@ def create_app(
     render_routes.install_error_handlers(app)
     file_routes.install_error_handlers(app)
     pitch_routes.install_error_handlers(app)
+    experiment_routes.install_error_handlers(app)
     claim_routes.install_error_handlers(app)
     context_routes.install_error_handlers(app)
     external_media_routes.install_error_handlers(app)
@@ -235,6 +239,7 @@ def create_app(
     app.include_router(event_routes.router)
     app.include_router(research_routes.router)
     app.include_router(pitch_routes.router)
+    app.include_router(experiment_routes.router)
     app.include_router(claim_routes.router)
     app.include_router(brand_routes.router)
     app.include_router(context_routes.router)

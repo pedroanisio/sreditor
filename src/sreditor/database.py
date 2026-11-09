@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from sreditor.channels import normalized_handle
+from sreditor.experiment_schema import EXPERIMENTS
 from sreditor.migrations import Migration, MigrationError, execute_script, run_migrations
 from sreditor.search_index import SEARCH_INDEX
 
@@ -899,7 +900,7 @@ def add_events(connection: sqlite3.Connection) -> None:
 
 EVENTS = Migration(version=4, name="change feed events", apply=add_events)
 # Append new migrations here, numbered in order; never change one that has been released.
-MIGRATIONS = (BASELINE, SEARCH_INDEX, OAUTH_CLIENT_USE, EVENTS)
+MIGRATIONS = (BASELINE, SEARCH_INDEX, OAUTH_CLIENT_USE, EVENTS, EXPERIMENTS)
 
 
 def open_connection(path: Path, *, is_autocommit: bool = False) -> sqlite3.Connection:

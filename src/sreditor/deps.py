@@ -31,6 +31,7 @@ from sreditor.editorial import EditorialService
 from sreditor.elevenlabs import ElevenLabs
 from sreditor.episodes import EpisodeStore
 from sreditor.events import EventStore
+from sreditor.experiments import ExperimentStore
 from sreditor.external_media import ExternalMediaStore
 from sreditor.file_links import FileLinkStore
 from sreditor.i18n import BASE_LOCALE, Translator, negotiate
@@ -79,6 +80,7 @@ class Services:
     episodes: EpisodeStore
     research: ResearchStore
     pitches: PitchStore
+    experiments: ExperimentStore
     screenplays: ScreenplayStore
     short_scripts: ShortScriptStore
     takes: TakeStore

@@ -1,0 +1,25 @@
+{# The experiment's fields, shared by the new-experiment dialog and the experiment's own page.
+   `values` holds what to show; `full` adds status, start day, reading and verdict. #}
+{% import "_ui.html" as ui %}
+{% macro experiment_fields(values, errors, full=false) %}
+{{ ui.field("title", _("Title"), errors, value=values.title if values else "", maxlength=title_limit, hint=_("A short name for what is being tried, such as the opening line.")) }}
+{% call ui.fields_row() %}
+  {{ ui.select("episode_a", _("Episode A (control)"), episode_options, errors, value=values.episode_a if values else "", hint=_("The one without the change.")) }}
+  {{ ui.select("episode_b", _("Episode B (variant)"), episode_options, errors, value=values.episode_b if values else "", hint=_("The one with the change.")) }}
+{% endcall %}
+{{ ui.textarea("change", _("What differs"), errors, value=values.change if values else "", limit=change_limit, rows=3, hint=_("The one thing that is different between A and B. Markdown works here.")) }}
+{{ ui.textarea("hypothesis", _("Hypothesis"), errors, value=values.hypothesis if values else "", limit=hypothesis_limit, rows=3, hint=_("What you expect to happen and why. Markdown works here.")) }}
+{% call ui.fields_row() %}
+  {{ ui.select("metric", _("Number"), metric_options, errors, value=values.metric if values else "views", hint=_("The number that judges the pair.")) }}
+  {{ ui.select("snapshot_age", _("Numbers taken"), age_options, errors, value=values.snapshot_age if values else "latest", hint=_("A fixed age compares both posts at the same age after publishing.")) }}
+{% endcall %}
+{{ ui.select("platform", _("Platform"), platform_options, errors, value=values.platform if values else "", hint=_("Only posts on this platform count. Pick one when both episodes went to several.")) }}
+{% if full %}
+{% call ui.fields_row() %}
+  {{ ui.select("status", _("Status"), status_options, errors, value=values.status) }}
+  {{ ui.field("started_on", _("Started on"), errors, type="date", value=values.started_on, required=false, hint=_("The day the experiment began.")) }}
+{% endcall %}
+{{ ui.textarea("reading", _("Reading"), errors, value=values.reading, limit=reading_limit, rows=6, hint=_("Your conclusion, in your words. The computed result stays apart. Markdown works here.")) }}
+{{ ui.select("verdict", _("Verdict"), verdict_options, errors, value=values.verdict, hint=_("Needed when the status is Read, and only then.")) }}
+{% endif %}
+{% endmacro %}

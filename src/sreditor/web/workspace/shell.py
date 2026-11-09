@@ -72,6 +72,8 @@ class Flash(StrEnum):
     LIBRARY_ADDED = "library_added"
     PITCH_CREATED = "pitch_created"
     PITCH_DELETED = "pitch_deleted"
+    EXPERIMENT_CREATED = "experiment_created"
+    EXPERIMENT_DELETED = "experiment_deleted"
     ITEM_ADDED = "item_added"
     ITEM_DELETED = "item_deleted"
     USE_ADDED = "use_added"
@@ -113,6 +115,8 @@ FLASH_TEXT: dict[Flash, str] = {
     Flash.LIBRARY_ADDED: N_("Added to the library."),
     Flash.PITCH_CREATED: N_("Pitch created."),
     Flash.PITCH_DELETED: N_("Pitch deleted."),
+    Flash.EXPERIMENT_CREATED: N_("Experiment planned."),
+    Flash.EXPERIMENT_DELETED: N_("Experiment deleted."),
     Flash.ITEM_ADDED: N_("Added to third-party media."),
     Flash.ITEM_DELETED: N_("Removed from third-party media."),
     Flash.USE_ADDED: N_("Use recorded."),
@@ -228,6 +232,13 @@ SECTIONS: tuple[Section, ...] = (
         key="metrics",
         label=N_("Metrics"),
         suffix="/metrics",
+        permission=Permission.READ,
+        group=SectionGroup.PRODUCTION,
+    ),
+    Section(
+        key="experiments",
+        label=N_("Experiments"),
+        suffix="/experiments",
         permission=Permission.READ,
         group=SectionGroup.PRODUCTION,
     ),

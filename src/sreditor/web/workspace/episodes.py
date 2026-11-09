@@ -29,6 +29,7 @@ from sreditor.episodes import (
     EpisodeStatus,
     RevisedEpisode,
 )
+from sreditor.experiments import EpisodeInExperiment
 from sreditor.field_types import TITLE_LENGTH
 from sreditor.i18n import N_, Translator
 from sreditor.members import Permission
@@ -56,6 +57,9 @@ router = APIRouter()
 
 EPISODES_SUFFIX = "/episodes"
 UNKNOWN_STAGE = N_("Choose one of the stages on the board.")
+EPISODE_IN_EXPERIMENT = N_(
+    "An A/B experiment compares this episode. Delete the experiment first, on the Experiments page."
+)
 EPISODE_CHANGED = N_(
     "Someone changed this episode after you opened the page. Reload it to see their changes, "
     "then try again."
@@ -348,6 +352,9 @@ def remove_episode(
         delete_episode(app, access, number, revision_of(fields.revision))
     except EpisodeChanged:
         outcome = Outcome.conflict({"form": translator(request)(EPISODE_CHANGED)})
+        return episode_page(request, app, access, EpisodeView(number=number, outcome=outcome))
+    except EpisodeInExperiment:
+        outcome = Outcome.conflict({"form": translator(request)(EPISODE_IN_EXPERIMENT)})
         return episode_page(request, app, access, EpisodeView(number=number, outcome=outcome))
     return done(request, app, episodes_url(access.channel.slug), Flash.EPISODE_DELETED)
 

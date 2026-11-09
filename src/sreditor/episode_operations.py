@@ -12,6 +12,7 @@ from sreditor.claims import warning_text
 from sreditor.delivery import delivery_gaps
 from sreditor.deps import ChannelAccess, Services
 from sreditor.episodes import Episode, EpisodeInput, EpisodeStatus, PartCounts, RevisedEpisode
+from sreditor.experiments import EpisodeInExperiment
 from sreditor.members import Permission
 from sreditor.operations import gated
 from sreditor.pagination import INVALID_CURSOR, Page, decode_cursor, encode_cursor
@@ -117,12 +118,20 @@ def replace_episode(
     return revised.model_copy(update={"warnings": gaps, "claims_warning": warning})
 
 
+def refuse_while_compared(app: Services, slug: str, number: int) -> None:
+    """Refuse to delete an episode some experiment compares, naming those experiments."""
+    experiments = app.experiments.of_episode(slug, number)
+    if experiments:
+        raise EpisodeInExperiment(number, experiments)
+
+
 def delete_episode(
     app: Services, access: ChannelAccess, number: int, expected_revision: int | None
 ) -> None:
     """Delete an episode; its number is never given to another one."""
     access.require(Permission.WRITE_CHANNEL)
     slug = access.channel.slug
+    refuse_while_compared(app, slug, number)
     access.episode_number = number
     gated(
         app,

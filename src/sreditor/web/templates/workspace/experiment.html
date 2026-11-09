@@ -1,0 +1,48 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% from "workspace/_experiment_form.html" import experiment_fields with context %}
+{% block page_title %}{{ experiment.title }}{% endblock %}
+{% block page %}
+{% set may_write = can("write_editorial") %}
+{{ ui.back_link(list_link, _("Experiments")) }}
+{% call ui.page_header(experiment.title, _("A #%(a)s against B #%(b)s", a=experiment.episode_a, b=experiment.episode_b)) %}
+  {{ ui.badge(_(status_labels[experiment.status]), status_tones[experiment.status]) }}
+  {% if experiment.verdict %}{{ ui.badge(_(verdict_labels[experiment.verdict]), "success") }}{% endif %}
+{% endcall %}
+{{ ui.form_error(errors) }}
+{% call ui.panel(_("Result"), id="result") %}
+  {% call(side) ui.items(result_sides, _("Result")) %}
+    {% call ui.item_body() %}
+      <strong>{{ side.label }}</strong>
+      {{ ui.meta("#" ~ side.episode ~ " · " ~ side.title) }}
+      <p><a href="{{ episodes_link }}/{{ side.episode }}">{{ _("Open the episode") }}</a></p>
+      {% for post in side.posts %}<p>{{ post }}</p>{% else %}<p class="muted">{{ _("No post on this platform yet.") }}</p>{% endfor %}
+    {% endcall %}
+    {% call ui.item_side() %}{{ side.mean }}{% endcall %}
+  {% endcall %}
+  {{ ui.facts(comparison) }}
+  {% for note in result_notes %}{% call ui.alert("info") %}{{ note }}{% endcall %}{% endfor %}
+  <p class="hint">{{ _("Computed from the numbers entered for each post; it is never saved and never decides. The reading below is yours.") }}</p>
+{% endcall %}
+{% call ui.panel(_("What was tried"), id="tried") %}
+  {% if experiment.change %}{{ ui.markdown_block(experiment.change) }}{% else %}<p class="muted">{{ _("No change described yet.") }}</p>{% endif %}
+  {% if experiment.hypothesis %}{{ ui.markdown_block(experiment.hypothesis) }}{% endif %}
+  {% if experiment.started_on %}{{ ui.meta(_("Started on %(date)s", date=_.day(experiment.started_on))) }}{% endif %}
+{% endcall %}
+{% call ui.panel(_("Reading"), id="reading") %}
+  {% if experiment.reading %}{{ ui.markdown_block(experiment.reading) }}{% else %}<p class="muted">{{ _("Nobody has written a reading yet.") }}</p>{% endif %}
+{% endcall %}
+{% if may_write %}
+{% call ui.panel(_("Edit experiment"), id="edit") %}
+  {% call ui.form(experiment_link, csrf_field, csrf_token) %}
+    {{ ui.hidden("revision", experiment.revision) }}
+    {{ experiment_fields(values, errors, true) }}
+    {% call ui.panel_actions() %}{{ ui.button(_("Save changes")) }}{% endcall %}
+  {% endcall %}
+{% endcall %}
+{% call ui.panel(_("Delete experiment"), id="danger") %}
+  <p>{{ _("Deleting removes the experiment with its reading. The two episodes stay. This cannot be undone.") }}</p>
+  {{ ui.confirm(_("Delete this experiment"), _("Delete this experiment and its reading? This cannot be undone."), experiment_link ~ "/delete", csrf_field, csrf_token, _("Delete experiment"), fields=[("revision", experiment.revision)]) }}
+{% endcall %}
+{% endif %}
+{% endblock %}

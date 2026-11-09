@@ -148,13 +148,18 @@ def band_of(seconds: float, bands: tuple[tuple[str, float], ...]) -> str:
     return next(name for name, limit in bands if seconds <= limit)
 
 
-def snapshot_for(history: list[Snapshot], published_on: date, age: SnapshotAge) -> Snapshot | None:
+def snapshot_for(
+    history: list[Snapshot], published_on: date | None, age: SnapshotAge
+) -> Snapshot | None:
     """A post's latest snapshot, or the one nearest `age` after publishing within the tolerance.
 
-    `history` is oldest first. A post younger than the age has none, so it never skews a group.
+    `history` is oldest first. A post younger than the age has none, so it never skews a group,
+    and neither has a post with no publish day when a fixed age is asked for.
     """
     if age is SnapshotAge.LATEST:
         return history[-1] if history else None
+    if published_on is None:
+        return None
     target = published_on + timedelta(days=AGE_DAYS[age])
     near = [
         found for found in history if abs((found.captured_on - target).days) <= AGE_TOLERANCE_DAYS

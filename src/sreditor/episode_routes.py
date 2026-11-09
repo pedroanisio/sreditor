@@ -118,6 +118,9 @@ def replace_episode(
 def delete_episode(
     number: Number, access: Access, app: ServicesDep, if_match: IfMatch = None
 ) -> Response:
-    """Delete an episode; its number is never reused. Needs channels:write and an editor role."""
+    """Delete an episode; its number is never reused. Needs channels:write and an editor role.
+
+    Refused with 409 while an A/B experiment compares it; delete_experiment that first.
+    """
     episode_operations.delete_episode(app, access, number, expected_revision(if_match))
     return Response(status_code=status.HTTP_204_NO_CONTENT)

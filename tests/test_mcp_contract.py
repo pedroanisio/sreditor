@@ -225,8 +225,17 @@ def keyed_calls(mcp: TestClient) -> dict[str, dict[str, Any]]:
         },
     )
     source = {"url": "https://example.com/a", "title": "A", "claim": "A fact."}
+    variant = tool(mcp, "create_episode", {"slug": SLUG, "episode": {"title": "Variant"}})
     return {
         **more_keyed_calls(mcp),
+        "save_experiment": {
+            "slug": SLUG,
+            "experiment": {
+                "title": "Hook",
+                "episode_a": 1,
+                "episode_b": variant["structuredContent"]["episode"]["number"],
+            },
+        },
         "create_channel": {"channel": {**FUNNY_MEMES, "slug": "other", "accounts": []}},
         "create_episode": {"slug": SLUG, "episode": {"title": "Second"}},
         "write_guideline": {
@@ -291,6 +300,7 @@ KEYED_TOOLS = [
     "generate_voice_over",
     "save_prop",
     "save_relationship",
+    "save_experiment",
 ]
 # How to change each call's arguments so that the same key no longer matches: a path to a value.
 CHANGED_ARGUMENT: dict[str, tuple[tuple[str, ...], Any]] = {
@@ -312,6 +322,7 @@ CHANGED_ARGUMENT: dict[str, tuple[tuple[str, ...], Any]] = {
     "generate_voice_over": (("number",), 2),
     "save_prop": (("prop", "description"), "Another laptop"),
     "save_relationship": (("relationship", "relation"), "rivals"),
+    "save_experiment": (("experiment", "title"), "Renamed"),
 }
 # A replayed link result carries a fresh link: these fields differ between the two answers.
 LINK_FIELDS = {"url", "expires_at"}
@@ -431,7 +442,8 @@ def test_mcp_replayed_create_episode_makes_one_episode(mcp: TestClient) -> None:
     tool(mcp, "create_episode", arguments)
     tool(mcp, "create_episode", arguments)
     listed = tool(mcp, "list_episodes", {"slug": SLUG})["structuredContent"]["items"]
-    assert len(listed) == 2
+    # Pilot, the variant keyed_calls makes for the experiment, and one Second from both calls.
+    assert len(listed) == 3
 
 
 def test_mcp_replayed_generate_voice_over_calls_elevenlabs_once(
