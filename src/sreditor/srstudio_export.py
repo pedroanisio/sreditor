@@ -31,7 +31,7 @@ from sreditor.short_script_operations import ScriptNotReady, block_plans
 from sreditor.srstudio import CharacterSheet, EntrySheet, PlaceSheet, StyleSheet
 from sreditor.srstudio_bible import BibleSource, cast_document, relationships_document
 from sreditor.srstudio_locks import lock_exported_slugs
-from sreditor.srstudio_operations import all_entries, published_numbers
+from sreditor.srstudio_operations import all_entries, cast_references, published_numbers
 from sreditor.srstudio_timeline import (
     TimedBlock,
     events_document,
@@ -185,15 +185,50 @@ def sheet_gaps(
     return gaps
 
 
-def library_gaps(app: Services, channel: str, library: Library) -> list[Missing]:
-    """What keeps the channel's bible from loading in srstudio."""
-    published = published_numbers(app, channel)
+def episode_entries(app: Services, channel: str, number: int, script: ShortScript) -> set[UUID]:
+    """The library entries an episode uses: its short script's cast and its screenplay's names."""
+    screenplay = app.screenplays.screenplay(channel, number)
+    named = [
+        *app.library.named(channel, LibraryKind.CHARACTER, screenplay.characters).values(),
+        *app.library.named(channel, LibraryKind.LOCATION, screenplay.locations).values(),
+    ]
+    return {entry_id for _, entry_id in cast_references(script.blocks)} | {
+        entry.id for entry in named
+    }
+
+
+def kept_entries(
+    pairs: list[tuple[LibraryEntry, EntrySheet]], used: set[UUID], published: set[int]
+) -> tuple[list[tuple[LibraryEntry, EntrySheet]], list[Missing]]:
+    """The entries the bible carries and what the episode's own entries lack.
+
+    An entry the episode does not use and srstudio could not load is left out of the bible
+    instead of holding the episode back; an entry it uses must be complete.
+    """
+    kept: list[tuple[LibraryEntry, EntrySheet]] = []
     gaps: list[Missing] = []
-    for entry, stored in library.characters + library.places:
+    for entry, stored in pairs:
         sheet = stored.sheet
-        if isinstance(sheet, CharacterSheet | PlaceSheet):
-            gaps += sheet_gaps(entry, sheet, published)
-    return gaps
+        found = (
+            sheet_gaps(entry, sheet, published)
+            if isinstance(sheet, CharacterSheet | PlaceSheet)
+            else []
+        )
+        if entry.id in used:
+            gaps += found
+        if entry.id in used or not found:
+            kept.append((entry, stored))
+    return kept, gaps
+
+
+def bible_library(
+    app: Services, channel: str, library: Library, used: set[UUID]
+) -> tuple[Library, list[Missing]]:
+    """The channel's library as the episode's bible carries it, and what keeps it from loading."""
+    published = published_numbers(app, channel)
+    characters, character_gaps = kept_entries(library.characters, used, published)
+    places, place_gaps = kept_entries(library.places, used, published)
+    return Library(characters=characters, places=places), character_gaps + place_gaps
 
 
 def reel_slugs(app: Services, channel: str) -> dict[int, str]:
@@ -347,11 +382,12 @@ class Checked(BaseModel):
 def checked(app: Services, channel: str, number: int) -> Checked:
     """Read the script, takes, library and style, and list what srstudio would lack."""
     gathered = gather_takes(app, app.short_scripts.short_script(channel, number))
-    library = channel_library(app, channel)
+    used = episode_entries(app, channel, number, gathered.script)
+    library, entry_gaps = bible_library(app, channel, channel_library(app, channel), used)
     stored_style = episode_style_sheet(app, channel, number)
     style = stored_style[1].style if stored_style else None
     beat_gaps, has_beats = beat_documents(gathered.script, style, library)
-    missing = [*gathered.missing, *library_gaps(app, channel, library), *beat_gaps]
+    missing = [*gathered.missing, *entry_gaps, *beat_gaps]
     missing += [] if style else [Missing(message=NO_STYLE)]
     return Checked(
         gathered=gathered,

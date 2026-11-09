@@ -197,6 +197,13 @@ def test_readiness_srstudio_gap_in_production_blocks(owner: TestClient) -> None:
     assert gaps["srstudio_no_style"]["severity"] == "blocker"
 
 
+def test_readiness_srstudio_gap_of_published_episode_only_warns(owner: TestClient) -> None:
+    body = {"title": "Pilot", "summary": "", "status": "published"}
+    assert owner.put(EPISODE, json=body).status_code == 200
+    gaps = {gap["code"]: gap for gap in overview(owner)["readiness"]["items"]}
+    assert gaps["srstudio_no_style"]["severity"] == "warning"
+
+
 def test_readiness_lists_blockers_before_warnings(owner: TestClient) -> None:
     load_every_source(owner)
     report = overview(owner)["readiness"]

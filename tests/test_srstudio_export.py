@@ -203,10 +203,27 @@ def test_export_after_script_changed_asks_for_new_voice_over(
     assert "changed after the last voice-over" in owner.get(ZIP).json()["detail"]
 
 
-def test_export_character_without_world_is_listed(owner: TestClient, voiced: FakeTransport) -> None:
+NAMELESS_SCENE = "INT. KITCHEN - DAY\n\nNAMELESS\nHi.\n"
+
+
+def test_export_character_the_screenplay_names_without_world_is_listed(
+    owner: TestClient, voiced: FakeTransport
+) -> None:
     created(owner, f"{CHANNEL}/characters", {"name": "Nameless"})
+    saved(owner, f"{EPISODE}/screenplay", {"text": NAMELESS_SCENE}, '"0"')
     response = owner.get(ZIP)
     assert response.status_code == 409 and "Nameless has no srstudio world" in response.text
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="needs ffmpeg to turn takes into WAV")
+def test_export_unused_character_without_world_is_left_out_of_the_bible(
+    owner: TestClient, voiced: FakeTransport
+) -> None:
+    created(owner, f"{CHANNEL}/characters", {"name": "Nameless"})
+    response = owner.get(ZIP)
+    assert response.status_code == 200, response.text
+    cast = json.loads(zipfile.ZipFile(io.BytesIO(response.content)).read("bible/cast.json"))
+    assert [character["slug"] for character in cast["characters"]] == ["rex"]
 
 
 def test_export_beats_on_rig_that_is_no_toon_are_listed(

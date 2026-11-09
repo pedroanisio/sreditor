@@ -335,24 +335,25 @@ def short_script_items(facts: EpisodeFacts) -> list[ReadinessItem]:
 def export_items(facts: EpisodeFacts) -> list[ReadinessItem]:
     """What the srstudio export lacks, which is also what request_render refuses for.
 
-    Before production these gaps are expected, so they only warn; from production on they block.
+    They block only in production, the stage that renders: before it they are expected, and a
+    published episode may have been made without srstudio, so there they only warn.
     """
     found = [
         item(SRSTUDIO_KINDS.get(missing.message, SRSTUDIO_OTHER), missing.message, missing.values)
         for missing in facts.export_gaps
     ]
-    if facts.episode.episode.status in BLOCKING_STATUSES:
+    if facts.episode.episode.status is EpisodeStatus.PRODUCTION:
         return found
     return [gap.model_copy(update={"severity": Severity.WARNING}) for gap in found]
 
 
-# Statuses from which a gap in the srstudio export holds the episode back.
-BLOCKING_STATUSES = frozenset({EpisodeStatus.PRODUCTION, EpisodeStatus.PUBLISHED})
+# Statuses from which a missing or unapproved review is reported.
+REVIEW_STATUSES = frozenset({EpisodeStatus.PRODUCTION, EpisodeStatus.PUBLISHED})
 
 
 def review_items(facts: EpisodeFacts) -> list[ReadinessItem]:
     """From production on, an episode whose latest review is missing or not an approval."""
-    if facts.episode.episode.status not in BLOCKING_STATUSES:
+    if facts.episode.episode.status not in REVIEW_STATUSES:
         return []
     latest = facts.reviews.latest
     if latest is None:
