@@ -1622,10 +1622,11 @@
   "Time ranges need the file they belong to": "Os intervalos de tempo precisam do arquivo a que pertencem",
   "Time ranges seen": "Intervalos de tempo assistidos",
   "Upload still": "Enviar quadro",
-  "Verdict": "Veredito",
   "What you found, in Markdown.": "O que você encontrou, em Markdown.",
   "Who reviewed the episode, what they watched and what they decided. Reviews are records: they are added, never edited.": "Quem avaliou o episódio, o que assistiu e o que decidiu. Pareceres são registros: são adicionados, nunca editados.",
   "Write one range per line, in seconds, such as 0 - 3.5.": "Escreva um intervalo por linha, em segundos, como 0 - 3.5.",
   "someone who left": "alguém que saiu",
-  "through %(name)s": "por meio de %(name)s"
+  "through %(name)s": "por meio de %(name)s",
+  "The episode has no review yet.": "O episódio ainda não tem parecer.",
+  "The latest review did not approve the episode.": "O parecer mais recente não aprovou o episódio."
 }

@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from sreditor import readiness
+from sreditor.delivery import DeliveryWarningKind
 from sreditor.episode_facts import EpisodeFacts
 from sreditor.overview_operations import DEFAULT_SECTIONS, DIGESTS, Section
 from sreditor.readiness import Area, ReadinessItem, ReadinessSource
@@ -391,3 +392,33 @@ def test_episode_page_viewer_without_gaps_says_nothing_holds_it_back(
 ) -> None:
     viewer = join(app, mailer, pages, "viewer@example.com", "viewer")
     assert "Nothing holds this episode back." in viewer.get(PAGE).text
+
+
+# Reviews and post text in the readiness list
+
+
+def test_readiness_episode_in_production_without_review_names_add_review(owner: TestClient) -> None:
+    in_production(owner)
+    gaps = {gap["code"]: gap for gap in overview(owner)["readiness"]["items"]}
+    assert gaps["review_missing"]["fix_tool"] == "add_review"
+
+
+def test_readiness_episode_before_production_has_no_review_gap(owner: TestClient) -> None:
+    assert "review_missing" not in codes(overview(owner))
+
+
+def test_readiness_review_asking_for_changes_is_a_gap(owner: TestClient) -> None:
+    in_production(owner)
+    review = {"verdict": "changes_requested", "notes": "Cut the intro."}
+    assert owner.post(f"{EPISODE}/reviews", json=review).status_code == 201
+    assert "review_not_approved" in codes(overview(owner))
+
+
+def test_readiness_approved_review_leaves_no_review_gap(owner: TestClient) -> None:
+    in_production(owner)
+    assert owner.post(f"{EPISODE}/reviews", json={"verdict": "approved"}).status_code == 201
+    assert not {"review_missing", "review_not_approved"} & codes(overview(owner))
+
+
+def test_readiness_every_delivery_warning_has_a_kind() -> None:
+    assert set(readiness.DELIVERY_KINDS) == set(DeliveryWarningKind)

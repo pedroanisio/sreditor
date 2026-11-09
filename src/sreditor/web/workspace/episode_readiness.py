@@ -24,6 +24,7 @@ EPISODE_PAGES: dict[Area, str] = {
     Area.DELIVERY: "/delivery",
     Area.SHORT_SCRIPT: "/short-script",
     Area.SRSTUDIO: "/srstudio",
+    Area.REVIEWS: "/reviews",
 }
 AREA_LABELS: dict[Area, str] = {
     Area.CLAIMS: N_("Claims"),
@@ -32,6 +33,7 @@ AREA_LABELS: dict[Area, str] = {
     Area.SHORT_SCRIPT: N_("Short script"),
     Area.LIBRARY: N_("Library"),
     Area.SRSTUDIO: "srstudio",  # a product name, the same in every language
+    Area.REVIEWS: N_("Reviews"),
 }
 
 

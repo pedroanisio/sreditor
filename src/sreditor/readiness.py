@@ -21,6 +21,7 @@ from sreditor.episodes import EpisodeStatus
 from sreditor.external_media import Problem
 from sreditor.i18n import N_
 from sreditor.members import Permission
+from sreditor.reviews import Verdict
 from sreditor.short_script import WARNING_MESSAGES as SCRIPT_MESSAGES
 from sreditor.short_script import WarningKind
 from sreditor.srstudio_export import (
@@ -54,6 +55,7 @@ class Area(StrEnum):
     SHORT_SCRIPT = "short_script"
     LIBRARY = "library"
     SRSTUDIO = "srstudio"
+    REVIEWS = "reviews"
 
 
 class Fix(BaseModel):
@@ -175,6 +177,11 @@ WRITE_DELIVERY = Fix(
     hint="get_delivery gives the package and its revision; change the cut and call "
     "write_delivery with that revision as expected_revision.",
 )
+RECORD_POST_TEXT = Fix(
+    tool="record_post",
+    hint="Give the post its own caption (with the channel's AI notice line) and at most 5 "
+    "hashtags with record_post, or fix the cut's text with write_delivery.",
+)
 DELIVERY_KINDS: dict[DeliveryWarningKind, Kind] = {
     DeliveryWarningKind.NO_VIDEO: kind(
         "delivery_no_video",
@@ -198,7 +205,23 @@ DELIVERY_KINDS: dict[DeliveryWarningKind, Kind] = {
         "delivery_too_many_hashtags", Area.DELIVERY, WRITE_DELIVERY
     ),
     DeliveryWarningKind.NO_AI_NOTICE: kind("delivery_no_ai_notice", Area.DELIVERY, WRITE_DELIVERY),
+    DeliveryWarningKind.POST_TOO_MANY_HASHTAGS: kind(
+        "delivery_post_too_many_hashtags", Area.DELIVERY, RECORD_POST_TEXT
+    ),
+    DeliveryWarningKind.POST_NO_AI_NOTICE: kind(
+        "delivery_post_no_ai_notice", Area.DELIVERY, RECORD_POST_TEXT
+    ),
 }
+
+REVIEW_FIX = Fix(
+    tool="add_review",
+    hint="Watch the render or final video, then call add_review with the verdict, notes and the "
+    "time ranges seen; get_episode shows the latest review.",
+)
+REVIEW_MISSING = kind("review_missing", Area.REVIEWS, REVIEW_FIX)
+REVIEW_NOT_APPROVED = kind("review_not_approved", Area.REVIEWS, REVIEW_FIX)
+REVIEW_MISSING_MESSAGE = N_("The episode has no review yet.")
+REVIEW_NOT_APPROVED_MESSAGE = N_("The latest review did not approve the episode.")
 
 WRITE_SCRIPT = Fix(
     tool="write_short_script",
@@ -327,6 +350,18 @@ def export_items(facts: EpisodeFacts) -> list[ReadinessItem]:
 BLOCKING_STATUSES = frozenset({EpisodeStatus.PRODUCTION, EpisodeStatus.PUBLISHED})
 
 
+def review_items(facts: EpisodeFacts) -> list[ReadinessItem]:
+    """From production on, an episode whose latest review is missing or not an approval."""
+    if facts.episode.episode.status not in BLOCKING_STATUSES:
+        return []
+    latest = facts.reviews.latest
+    if latest is None:
+        return [item(REVIEW_MISSING, REVIEW_MISSING_MESSAGE)]
+    if latest.verdict is not Verdict.APPROVED:
+        return [item(REVIEW_NOT_APPROVED, REVIEW_NOT_APPROVED_MESSAGE)]
+    return []
+
+
 @dataclass(frozen=True)
 class ReadinessSource:
     """One area's check: the function, the kinds it may report and the permission it needs."""
@@ -350,6 +385,7 @@ READINESS_SOURCES: tuple[ReadinessSource, ...] = (
         (*SRSTUDIO_KINDS.values(), SRSTUDIO_OTHER),
         Permission.WRITE_CHANNEL,
     ),
+    ReadinessSource(Area.REVIEWS, review_items, (REVIEW_MISSING, REVIEW_NOT_APPROVED)),
 )
 
 

@@ -17,6 +17,7 @@ from sreditor import (
     library_operations,
     pitch_operations,
     research_operations,
+    review_operations,
     screenplay_operations,
     short_script_operations,
 )
@@ -31,6 +32,7 @@ from sreditor.library_operations import Cast
 from sreditor.members import Permission
 from sreditor.pitches import EpisodePitches
 from sreditor.research import ResearchNotes
+from sreditor.reviews import ReviewSummary
 from sreditor.screenplay import Screenplay
 from sreditor.short_script import ShortScript
 from sreditor.srstudio_export import Missing, missing_pieces
@@ -106,6 +108,11 @@ class EpisodeFacts:
     def unchecked(self) -> ClaimWarnings:
         """The claims that have no checked primary source."""
         return claim_operations.unchecked_claims(self.app, self.access, self.number)
+
+    @cached_property
+    def reviews(self) -> ReviewSummary:
+        """How many reviews the episode has and the latest one."""
+        return review_operations.review_summary(self.app, self.access, self.number)
 
     @cached_property
     def delivery(self) -> Delivery:
