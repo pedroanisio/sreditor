@@ -9,7 +9,7 @@ from fastapi import APIRouter, Form, Request, Response
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from sreditor.book_operations import EPISODE_BOOK
-from sreditor.claim_operations import count_claims, unchecked_claims
+from sreditor.claim_operations import count_claims
 from sreditor.deps import ChannelAccess, Services, ServicesDep
 from sreditor.episode_operations import (
     count_episode_parts,
@@ -37,6 +37,7 @@ from sreditor.problems import ProblemError
 from sreditor.web.forms import field_errors
 from sreditor.web.labels import EPISODE_STATUS_LABELS, EPISODE_STATUS_TONES, episode_options
 from sreditor.web.routes import rejected_form, translator
+from sreditor.web.workspace.episode_readiness import readiness_rows
 from sreditor.web.workspace.forms import EpisodeFields, MoveFields, RevisionFields, revision_of
 from sreditor.web.workspace.shell import (
     Flash,
@@ -270,8 +271,7 @@ def episode_page(
     context = {
         "episode": current.episode,
         "episode_revision": current.revision,
-        "unchecked_claims": unchecked_claims(app, access, shown.number).count,
-        "claims_link": episodes_url(access.channel.slug, shown.number) + "/claims",
+        "readiness": readiness_rows(app, access, shown.number, translator(request)),
         "values": shown.sent or current.episode,
         "errors": shown.outcome.errors,
         "status_options": episode_options(translator(request)),

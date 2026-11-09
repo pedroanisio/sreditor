@@ -30,6 +30,7 @@ from sreditor import (
     metrics,
     oauth_routes,
     operations,
+    overview_routes,
     pitch_routes,
     post_metrics_routes,
     problems,
@@ -226,6 +227,7 @@ def create_app(
     app.include_router(oauth_routes.router)
     app.include_router(member_routes.router)
     app.include_router(episode_routes.router)
+    app.include_router(overview_routes.router)
     app.include_router(research_routes.router)
     app.include_router(pitch_routes.router)
     app.include_router(claim_routes.router)

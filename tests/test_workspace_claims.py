@@ -170,7 +170,7 @@ def test_episode_page_warns_about_unchecked_claims_with_a_link(
     owner: TestClient, claim: str
 ) -> None:
     page = owner.get(EPISODE).text
-    assert "1 claim has no checked primary source." in page and f'href="{CLAIMS}"' in page
+    assert "Claims without a checked primary source: 1." in page and f'href="{CLAIMS}"' in page
 
 
 def test_episode_published_with_unchecked_claims_saves_and_repeats_the_warning(

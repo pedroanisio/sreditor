@@ -30,6 +30,7 @@ from sreditor import (
     media_operations,
     membership,
     operations,
+    overview_operations,
     pitch_operations,
     research_operations,
     screenplay_operations,
@@ -116,8 +117,11 @@ INSTRUCTIONS = (
     "manage who belongs. Read get_editorial before writing content for a channel, and change "
     "it with write_guideline and retire_guideline. get_brand and update_brand read and set "
     "its colors (with roles), fonts and default narrator voice. "
-    "Episodes are numbered from 1: list_episodes, get_episode, create_episode and "
+    "Episodes are numbered from 1: list_episodes (with readiness true it counts each "
+    "episode's blockers and warnings), get_episode, create_episode and "
     "update_episode (status idea, research, script, production, published); "
+    "get_episode_overview is the first call to read one episode: a digest of each part with "
+    "its revision and the readiness list, each gap naming the tool that fixes it; "
     "delete_episode removes one for good after get_episode gives its revision. Research: "
     "get_research shows an episode's notes, sources and its pitches' research; "
     "write_research_notes, add_source, update_source and remove_source change it. Pitches are story ideas "
@@ -448,6 +452,7 @@ def build(
     from sreditor.external_media_tools import add_external_media_tools
     from sreditor.file_tools import add_file_tools
     from sreditor.member_tools import add_member_change_tools
+    from sreditor.overview_tools import add_overview_tools
     from sreditor.pitch_tools import add_pitch_tools
     from sreditor.prop_tools import add_prop_tools
     from sreditor.render_tools import add_render_tools
@@ -464,6 +469,7 @@ def build(
     add_brand_tools(server, services)
     add_editorial_tools(server, services)
     add_episode_tools(server, services)
+    add_overview_tools(server, services)
     add_research_tools(server, services)
     add_pitch_tools(server, services)
     add_search_tools(server, services)
@@ -703,6 +709,12 @@ class Removed(BaseModel):
     id: UUID
 
 
+class EpisodeListing(Page[Episode]):
+    """A page of episodes; `readiness` is filled, one entry per item, when asked for."""
+
+    readiness: list[overview_operations.EpisodeReadiness] | None = None
+
+
 class DeletedEpisode(BaseModel):
     """The episode delete_episode took away; its number is never given to another one."""
 
@@ -752,15 +764,33 @@ def add_episode_tools(server: MCPServer, services: Services) -> None:
 
     @server.tool(annotations=tool_annotations("List episodes", Effect.READ))
     def list_episodes(
-        context: Context, slug: str, cursor: str | None = None, limit: ToolLimit = DEFAULT_LIMIT
-    ) -> Page[Episode]:
+        context: Context,
+        slug: str,
+        cursor: str | None = None,
+        limit: ToolLimit = DEFAULT_LIMIT,
+        readiness: bool = False,
+    ) -> EpisodeListing:
         """List a channel's episodes by number, to find the `number` other episode tools take.
 
-        Pass `next_cursor` as `cursor` for the next page.
+        Pass `next_cursor` as `cursor` for the next page. With `readiness` true, `readiness`
+        holds, for each episode of the page, its blockers and warnings (the counts of
+        get_episode_overview's readiness list), to find which episode needs work; it is slower,
+        so leave it off to just list.
         """
-        return reported(
-            lambda: episode_operations.list_episodes(services, access(context, slug), cursor, limit)
-        )
+
+        def read() -> EpisodeListing:
+            channel = access(context, slug)
+            found = episode_operations.list_episodes(services, channel, cursor, limit)
+            counts = (
+                overview_operations.summaries_for(services, channel, found.items)
+                if readiness
+                else None
+            )
+            return EpisodeListing(
+                items=found.items, next_cursor=found.next_cursor, readiness=counts
+            )
+
+        return reported(read)
 
     @server.tool(annotations=tool_annotations("Read an episode", Effect.READ))
     def get_episode(context: Context, slug: str, number: int) -> RevisedEpisode:

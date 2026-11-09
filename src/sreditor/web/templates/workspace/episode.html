@@ -5,11 +5,17 @@
 {% set lead = episode.summary | markdown_plain %}
 {% include "workspace/_episode_header.html" %}
 {{ ui.form_error(errors) }}
-{% if unchecked_claims == 1 %}
-{% call ui.alert("warning") %}{{ _("1 claim has no checked primary source. This does not block the episode.") }} <a href="{{ claims_link }}">{{ _("See the claims") }}</a>{% endcall %}
-{% elif unchecked_claims %}
-{% call ui.alert("warning") %}{{ _("%(count)s claims have no checked primary source. This does not block the episode.", count=unchecked_claims) }} <a href="{{ claims_link }}">{{ _("See the claims") }}</a>{% endcall %}
-{% endif %}
+{% call ui.panel(_("Readiness"), id="readiness") %}
+  {% if readiness %}
+  {% call(gap) ui.items(readiness, _("Readiness")) %}
+    {{ ui.item_main(gap.message, href=gap.href) }}
+    {{ ui.badge(gap.severity, gap.tone) }}
+    {{ ui.meta(gap.area) }}
+  {% endcall %}
+  {% else %}
+  <p class="muted">{{ _("Nothing holds this episode back.") }}</p>
+  {% endif %}
+{% endcall %}
 {% if can("write_content") %}
 {% call ui.panel(_("Episode"), id="episode") %}
   {% call ui.form(channel_link ~ "/episodes/" ~ episode.number, csrf_field, csrf_token) %}
