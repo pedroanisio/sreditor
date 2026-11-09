@@ -8,9 +8,9 @@ import json
 import shutil
 import subprocess
 import zipfile
-from uuid import UUID
 from collections.abc import Callable
 from typing import Any
+from uuid import UUID
 
 import pytest
 from fastapi import FastAPI

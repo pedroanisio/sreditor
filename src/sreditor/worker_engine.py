@@ -27,7 +27,7 @@ from collections.abc import Iterator, Mapping
 from contextlib import ExitStack, contextmanager
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
 
@@ -208,10 +208,23 @@ def run_command(step: Step, stop: threading.Event) -> int:
     return code
 
 
+def opened_lock(path: Path) -> IO[str]:
+    """The lock file, opened without creating it when it exists.
+
+    srstudio on the host makes the file in /run/lock, a sticky folder: there the kernel
+    (fs.protected_regular) refuses an open that may create a file another user owns, even
+    one anyone may write, so the worker creates it only when it is missing.
+    """
+    try:
+        return path.open("r+")
+    except FileNotFoundError:
+        return path.open("a")
+
+
 @contextmanager
 def gpu_held(path: Path, stop: threading.Event) -> Iterator[None]:
     """Hold the machine's GPU lock; wait for it while the job lasts, Canceled if it ends."""
-    with path.open("a") as lock:
+    with opened_lock(path) as lock:
         while True:
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
