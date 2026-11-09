@@ -145,6 +145,9 @@ class ValidatedFile(Exact):
     warnings: int
     diagnostics: list[Diagnostic]
     io_error: str | None = None
+    # Information lines (how the safe area was sampled, nodes forced outside it); they never stop a
+    # render, and scene-render leaves the field out when there are none.
+    info: list[str] = []
 
 
 class Validation(Exact):
