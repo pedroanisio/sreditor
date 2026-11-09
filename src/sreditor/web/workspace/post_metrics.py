@@ -259,6 +259,15 @@ def compare_url(slug: str) -> str:
     return channel_url(slug, COMPARE_SUFFIX)
 
 
+def metrics_tabs(slug: str, translate: Translator) -> list[tuple[str, str, str]]:
+    """The metrics page's tabs as (link, label, key): ranking posts, and what worked."""
+    base = compare_url(slug)
+    return [
+        (base, translate(N_("Posts")), "posts"),
+        (f"{base}/what-worked", translate(N_("What worked")), "worked"),
+    ]
+
+
 @router.get(COMPARE_PAGE)
 def compare(
     request: Request,
@@ -285,6 +294,7 @@ def compare(
             (f"{base}?sort={metric.value}", translate(METRIC_LABELS[metric]), metric.value)
             for metric in Metric
         ],
+        "tabs": metrics_tabs(slug, translate),
         "compare_link": base,
         "episodes_link": channel_url(slug, "/episodes"),
     }

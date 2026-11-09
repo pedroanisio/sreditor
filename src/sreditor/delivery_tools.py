@@ -31,6 +31,8 @@ from sreditor.post_metrics import (
     SnapshotInput,
 )
 from sreditor.retention_csv import RetentionCsvError
+from sreditor.what_worked import WhatWorked, WhatWorkedQuery
+from sreditor.what_worked_operations import what_worked as run_what_worked
 
 CSV_SHAPE = "Send two columns with a header, such as 'second,percent'."
 CUT_HINT = (
@@ -279,8 +281,26 @@ def add_metrics_tools(server: MCPServer, services: Services) -> None:
         """Compare the channel's posts by their latest numbers, best first by `sort_by` (views,
         reach, likes, comments, shares, saves or avg_watch_s), to see which pitches and hooks
         worked. Each row is one post with its latest snapshot and the number of snapshots it
-        has; posts nobody measured come last. Pass `next_cursor` as `cursor` for more."""
+        has; posts nobody measured come last. To compare groups of posts by classification, hook or
+        length use what_worked. Pass `next_cursor` as `cursor` for more."""
         query = metrics.PostQuery(sort_by=sort_by, cursor=cursor, limit=limit)
         return delivery_reported(
             lambda: metrics.compare_posts(services, channel_access(services, context, slug), query)
+        )
+
+    @server.tool(annotations=tool_annotations("See what worked", Effect.READ))
+    def what_worked(context: Context, slug: str, query: WhatWorkedQuery) -> WhatWorked:
+        """Compare the channel's published posts by classification, hook or length, to see which
+        kind of episode did better, so the next pitch follows it. `query.group_by` is
+        classification (with `classification_dimension`, see get_classification_vocabulary; only
+        reviewed classifications count, proposals are left out and counted in `excluded`),
+        hook_reaction or hook_length (from the short script's hook block) or video_length. Each
+        group gives its posts and the median and mean of `query.metric`, from every post's latest
+        snapshot or, with `query.age` such as day_7, the one nearest that many days after
+        publishing, so young posts do not skew it. Groups under 3 posts are flagged
+        `is_too_small`: do not conclude from them. Filter by `platform` and publish days. Numbers
+        are the ones entered with record_post_metrics. To rank single posts use compare_posts;
+        for one post's days use list_post_snapshots."""
+        return delivery_reported(
+            lambda: run_what_worked(services, channel_access(services, context, slug), query)
         )

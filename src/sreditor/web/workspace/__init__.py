@@ -37,6 +37,7 @@ from sreditor.web.workspace import (
     short_script,
     srstudio,
     waivers,
+    what_worked,
 )
 from sreditor.web.workspace.shell import (
     APP_PATH,
@@ -69,6 +70,7 @@ ROUTERS = (
     external_media.router,
     delivery.router,
     post_metrics.router,
+    what_worked.router,
     books.router,
     classification.router,
     item_context.router,

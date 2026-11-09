@@ -246,6 +246,19 @@ class PostMetricsStore:
         snapshots = [to_snapshot(row) for row in rows]
         return {(snapshot.number, snapshot.platform): snapshot for snapshot in snapshots}
 
+    def history(self, channel: str) -> dict[tuple[int, Platform], list[Snapshot]]:
+        """Every snapshot of each post of the channel, oldest day first."""
+        with self.database.connect() as connection:
+            rows = connection.execute(
+                f"SELECT {SNAPSHOT_COLUMNS} FROM post_snapshots"
+                " WHERE channel_slug = ? ORDER BY captured_on",
+                (channel,),
+            ).fetchall()
+        found: dict[tuple[int, Platform], list[Snapshot]] = {}
+        for snapshot in map(to_snapshot, rows):
+            found.setdefault((snapshot.number, snapshot.platform), []).append(snapshot)
+        return found
+
     def counts(self, channel: str) -> dict[tuple[int, Platform], int]:
         """How many snapshots each post of the channel has."""
         with self.database.connect() as connection:

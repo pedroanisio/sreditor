@@ -1,0 +1,37 @@
+{% extends "workspace/channel.html" %}
+{% import "_ui.html" as ui %}
+{% block page_title %}{{ _("What worked") }} · {{ channel.name }}{% endblock %}
+{% block page %}
+{% call ui.page_header(_("Metrics"), _("The channel's published posts grouped by what they have in common, so the next pitch follows what worked. Numbers are entered by hand or from a CSV.")) %}{% endcall %}
+{{ ui.tabs(tabs, "worked", _("Metrics")) }}
+{% call ui.panel(_("Compare by"), id="pickers") %}
+  <form method="get" action="{{ action }}">
+    {% call ui.fields_row() %}
+      {{ ui.select("by", _("Group posts by"), group_options, {}, value=sent.by) }}
+      {{ ui.select("metric", _("Number"), metric_options, {}, value=sent.metric.value) }}
+    {% endcall %}
+    {% call ui.fields_row() %}
+      {{ ui.select("age", _("Numbers taken"), age_options, {}, value=sent.age.value, hint=_("A fixed age leaves out posts too young to have numbers then.")) }}
+      {{ ui.select("platform", _("Platform"), platform_options, {}, value=sent.platform) }}
+    {% endcall %}
+    {% call ui.panel_actions() %}{{ ui.button(_("Compare")) }}{% endcall %}
+  </form>
+{% endcall %}
+{% call ui.panel(_("Groups"), id="groups") %}
+  {% if rows %}
+  {% call(entry) ui.items(rows, _("Groups")) %}
+    {% set title, numbers, is_too_small, episodes = entry %}
+    {% call ui.item_body() %}
+      <strong>{{ title }}</strong>
+      {{ ui.meta(episodes) }}
+      <p>{{ numbers }}</p>
+    {% endcall %}
+    {% if is_too_small %}{% call ui.item_side() %}{{ ui.badge(_("Too few posts to read"), "warning") }}{% endcall %}{% endif %}
+  {% endcall %}
+  <p class="hint">{{ _("Groups with fewer than %(count)s posts are too small to conclude from.", count=min_posts) }}</p>
+  {% else %}
+  <p class="muted">{{ _("No group to show yet. Record where an episode was posted, with its publish time and numbers, and classify or script the episode.") }}</p>
+  {% endif %}
+  {% if excluded_line %}<p class="hint">{{ _("Left out of the groups: %(reasons)s.", reasons=excluded_line) }}</p>{% endif %}
+{% endcall %}
+{% endblock %}

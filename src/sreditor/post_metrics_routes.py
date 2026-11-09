@@ -15,6 +15,8 @@ from sreditor.pagination import DEFAULT_LIMIT, Cursor, Limit, Page
 from sreditor.post_metrics import Metric, PostMetric, Snapshot, SnapshotInput
 from sreditor.problems import problem_response, problem_type
 from sreditor.retention_csv import RetentionCsvError
+from sreditor.what_worked import WhatWorked, WhatWorkedQuery
+from sreditor.what_worked_operations import what_worked as run_what_worked
 
 router = APIRouter(tags=["post metrics"])
 
@@ -105,6 +107,24 @@ def compare_posts(
     with list_post_snapshots. Posts nobody measured come last.
     """
     return metrics.compare_posts(app, access, query)
+
+
+@router.get("/channels/{slug}/post-metrics/what-worked", summary="See what worked")
+def what_worked(
+    query: Annotated[WhatWorkedQuery, Query()], access: Access, app: ServicesDep
+) -> WhatWorked:
+    """Group the channel's published posts by one dimension and compare one number per group.
+
+    Choose `group_by`: `classification` with a `classification_dimension` (the primary value of a
+    reviewed classification; proposals are left out and counted), `hook_reaction` or
+    `hook_length` (from the short script's hook block) or `video_length` (the posted cut's
+    video). Each group reports its posts, their episodes and the median and mean of `metric`
+    taken from every post's latest snapshot, or from the one nearest `age` days after publishing.
+    Groups under `min_group_posts` are flagged `is_too_small`. `excluded` counts the posts no
+    group holds and why. Filter by `platform` and by publish day. Use compare_posts to rank
+    single posts instead.
+    """
+    return run_what_worked(app, access, query)
 
 
 def install_error_handlers(app: FastAPI) -> None:

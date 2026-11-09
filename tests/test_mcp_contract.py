@@ -32,7 +32,7 @@ SLUG = "funny-memes"
 # A tool name starts with one of these verbs; other snake_case words (idempotency_key) are not tools.
 TOOL_VERBS = (
     "add|apply|cancel|change|check|classify|compare|create|declare|delete|estimate|generate|get|import|"
-    "invite|list|put|record|remove|request|retire|save|search|set|unlink|update|use|write"
+    "invite|list|put|record|remove|request|retire|save|search|set|unlink|update|use|what|write"
 )
 TOOL_NAME = re.compile(rf"\b(?:(?:{TOOL_VERBS})(?:_[a-z]+)+|whoami)\b")
 # Registered but deliberately left out of INSTRUCTIONS.

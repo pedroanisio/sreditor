@@ -3,6 +3,7 @@
 {% block page_title %}{{ _("Metrics") }} · {{ channel.name }}{% endblock %}
 {% block page %}
 {% call ui.page_header(_("Metrics"), _("The channel's posts by their latest numbers, so pitches and hooks follow what worked. Numbers are entered by hand or from a CSV.")) %}{% endcall %}
+{{ ui.tabs(tabs, "posts", _("Metrics")) }}
 {{ ui.view_switch(sorts, sort, _("Rank posts by")) }}
 {% call ui.panel(_("Posts"), id="posts") %}
   {% if rows %}
