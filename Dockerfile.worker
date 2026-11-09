@@ -5,7 +5,7 @@
 #
 #   docker build -f Dockerfile.worker -t sreditor-worker:0.9.0 .
 #   docker run --gpus all -e SREDITOR_WORKER_SERVER_URL=https://sreditor-dev.arc4d3.com \
-#     -e SREDITOR_WORKER_TOKEN=srw_... -e SREDITOR_WORKER_BUILD_COMMAND='...' \
+#     -e SREDITOR_WORKER_TOKEN=srw_... \
 #     -v /run/lock:/run/lock sreditor-worker:0.9.0
 #
 # git: srstudio installs some of its dependencies from git.
@@ -15,13 +15,14 @@
 # (docker buildx imagetools inspect pedroanisio/scene-render:VERSION prints the digest).
 # srstudio comes from SRSTUDIO_GIT at SRSTUDIO_REF, a commit, because a branch moves and the same
 # export would build another scene; it must be the commit the instance pins
-# (SREDITOR_RENDER_BUILDER_VERSION). Pin a release tag's commit once srstudio ships the command that
-# builds a scene from sreditor's export. tests/test_worker_image.py checks all of this.
+# (SREDITOR_RENDER_BUILDER_VERSION). Its `srstudio build-export EXPORT SCENE` builds the scene from
+# sreditor's export, so it is the image's build command; SREDITOR_WORKER_BUILD_COMMAND replaces it.
+# tests/test_worker_image.py checks all of this.
 
 ARG SCENE_RENDER_VERSION=0.9.0
 ARG SCENE_RENDER_DIGEST=sha256:87f196b5e5ce4630403840f33db1709949e06dfa98923d218b81e3da5e2dfe25
 ARG SRSTUDIO_GIT=https://github.com/pedroanisio/srstudio.git
-ARG SRSTUDIO_REF=41a43948fc9c600ea5c38462b90c93cf0871adcf
+ARG SRSTUDIO_REF=d80eb6daba9492ec55f21cfbe59454b33352fc61
 
 FROM pedroanisio/scene-render:${SCENE_RENDER_VERSION}@${SCENE_RENDER_DIGEST}
 ARG SRSTUDIO_GIT
@@ -50,6 +51,7 @@ ENV NVIDIA_VISIBLE_DEVICES=all \
     SREDITOR_WORKER_DIR=/work/jobs \
     SRSTUDIO_GPU_LOCK=/run/lock/srstudio-gpu.lock \
     SREDITOR_WORKER_BUILDER_VERSION=${SRSTUDIO_REF} \
+    SREDITOR_WORKER_BUILD_COMMAND="srstudio build-export {export} {scene}" \
     PYTHONUNBUFFERED=1
 USER render
 WORKDIR /work
