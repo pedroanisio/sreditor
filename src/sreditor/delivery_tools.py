@@ -13,12 +13,11 @@ from typing import Annotated
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult
-from pydantic import BaseModel, ConfigDict
 
 from sreditor import delivery_operations as deliveries
 from sreditor import post_metrics_operations as metrics
 from sreditor.channels import Platform
-from sreditor.delivery import Delivery, DeliveryInput
+from sreditor.delivery import CutName, Delivery, DeliveryInput
 from sreditor.deps import ChannelAccess, Services, access_for
 from sreditor.mcp_idempotency import IdempotencyKey, IdempotentCall, run_once
 from sreditor.mcp_principal import principal
@@ -49,8 +48,13 @@ def delivery_error_message(error: Exception) -> str | None:
         return f"{prefix}{error}{hint}"
     if isinstance(error, metrics.PostNotRecorded):
         return (
-            f"The episode has no post on {error}; call record_post for that platform first, "
-            "then enter its numbers."
+            f"The episode has no post on {error}; call record_post for that platform and cut "
+            "first, then enter its numbers."
+        )
+    if isinstance(error, metrics.PostAmbiguous):
+        return (
+            f"The episode has several posts on {error.platform.value}, of the cuts "
+            f"{', '.join(error.cuts)}; pass `cut` with one of them."
         )
     if isinstance(error, RetentionCsvError):
         found = "; ".join(problem.message for problem in error.problems)
@@ -67,6 +71,7 @@ def delivery_reported[T](action: Callable[[], T]) -> T:
         except (
             deliveries.DeliveryRefused,
             metrics.PostNotRecorded,
+            metrics.PostAmbiguous,
             RetentionCsvError,
         ) as refusal:
             raise ToolError(delivery_error_message(refusal) or str(refusal)) from refusal
@@ -93,24 +98,21 @@ class PlatformPost(deliveries.PostInput):
 
 
 class PlatformSnapshot(SnapshotInput):
-    """A post's numbers for one day, naming the platform of the post."""
+    """A post's numbers for one day, naming the platform and, if it has several, the cut."""
 
     platform: Platform
+    cut: CutName | None = None
 
 
-class PostOnPlatform(BaseModel):
-    """One post: the episode's number and the platform it was published on."""
-
-    model_config = ConfigDict(frozen=True)
-
-    number: int
-    platform: Platform
+class PostOnPlatform(metrics.PostTarget):
+    """One post: the episode's number, the platform and the cut that was published."""
 
 
 class PlatformCsv(metrics.RetentionImport):
-    """A retention CSV for the post on one platform."""
+    """A retention CSV for the post of one platform and, if it has several, one cut."""
 
     platform: Platform
+    cut: CutName | None = None
 
 
 def add_package_tools(server: MCPServer, services: Services) -> None:
@@ -171,10 +173,12 @@ def add_package_tools(server: MCPServer, services: Services) -> None:
         post: PlatformPost,
         idempotency_key: IdempotencyKey = None,
     ) -> Annotated[CallToolResult, Delivery]:
-        """Set the post on one platform account: which cut went there, its link, when it went
+        """Set the post of one cut on a platform account: its link, when it went
         live and, optionally, its own `caption` (must carry the AI notice), `alt_text` and
         `hashtags` (at most 5), refused naming the field otherwise. A text you leave out keeps
-        the earlier post's; an empty one goes back to the cut's. Use it after publishing; it
+        the earlier post's; an empty one goes back to the cut's. A post is a platform account and
+        a cut: recording the same cut again replaces its post, while another cut on the same
+        account is another post (versions A and B of a test). Use it after publishing; it
         keeps the cuts and the other posts. The cut must
         already be in the package (write_delivery) and the channel must have an account on the
         platform. Needs content:write. A retry with the same `idempotency_key` returns the
@@ -206,7 +210,8 @@ def add_metrics_tools(server: MCPServer, services: Services) -> None:
     ) -> Annotated[CallToolResult, Snapshot]:
         """Enter a post's numbers for one day (captured_on, today when left out): views, reach,
         likes, comments, shares, saves, avg_watch_s and retention as {second, percent} points,
-        for the post on `platform`. Every number is optional and non-negative; a second entry
+        for the post on `platform`; name the posted `cut` when the platform has posts of several
+        cuts (left out, the platform's only post). Every number is optional and non-negative; a second entry
         for the same day merges into the first, and a number you leave out keeps its value. The
         post must be in the delivery package (record_post). Take numbers from the platform's
         analytics page: this never fetches them. Needs content:write."""
@@ -219,8 +224,7 @@ def add_metrics_tools(server: MCPServer, services: Services) -> None:
                 lambda: metrics.record_metrics(
                     services,
                     channel_access(services, context, slug),
-                    number,
-                    snapshot.platform,
+                    metrics.PostTarget(number=number, platform=snapshot.platform, cut=snapshot.cut),
                     snapshot,
                 ),
                 Snapshot,
@@ -236,7 +240,7 @@ def add_metrics_tools(server: MCPServer, services: Services) -> None:
         idempotency_key: IdempotencyKey = None,
     ) -> Annotated[CallToolResult, Snapshot]:
         """Import a platform's retention export, passed as CSV text in `csv`, into the snapshot
-        of the post on `platform` for one day. It needs a header and two columns, the second and
+        of the post on `platform` (and `cut`, when it has several) for one day. It needs a header and two columns, the second and
         the percent still watching ('second,percent', or the names an Instagram or YouTube
         export uses), at most 200000 characters; anything else is refused with the rows at
         fault. It replaces that day's retention and keeps its other numbers. The post must be
@@ -250,8 +254,7 @@ def add_metrics_tools(server: MCPServer, services: Services) -> None:
                 lambda: metrics.import_retention(
                     services,
                     channel_access(services, context, slug),
-                    number,
-                    source.platform,
+                    metrics.PostTarget(number=number, platform=source.platform, cut=source.cut),
                     source,
                 ),
                 Snapshot,
@@ -268,12 +271,13 @@ def add_metrics_tools(server: MCPServer, services: Services) -> None:
     ) -> Page[Snapshot]:
         """List one post's dated snapshots, newest day first, each with its numbers and
         retention curve, to see how a post grew; compare_posts shows only the latest of each
-        post. `post` names the episode `number` and the `platform` of its post (record_post adds it). Enter
+        post. `post` names the episode `number`, the `platform` and, when the platform has posts of
+        several cuts, the `cut` of its post (record_post adds it). Enter
         numbers with record_post_metrics. Pass `next_cursor` as `cursor` for more."""
 
         def read() -> Page[Snapshot]:
             found = channel_access(services, context, slug)
-            target = metrics.post_of(services, found, post.number, post.platform)
+            target = metrics.post_of(services, found, post)
             return metrics.list_snapshots(services, found, target, cursor, limit)
 
         return delivery_reported(read)

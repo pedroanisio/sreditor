@@ -12,7 +12,7 @@ from datetime import datetime
 from fastapi import status
 
 from sreditor.classification import Dimension
-from sreditor.delivery import VIDEO_FAMILY, duration_of
+from sreditor.delivery import VIDEO_FAMILY, duration_of, post_key
 from sreditor.deps import ChannelAccess, Services
 from sreditor.members import Permission
 from sreditor.post_metrics import ChannelPost
@@ -150,7 +150,7 @@ def entries_of(
     for item, published_at in posts:
         key, is_proposal = key_of(item)
         found = snapshot_for(
-            history.get((item.number, item.post.platform), []), published_at.date(), query.age
+            history.get((item.number, *post_key(item.post)), []), published_at.date(), query.age
         )
         entries.append(
             Entry(

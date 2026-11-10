@@ -347,3 +347,52 @@ def test_execute_script_keeps_a_trigger_in_one_statement() -> None:
 
 def test_current_version_without_a_version_table_is_zero() -> None:
     assert current_version(memory()) == 0
+
+
+# Post snapshots by cut (migration 7)
+
+POSTS = '{"cuts": [{"name": "main"}], "posts": [{"platform": "tiktok", "cut": "main"}]}'
+SNAPSHOT_ROW = (
+    "INSERT INTO post_snapshots (id, channel_slug, number, platform, captured_on, views,"
+    " created_at, updated_at) VALUES (?, 'memes', ?, ?, '2026-11-01', 5, ?, ?)"
+)
+
+
+def snapshots_before_the_cut(*rows: tuple[str, int, str]) -> sqlite3.Connection:
+    """A database at migration 6 holding one delivery package and the given snapshots."""
+    connection = memory()
+    connection.row_factory = sqlite3.Row
+    run_migrations(connection, MIGRATIONS[:6], NOW)
+    connection.execute(
+        "INSERT INTO episode_deliveries (channel_slug, number, text, revision, updated_at)"
+        " VALUES ('memes', 1, ?, 1, ?)",
+        (POSTS, NOW),
+    )
+    for identifier, number, platform in rows:
+        connection.execute(SNAPSHOT_ROW, (identifier, number, platform, NOW, NOW))
+    return connection
+
+
+def test_migration_post_cut_gives_a_snapshot_the_cut_of_its_platforms_post() -> None:
+    connection = snapshots_before_the_cut(("a", 1, "tiktok"))
+    run_migrations(connection, MIGRATIONS, NOW)
+    found = connection.execute("SELECT cut, views FROM post_snapshots").fetchall()
+    assert [(row["cut"], row["views"]) for row in found] == [("main", 5)]
+
+
+def test_migration_post_cut_gives_a_snapshot_without_a_post_the_empty_cut() -> None:
+    connection = snapshots_before_the_cut(("a", 1, "youtube"), ("b", 2, "tiktok"))
+    run_migrations(connection, MIGRATIONS, NOW)
+    found = connection.execute("SELECT cut FROM post_snapshots ORDER BY id").fetchall()
+    assert [row["cut"] for row in found] == ["", ""]
+
+
+def test_migration_post_cut_lets_two_cuts_keep_a_snapshot_on_the_same_day() -> None:
+    connection = snapshots_before_the_cut(("a", 1, "tiktok"))
+    run_migrations(connection, MIGRATIONS, NOW)
+    connection.execute(
+        "INSERT INTO post_snapshots (id, channel_slug, number, platform, cut, captured_on,"
+        " created_at, updated_at) VALUES ('b', 'memes', 1, 'tiktok', 'alt', '2026-11-01', ?, ?)",
+        (NOW, NOW),
+    )
+    assert connection.execute("SELECT COUNT(*) FROM post_snapshots").fetchone()[0] == 2

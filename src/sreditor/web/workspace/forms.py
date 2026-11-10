@@ -248,8 +248,9 @@ class CutFields(SubmittedFields):
 
 
 class PostFields(SubmittedFields):
-    """A post on one platform account: the cut, the link, when it went live and its own text."""
+    """A post of one cut on a platform account: the link, when it went live and its own text."""
 
+    dialog: str = ""  # the dialog that sent it, so a refusal reopens that one
     cut: str = ""
     url: str = ""
     published_at: str = ""

@@ -1,8 +1,9 @@
 """How a published post performed: dated snapshots of its numbers (rule project.metrics).
 
 Numbers are entered by hand, through the API or MCP, or imported from a platform's retention CSV;
-sreditor never fetches them. A post is an episode's post on one platform, so its snapshots are
-keyed by episode, platform and day, and a second entry for the same day merges into the first.
+sreditor never fetches them. A post is an episode's cut posted on one platform account, so its
+snapshots are keyed by episode, platform, cut and day, and a second entry for the same day merges
+into the first.
 This is unrelated to metrics.py, which serves Prometheus request metrics.
 """
 
@@ -19,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from sreditor.channels import Platform
 from sreditor.database import Database
-from sreditor.delivery import DeliveryInput, Post
+from sreditor.delivery import CutName, DeliveryInput, Post
 from sreditor.field_types import ChannelSlug
 
 MAX_COUNT = 10**12
@@ -92,6 +93,9 @@ class SnapshotInput(Numbers):
         return None if points is None else in_order(points)
 
 
+PostKey = tuple[int, Platform, str]  # episode number, platform account and cut
+
+
 class Snapshot(Numbers):
     """A stored snapshot: one post's numbers on one day."""
 
@@ -99,20 +103,27 @@ class Snapshot(Numbers):
     channel: ChannelSlug
     number: int
     platform: Platform
+    cut: CutName
     captured_on: date
     retention: list[RetentionPoint]
     created_at: datetime
     updated_at: datetime
 
+    @property
+    def key(self) -> PostKey:
+        """The post this snapshot belongs to."""
+        return (self.number, self.platform, self.cut)
+
 
 class PostRef(BaseModel):
-    """One post: an episode's post on a platform account."""
+    """One post: an episode's cut posted on a platform account."""
 
     model_config = ConfigDict(frozen=True)
 
     channel: ChannelSlug
     number: int
     platform: Platform
+    cut: CutName
 
 
 class PostMetric(BaseModel):
@@ -143,7 +154,7 @@ class ChannelPost(BaseModel):
 
 
 SNAPSHOT_COLUMNS = (
-    "id, channel_slug, number, platform, captured_on, views, reach, likes, comments, shares,"
+    "id, channel_slug, number, platform, cut, captured_on, views, reach, likes, comments, shares,"
     " saves, avg_watch_s, retention, created_at, updated_at"
 )
 NUMBER_COLUMNS = tuple(metric.value for metric in Metric)
@@ -156,6 +167,7 @@ def to_snapshot(row: sqlite3.Row) -> Snapshot:
         channel=row["channel_slug"],
         number=row["number"],
         platform=Platform(row["platform"]),
+        cut=row["cut"],
         captured_on=date.fromisoformat(row["captured_on"]),
         retention=[RetentionPoint(**point) for point in json.loads(row["retention"] or "[]")],
         created_at=datetime.fromisoformat(row["created_at"]),
@@ -172,9 +184,9 @@ def upsert_sql() -> str:
         f"{name} = COALESCE(excluded.{name}, {name})" for name in (*NUMBER_COLUMNS, "retention")
     )
     return (
-        "INSERT INTO post_snapshots (id, channel_slug, number, platform, captured_on,"
-        f" {names}, retention, created_at, updated_at) VALUES (?, ?, ?, ?, ?, {marks}, ?, ?, ?)"
-        " ON CONFLICT (channel_slug, number, platform, captured_on) DO UPDATE SET"
+        "INSERT INTO post_snapshots (id, channel_slug, number, platform, cut, captured_on,"
+        f" {names}, retention, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, {marks}, ?, ?, ?)"
+        " ON CONFLICT (channel_slug, number, platform, cut, captured_on) DO UPDATE SET"
         f" {merged}, updated_at = excluded.updated_at RETURNING {SNAPSHOT_COLUMNS}"
     )
 
@@ -205,6 +217,7 @@ class PostMetricsStore:
             post.channel,
             post.number,
             post.platform,
+            post.cut,
             day.isoformat(),
             *(getattr(data, name) for name in NUMBER_COLUMNS),
             retention,
@@ -220,12 +233,13 @@ class PostMetricsStore:
         with self.database.connect() as connection:
             rows = connection.execute(
                 f"SELECT {SNAPSHOT_COLUMNS} FROM post_snapshots"
-                " WHERE channel_slug = ? AND number = ? AND platform = ?"
+                " WHERE channel_slug = ? AND number = ? AND platform = ? AND cut = ?"
                 " AND (? IS NULL OR captured_on < ?) ORDER BY captured_on DESC LIMIT ?",
                 (
                     post.channel,
                     post.number,
                     post.platform,
+                    post.cut,
                     before and before.isoformat(),
                     before and before.isoformat(),
                     limit,
@@ -233,20 +247,20 @@ class PostMetricsStore:
             ).fetchall()
         return [to_snapshot(row) for row in rows]
 
-    def latest(self, channel: str) -> dict[tuple[int, Platform], Snapshot]:
+    def latest(self, channel: str) -> dict[PostKey, Snapshot]:
         """The newest snapshot of each post of the channel."""
         with self.database.connect() as connection:
             rows = connection.execute(
                 f"SELECT {SNAPSHOT_COLUMNS} FROM post_snapshots AS found"
                 " WHERE channel_slug = ? AND captured_on = (SELECT MAX(captured_on)"
                 " FROM post_snapshots WHERE channel_slug = found.channel_slug"
-                " AND number = found.number AND platform = found.platform)",
+                " AND number = found.number AND platform = found.platform AND cut = found.cut)",
                 (channel,),
             ).fetchall()
         snapshots = [to_snapshot(row) for row in rows]
-        return {(snapshot.number, snapshot.platform): snapshot for snapshot in snapshots}
+        return {snapshot.key: snapshot for snapshot in snapshots}
 
-    def history(self, channel: str) -> dict[tuple[int, Platform], list[Snapshot]]:
+    def history(self, channel: str) -> dict[PostKey, list[Snapshot]]:
         """Every snapshot of each post of the channel, oldest day first."""
         with self.database.connect() as connection:
             rows = connection.execute(
@@ -254,20 +268,22 @@ class PostMetricsStore:
                 " WHERE channel_slug = ? ORDER BY captured_on",
                 (channel,),
             ).fetchall()
-        found: dict[tuple[int, Platform], list[Snapshot]] = {}
+        found: dict[PostKey, list[Snapshot]] = {}
         for snapshot in map(to_snapshot, rows):
-            found.setdefault((snapshot.number, snapshot.platform), []).append(snapshot)
+            found.setdefault(snapshot.key, []).append(snapshot)
         return found
 
-    def counts(self, channel: str) -> dict[tuple[int, Platform], int]:
+    def counts(self, channel: str) -> dict[PostKey, int]:
         """How many snapshots each post of the channel has."""
         with self.database.connect() as connection:
             rows = connection.execute(
-                "SELECT number, platform, COUNT(*) AS total FROM post_snapshots"
-                " WHERE channel_slug = ? GROUP BY number, platform",
+                "SELECT number, platform, cut, COUNT(*) AS total FROM post_snapshots"
+                " WHERE channel_slug = ? GROUP BY number, platform, cut",
                 (channel,),
             ).fetchall()
-        return {(row["number"], Platform(row["platform"])): row["total"] for row in rows}
+        return {
+            (row["number"], Platform(row["platform"]), row["cut"]): row["total"] for row in rows
+        }
 
     def channel_posts(self, channel: str) -> list[ChannelPost]:
         """Every post in the channel's delivery packages, by episode number."""
