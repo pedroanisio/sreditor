@@ -244,6 +244,7 @@ def block_of(reader: RowReader, start: float, length: float | None) -> Block | N
                 "speech": speech,
                 "impact": impact,
                 "speaker": reader.text("speaker") or None,
+                "place": reader.text("place") or None,
                 "beats": beats,
             }
         )

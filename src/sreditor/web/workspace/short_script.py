@@ -134,6 +134,7 @@ CLASS_LABELS: dict[TagClass, str] = {
 VALUE_SAMPLES = {ValueKind.SECONDS: ":0.5", ValueKind.NAME: ":…"}
 NO_REACTION = N_("None")
 NARRATOR = N_("The narrator")
+NO_PLACE = N_("No place")
 NOT_IN_LIBRARY = N_(
     "This character or prop is no longer in the library. Pick another and save again."
 )
@@ -205,6 +206,7 @@ def block_rows(script: ShortScript, sent: dict[str, str] | None) -> list[dict[st
             "intensity": str(block.impact.intensity) if block.impact else "",
             "note": block.impact.note if block.impact else "",
             "speaker": str(block.speaker or ""),
+            "place": str(block.place or ""),
             **stored_beat_fields(block.beats),
         }
         for block in script.blocks
@@ -368,6 +370,14 @@ def speaker_options(
     return [("", translate(NARRATOR)), *((str(entry.id), entry.name) for entry in characters)]
 
 
+def place_options(
+    app: Services, access: ChannelAccess, translate: Translator
+) -> list[tuple[str, str]]:
+    """Where a block may play: nowhere in particular or a place of the channel's library."""
+    places = all_entries(app, access.channel.slug, LibraryKind.LOCATION)
+    return [("", translate(NO_PLACE)), *((str(entry.id), entry.name) for entry in places)]
+
+
 def library_error(sent: dict[str, str], missing: NotInLibrary, translate: Translator) -> Errors:
     """The refusal next to the block it names: the n-th block with speech is that row."""
     filled = [
@@ -376,7 +386,8 @@ def library_error(sent: dict[str, str], missing: NotInLibrary, translate: Transl
         if sent.get(f"{BLOCK_PREFIX}-{index}-speech", "").strip()
     ]
     block = int(missing.location[1])
-    field = "speaker" if missing.location[-1] == "speaker" else "speech"
+    named = missing.location[-1]
+    field = named if named in {"speaker", "place"} else "speech"
     row = filled[block] if block < len(filled) else 0
     return {f"{BLOCK_PREFIX}-{row}-{field}": translate(NOT_IN_LIBRARY)}
 
@@ -403,6 +414,7 @@ def short_script_page(
         "voices": voices,
         "voice_options": voice_options(voices, translate),
         "speaker_options": speaker_options(app, access, translate),
+        "place_options": place_options(app, access, translate),
         **beat_choices(app, access.channel.slug, translate),
         "blocks_with_beat_errors": blocks_with_beat_errors(shown.outcome.errors),
         "function_labels": FUNCTION_LABELS,

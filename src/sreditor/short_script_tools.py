@@ -132,8 +132,10 @@ def add_script_tools(server: MCPServer, services: Services) -> None:
 
         Speech takes voice tags: [pause:0.5] at a point, [irony]...[/irony] over a span; an
         unknown tag, a wrong value or an unclosed span is refused. On-screen texts hold at most
-        90 characters. Pass `revision` from get_short_script as `expected_revision` (0 when
-        empty) so you never overwrite a version you have not read."""
+        90 characters. A block's `speaker` is a library character (none: the narrator voice)
+        and its `place` a library location it plays in, whose srstudio sheet `rig` names the set
+        a render draws (list_library gives both ids). Pass `revision` from get_short_script as
+        `expected_revision` (0 when empty) so you never overwrite a version you have not read."""
         return voice_reported(
             lambda: scripts.write_short_script(
                 services,

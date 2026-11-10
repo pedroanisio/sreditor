@@ -185,6 +185,11 @@ def punctuated_words(words: list[str], line: str) -> list[str]:
     return marked
 
 
+def take_id(timed: TimedBlock) -> str:
+    """The id of a block's take in timeline.json, which other documents refer to."""
+    return f"{timed.index + 1:02d}"
+
+
 def timeline_item(timed: TimedBlock, model: TtsModel) -> dict[str, Any]:
     """One take of timeline.json: the clean line, its clock, its audio and its words."""
     duration = timed.wav.duration_s
@@ -195,7 +200,7 @@ def timeline_item(timed: TimedBlock, model: TtsModel) -> dict[str, Any]:
         for text, word in zip(texts, timed.take.words, strict=True)
     ]
     return {
-        "id": f"{timed.index + 1:02d}",
+        "id": take_id(timed),
         "actor": timed.actor,
         "shot": timed.block.function.value,
         "text": line,
