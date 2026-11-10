@@ -59,7 +59,7 @@ DEFAULT_RENDER_LEASE_SECONDS = 120
 DEFAULT_RENDER_ENGINE_VERSION = "0.9.0"
 # The srstudio commit that builds scenes on workers: a branch moves, so the same export would build
 # a different scene with nothing to say so. Dockerfile.worker's SRSTUDIO_REF must be this commit.
-DEFAULT_RENDER_BUILDER_VERSION = "d80eb6daba9492ec55f21cfbe59454b33352fc61"
+DEFAULT_RENDER_BUILDER_VERSION = "2dee0214b0f52fc62dbb4fa06aae0519bfa241ef"
 
 
 # Our channels' short vertical videos: at most 24 s, at most 5 hashtags and a caption line that
