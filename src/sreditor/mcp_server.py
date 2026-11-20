@@ -77,7 +77,7 @@ from sreditor.library import (
 )
 from sreditor.library_operations import Cast, EntryChange
 from sreditor.mcp_catalog import GROUPS
-from sreditor.mcp_groups import AddedTool, RecordingServer, add_groups
+from sreditor.mcp_groups import AddedTool, GroupedServer, RecordingServer, add_groups
 from sreditor.mcp_idempotency import IdempotencyKey, IdempotentCall, run_once
 from sreditor.mcp_principal import PRINCIPAL, Principal, principal
 from sreditor.media import MediaFile, MediaInput, MediaKind, MediaNotFound
@@ -470,7 +470,7 @@ def build(services: Services) -> MCPServer:
     grouped = {operation for group in GROUPS for operation in group.operations}
     if grouped != set(operations):
         raise RuntimeError(f"Operations not grouped exactly once: {grouped ^ set(operations)}")
-    served = MCPServer(name="sreditor", instructions=INSTRUCTIONS)
+    served = GroupedServer(name="sreditor", instructions=INSTRUCTIONS)
     add_groups(served, GROUPS, operations)
     return served
 
