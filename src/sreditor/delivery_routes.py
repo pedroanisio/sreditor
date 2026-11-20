@@ -92,12 +92,13 @@ def record_post(
     app: ServicesDep,
     response: Response,
 ) -> Delivery:
-    """Set the post on one platform account: which cut, its link, when it went live and,
+    """Set the post of one cut on a platform account: its link, when it went live and,
     optionally, its own caption, alt text and hashtags (at most 5; the caption must carry the AI
     notice, or the call is refused with 422 naming the field).
 
-    Needs content:write. It replaces that platform's earlier post and keeps the cuts and the
-    other posts, so use it to add a link after publishing without rewriting the package. Text
+    Needs content:write. A post is a platform account and a cut: the same cut posted there again
+    replaces its earlier post, while another cut on the same account is another post (such as
+    versions A and B of a test). It keeps the cuts and the other posts, so use it to add a link after publishing without rewriting the package. Text
     you leave out stays as the earlier post had it; an empty text uses the cut's again.
     """
     return tagged(

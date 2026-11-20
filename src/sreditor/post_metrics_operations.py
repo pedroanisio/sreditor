@@ -2,7 +2,7 @@
 
 Reading needs the read permission; entering numbers is content work, open to contributors and the
 content:write scope. Numbers belong to a post, so the episode's delivery package must already
-have a post on that platform. Nothing here calls a platform: people and agents bring the numbers.
+have a post of that cut on that platform; a cut left out names the platform's only post. Nothing here calls a platform: people and agents bring the numbers.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from fastapi import status
 from pydantic import BaseModel, ConfigDict, Field
 
 from sreditor.channels import Platform
+from sreditor.delivery import CutName, post_key
 from sreditor.deps import ChannelAccess, Services
 from sreditor.episode_operations import episode_access
 from sreditor.members import Permission
@@ -22,6 +23,7 @@ from sreditor.post_metrics import (
     ChannelPost,
     Metric,
     Numbers,
+    PostKey,
     PostMetric,
     PostRef,
     Snapshot,
@@ -38,11 +40,34 @@ class PostMetricsOperation:
 
 
 class PostNotRecorded(LookupError):
-    """The episode's delivery package has no post on that platform to attach numbers to."""
+    """The episode's delivery package has no such post (platform and cut) to attach numbers to."""
 
-    def __init__(self, platform: Platform) -> None:
-        super().__init__(platform.value)
+    def __init__(self, platform: Platform, cut: str | None = None) -> None:
+        super().__init__(platform.value if cut is None else f"{platform.value} for the cut {cut}")
         self.platform = platform
+        self.cut = cut
+
+
+class PostAmbiguous(ValueError):
+    """The platform has several posts in the package and the call did not say which cut."""
+
+    def __init__(self, platform: Platform, cuts: list[str]) -> None:
+        super().__init__(f"{platform.value} has posts of the cuts {', '.join(cuts)}")
+        self.platform = platform
+        self.cuts = cuts
+
+
+class PostTarget(BaseModel):
+    """Which post of an episode: its platform and, when the platform has several, its cut."""
+
+    model_config = ConfigDict(frozen=True)
+
+    number: int
+    platform: Platform
+    cut: CutName | None = Field(
+        default=None,
+        description="The cut that was posted; may be left out when the platform has one post.",
+    )
 
 
 class RetentionImport(BaseModel):
@@ -67,20 +92,32 @@ class PostQuery(BaseModel):
     limit: int
 
 
-def post_of(app: Services, access: ChannelAccess, number: int, platform: Platform) -> PostRef:
-    """The episode's post on a platform; PostNotRecorded when its package has none."""
-    slug = episode_access(app, access, number, Permission.READ)
-    if all(post.platform != platform for post in app.deliveries.delivery(slug, number).posts):
-        raise PostNotRecorded(platform)
-    return PostRef(channel=slug, number=number, platform=platform)
+def post_of(app: Services, access: ChannelAccess, target: PostTarget) -> PostRef:
+    """The episode's post of a cut on a platform; a cut left out is the platform's only post.
+
+    PostNotRecorded when the package has none, PostAmbiguous when the cut was left out and the
+    platform has several.
+    """
+    slug = episode_access(app, access, target.number, Permission.READ)
+    posts = app.deliveries.delivery(slug, target.number).posts
+    cuts = [post.cut for post in posts if post.platform == target.platform]
+    if target.cut is not None:
+        if target.cut not in cuts:
+            raise PostNotRecorded(target.platform, target.cut)
+        return PostRef(channel=slug, number=target.number, platform=target.platform, cut=target.cut)
+    if not cuts:
+        raise PostNotRecorded(target.platform)
+    if len(cuts) > 1:
+        raise PostAmbiguous(target.platform, sorted(cuts))
+    return PostRef(channel=slug, number=target.number, platform=target.platform, cut=cuts[0])
 
 
 def record_metrics(
-    app: Services, access: ChannelAccess, number: int, platform: Platform, data: SnapshotInput
+    app: Services, access: ChannelAccess, target: PostTarget, data: SnapshotInput
 ) -> Snapshot:
     """Add the day's numbers for a post, or merge them into that day's snapshot."""
     access.require(Permission.WRITE_CONTENT)
-    post = post_of(app, access, number, platform)
+    post = post_of(app, access, target)
     day = data.captured_on or app.post_metrics.today()
     return gated(
         app,
@@ -91,13 +128,13 @@ def record_metrics(
 
 
 def import_retention(
-    app: Services, access: ChannelAccess, number: int, platform: Platform, source: RetentionImport
+    app: Services, access: ChannelAccess, target: PostTarget, source: RetentionImport
 ) -> Snapshot:
     """Read a retention CSV (RetentionCsvError when it is not one) into the day's snapshot."""
     access.require(Permission.WRITE_CONTENT)
     points = parse_retention_csv(source.csv)
     data = SnapshotInput(captured_on=source.captured_on, retention=points)
-    return record_metrics(app, access, number, platform, data)
+    return record_metrics(app, access, target, data)
 
 
 def day_after(cursor: str | None) -> date | None:
@@ -133,11 +170,11 @@ def list_snapshots(
 
 def row_of(
     item: ChannelPost,
-    latest: dict[tuple[int, Platform], Snapshot],
-    counts: dict[tuple[int, Platform], int],
+    latest: dict[PostKey, Snapshot],
+    counts: dict[PostKey, int],
 ) -> PostMetric:
     """A post with its latest snapshot's numbers, or none when nobody entered any."""
-    key = (item.number, item.post.platform)
+    key = (item.number, *post_key(item.post))
     found = latest.get(key)
     return PostMetric(
         number=item.number,
@@ -161,9 +198,9 @@ def value_of(row: PostMetric, metric: Metric) -> float | None:
 def ranked(rows: list[PostMetric], metric: Metric) -> list[PostMetric]:
     """Posts from the highest number down; posts without it come last, in episode order."""
 
-    def order(row: PostMetric) -> tuple[bool, float, int, str]:
+    def order(row: PostMetric) -> tuple[bool, float, int, str, str]:
         value = value_of(row, metric)
-        return (value is None, -(value or 0), row.number, row.platform.value)
+        return (value is None, -(value or 0), row.number, row.platform.value, row.cut)
 
     return sorted(rows, key=order)
 

@@ -19,6 +19,7 @@ from sreditor.post_metrics import Metric, Numbers, SnapshotInput
 from sreditor.post_metrics_operations import (
     PostNotRecorded,
     PostQuery,
+    PostTarget,
     RetentionImport,
     compare_posts,
     import_retention,
@@ -31,7 +32,7 @@ from sreditor.retention_csv import MAX_CSV_CHARS, PROBLEM_MESSAGES, RetentionCsv
 from sreditor.web.forms import field_errors
 from sreditor.web.labels import platform_name
 from sreditor.web.routes import rejected_form, translator
-from sreditor.web.workspace.delivery import PostFormPath, PostTarget, delivery_url
+from sreditor.web.workspace.delivery import PostCutTarget, PostFormPath, delivery_url
 from sreditor.web.workspace.episodes import episode_frame, found_episode, labels
 from sreditor.web.workspace.forms import RetentionFields, SnapshotFields
 from sreditor.web.workspace.shell import (
@@ -49,7 +50,7 @@ from sreditor.web.workspace.shell import (
 
 router = APIRouter()
 
-PAGE = "/app/channels/{slug}/episodes/{number}/delivery/metrics/{platform}"
+PAGE = "/app/channels/{slug}/episodes/{number}/delivery/metrics/{platform}/{cut}"
 COMPARE_PAGE = "/app/channels/{slug}/metrics"
 COMPARE_SUFFIX = "/metrics"
 UTF8_MAX_BYTES = 4  # so the bytes read for a CSV can hold MAX_CSV_CHARS characters, plus one
@@ -66,9 +67,14 @@ METRIC_LABELS: dict[Metric, str] = {
 }
 
 
-def metrics_url(slug: str, number: int, platform: str) -> str:
-    """The numbers page of one post."""
-    return f"{delivery_url(slug, number)}/metrics/{platform}"
+def metrics_url(slug: str, number: int, platform: str, cut: str) -> str:
+    """The numbers page of one post: an episode's cut on a platform account."""
+    return f"{delivery_url(slug, number)}/metrics/{platform}/{cut}"
+
+
+def metrics_target(target: PostFormPath) -> PostTarget:
+    """The post a page's address names, for the metrics operations."""
+    return PostTarget(number=target.number, platform=target.platform, cut=target.cut)
 
 
 def as_snapshot(fields: SnapshotFields) -> SnapshotInput:
@@ -109,7 +115,7 @@ def post_context(
 ) -> dict[str, Any]:
     """The post's snapshots, newest first, for the template."""
     try:
-        post = post_of(app, access, target.number, target.platform)
+        post = post_of(app, access, metrics_target(target))
     except PostNotRecorded as missing:
         raise PageNotFound(target.platform.value) from missing
     found = list_snapshots(app, access, post, cursor or None, DEFAULT_LIMIT)
@@ -142,12 +148,12 @@ def post_metrics_page(
     data = post_context(app, access, target, state.cursor)
     context = {
         "episode": current.episode,
-        "platform_name": platform_name(target.platform),
+        "platform_name": f"{platform_name(target.platform)} ({target.cut})",
         "errors": state.outcome.errors,
         "sent": state.sent,
         "sent_csv": state.sent_csv,
         "back_link": delivery_url(slug, target.number),
-        "post_link": metrics_url(slug, target.number, target.platform.value),
+        "post_link": metrics_url(slug, target.number, target.platform.value, str(target.cut)),
         "max_csv_chars": MAX_CSV_CHARS,
         **data,
         "lines": {str(item.id): numbers_text(item, translate) for item in data["snapshots"]},
@@ -166,7 +172,7 @@ def post_metrics_page(
 
 @router.get(PAGE)
 def post_metrics(
-    request: Request, app: ServicesDep, access: PageAccess, target: PostTarget, cursor: str = ""
+    request: Request, app: ServicesDep, access: PageAccess, target: PostCutTarget, cursor: str = ""
 ) -> Response:
     """A post's numbers, one snapshot per day."""
     return post_metrics_page(request, app, access, target, MetricsPageState(cursor=cursor))
@@ -193,7 +199,7 @@ def add_snapshot(
     request: Request,
     app: ServicesDep,
     access: PageAccess,
-    target: PostTarget,
+    target: PostCutTarget,
     fields: Annotated[SnapshotFields, Form()],
 ) -> Response:
     """Enter a post's numbers for one day; a second entry for the day merges into the first."""
@@ -203,13 +209,13 @@ def add_snapshot(
     found_episode(app, access, target.number)
     outcome = recorded_outcome(
         request,
-        lambda: record_metrics(app, access, target.number, target.platform, as_snapshot(fields)),
+        lambda: record_metrics(app, access, metrics_target(target), as_snapshot(fields)),
     )
     if outcome is None:
         return done(
             request,
             app,
-            metrics_url(access.channel.slug, target.number, target.platform.value),
+            metrics_url(access.channel.slug, target.number, target.platform.value, str(target.cut)),
             Flash.METRICS_RECORDED,
         )
     state = MetricsPageState(outcome=outcome, sent=fields)
@@ -229,7 +235,7 @@ def add_retention(
     request: Request,
     app: ServicesDep,
     access: PageAccess,
-    target: PostTarget,
+    target: PostCutTarget,
     fields: Annotated[RetentionFields, Form()],
 ) -> Response:
     """Import a platform's retention CSV into the day's snapshot."""
@@ -239,15 +245,13 @@ def add_retention(
     found_episode(app, access, target.number)
     outcome = recorded_outcome(
         request,
-        lambda: import_retention(
-            app, access, target.number, target.platform, import_source(fields)
-        ),
+        lambda: import_retention(app, access, metrics_target(target), import_source(fields)),
     )
     if outcome is None:
         return done(
             request,
             app,
-            metrics_url(access.channel.slug, target.number, target.platform.value),
+            metrics_url(access.channel.slug, target.number, target.platform.value, str(target.cut)),
             Flash.METRICS_RECORDED,
         )
     state = MetricsPageState(outcome=outcome, sent_csv=fields)

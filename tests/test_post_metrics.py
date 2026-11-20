@@ -43,6 +43,72 @@ def numbers(**values: Any) -> dict[str, Any]:
     return {"captured_on": FIRST_DAY, **values}
 
 
+# Posts of two cuts on one account (versions A and B of a test)
+
+
+def add_second_cut_post(client: TestClient) -> None:
+    cuts = {
+        "cuts": [{"name": "main"}, {"name": "alt"}],
+        "posts": [{"platform": "tiktok", "cut": "main"}],
+    }
+    assert client.put(DELIVERY, json=cuts).status_code == 200
+    assert client.put(f"{DELIVERY}/posts/tiktok", json={"cut": "alt"}).status_code == 200
+
+
+def test_snapshot_record_for_each_cut_keeps_both_posts_numbers(owner: TestClient) -> None:
+    add_second_cut_post(owner)
+    owner.post(SNAPSHOTS, params={"cut": "main"}, json=numbers(views=10))
+    owner.post(SNAPSHOTS, params={"cut": "alt"}, json=numbers(views=99))
+    first = owner.get(SNAPSHOTS, params={"cut": "main"}).json()["items"]
+    second = owner.get(SNAPSHOTS, params={"cut": "alt"}).json()["items"]
+    assert [(item["cut"], item["views"]) for item in [*first, *second]] == [
+        ("main", 10),
+        ("alt", 99),
+    ]
+
+
+def test_snapshot_record_without_cut_when_platform_has_two_posts_is_refused_naming_cuts(
+    owner: TestClient,
+) -> None:
+    add_second_cut_post(owner)
+    response = owner.post(SNAPSHOTS, json=numbers(views=1))
+    assert response.status_code == 422 and "alt, main" in response.json()["detail"]
+
+
+def test_snapshot_record_for_cut_that_was_not_posted_is_not_found(owner: TestClient) -> None:
+    response = owner.post(SNAPSHOTS, params={"cut": "ghost"}, json=numbers(views=1))
+    assert response.status_code == 404
+
+
+def test_snapshot_record_without_cut_uses_the_platforms_only_post(owner: TestClient) -> None:
+    response = owner.post(SNAPSHOTS, json=numbers(views=3))
+    assert response.json()["cut"] == "main"
+
+
+def test_compare_posts_lists_each_cut_of_a_platform_as_its_own_post(owner: TestClient) -> None:
+    add_second_cut_post(owner)
+    owner.post(SNAPSHOTS, params={"cut": "alt"}, json=numbers(views=99))
+    rows = owner.get(COMPARE).json()["items"]
+    assert [row["cut"] for row in rows if row["number"] == 1] == ["alt", "main"]
+
+
+def test_mcp_record_post_metrics_for_cut_stores_it_under_that_cut(
+    owner: TestClient, mcp: TestClient
+) -> None:
+    add_second_cut_post(owner)
+    snapshot = {"platform": "tiktok", "cut": "alt", "views": 7}
+    result = tool(mcp, "record_post_metrics", args(snapshot=snapshot))
+    assert result["structuredContent"]["cut"] == "alt"
+
+
+def test_mcp_record_post_metrics_without_cut_names_the_cuts_to_choose_from(
+    owner: TestClient, mcp: TestClient
+) -> None:
+    add_second_cut_post(owner)
+    result = tool(mcp, "record_post_metrics", args(snapshot={"platform": "tiktok", "views": 7}))
+    assert result["isError"] and "alt, main" in result["content"][0]["text"]
+
+
 # Snapshots
 
 

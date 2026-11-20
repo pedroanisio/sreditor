@@ -18,6 +18,7 @@ from sreditor.delivery import (
     ALT_TEXT_LENGTH,
     CAPTION_LENGTH,
     CUT_NAME_LENGTH,
+    CUT_NAME_PATTERN,
     MAX_POST_HASHTAGS,
     WARNING_MESSAGES,
     Cut,
@@ -105,12 +106,13 @@ def cut_path(number: int, name: str) -> CutPath:
 
 
 class PostFormPath(BaseModel):
-    """The episode and platform a form's address names."""
+    """The episode, platform and, once a post exists, the cut an address names."""
 
     model_config = ConfigDict(frozen=True)
 
     number: int
     platform: Platform
+    cut: str | None = None
 
 
 def post_path(number: int, platform: str) -> PostFormPath:
@@ -118,9 +120,17 @@ def post_path(number: int, platform: str) -> PostFormPath:
     return PostFormPath(number=number, platform=platform_of(platform))
 
 
+def post_cut_path(number: int, platform: str, cut: str) -> PostFormPath:
+    """The episode, platform and cut in the address; a cut that is no name is no page."""
+    if not re.fullmatch(CUT_NAME_PATTERN, cut):
+        raise PageNotFound(cut)
+    return PostFormPath(number=number, platform=platform_of(platform), cut=cut)
+
+
 # Path values in one parameter each, so handlers keep to five (code.functions.args).
 CutTarget = Annotated[CutPath, Depends(cut_path)]
 PostTarget = Annotated[PostFormPath, Depends(post_path)]
+PostCutTarget = Annotated[PostFormPath, Depends(post_cut_path)]
 
 
 class DeliveryView(BaseModel):
@@ -133,7 +143,7 @@ class DeliveryView(BaseModel):
     sent_cut: CutFields | None = None
     editing: str = ""  # the name of the cut whose dialog was sent; empty for the new-cut dialog
     sent_post: PostFields | None = None
-    posting: str = ""  # the platform whose dialog was sent
+    posting: str = ""  # the id of the post dialog that was sent
 
 
 def hashtag_text(hashtags: list[str]) -> str:
@@ -175,15 +185,28 @@ def file_options(files: list[MediaFile], none_label: str) -> list[tuple[str, str
     return [(NO_FILE, none_label), *((str(file.id), file.name) for file in files)]
 
 
-def account_rows(access: ChannelAccess, package: Delivery, revision: int) -> list[dict[str, Any]]:
-    """One row per platform account of the channel, with its post and the form that edits it."""
-    posts = {post.platform: post for post in package.posts}
+def post_dialog(platform: str, cut: str | None = None) -> str:
+    """The id of the dialog that adds a platform's post, or edits the one of a cut."""
+    return f"post-{platform}" if cut is None else f"post-{platform}-{cut}"
+
+
+def account_rows(access: ChannelAccess, package: Delivery) -> list[dict[str, Any]]:
+    """One row per platform account: its posts, one per cut, and the forms that change them."""
     return [
         {
             "platform": account.platform.value,
             "name": platform_name(account.platform),
-            "post": posts.get(account.platform),
-            "values": post_values(posts.get(account.platform), revision),
+            "new_dialog": post_dialog(account.platform.value),
+            "new_values": post_values(None, package.revision),
+            "posts": [
+                {
+                    "post": post,
+                    "dialog": post_dialog(account.platform.value, post.cut),
+                    "values": post_values(post, package.revision),
+                }
+                for post in package.posts
+                if post.platform == account.platform
+            ],
         }
         for account in access.channel.accounts
     ]
@@ -215,7 +238,7 @@ def delivery_context(
             for cut in package.cuts
         },
         "cut_options": [(cut.name, cut.name) for cut in package.cuts],
-        "accounts": account_rows(access, package, package.revision),
+        "accounts": account_rows(access, package),
         "sent_cut": sent,
         "sent_post": shown.sent_post,
         "posting": shown.posting,
@@ -454,21 +477,20 @@ def save_post(
     )
     if outcome is None:
         return changed(request, access, number, Flash.SAVED, app)
-    shown = DeliveryView(
-        number=number, outcome=outcome, sent_post=fields, posting=target.platform.value
-    )
+    dialog = fields.dialog or post_dialog(target.platform.value)
+    shown = DeliveryView(number=number, outcome=outcome, sent_post=fields, posting=dialog)
     return delivery_page(request, app, access, shown)
 
 
-@router.post(f"{PAGE}/posts/{{platform}}/remove")
+@router.post(f"{PAGE}/posts/{{platform}}/{{cut}}/remove")
 def drop_post(
     request: Request,
     app: ServicesDep,
     access: PageAccess,
-    target: PostTarget,
+    target: PostCutTarget,
     fields: Annotated[RevisionFields, Form()],
 ) -> Response:
-    """Take a platform's post out of the package."""
+    """Take the post of one cut on a platform account out of the package."""
     if rejected := rejected_form(request, app, fields.csrf_token):
         return rejected
     require(access, Permission.WRITE_CONTENT)
@@ -478,7 +500,11 @@ def drop_post(
     outcome = change_outcome(
         request,
         lambda: change_package(
-            app, access, number, lambda now: without_post(now, target.platform), revision
+            app,
+            access,
+            number,
+            lambda now: without_post(now, target.platform, str(target.cut)),
+            revision,
         ),
     )
     if outcome is None:

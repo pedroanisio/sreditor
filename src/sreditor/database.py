@@ -942,8 +942,73 @@ def create_episode_reviews(connection: sqlite3.Connection) -> None:
 
 
 EPISODE_REVIEWS = Migration(version=6, name="episode reviews", apply=create_episode_reviews)
+
+# A snapshot whose post is no longer in its episode's package gets the empty cut, which no post
+# names, so a post added later never inherits numbers of one that was removed.
+POST_CUT_SQL = """
+CREATE TABLE post_snapshots_by_cut (
+    position INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT NOT NULL UNIQUE,
+    channel_slug TEXT NOT NULL,
+    number INTEGER NOT NULL,
+    platform TEXT NOT NULL,
+    cut TEXT NOT NULL,
+    captured_on TEXT NOT NULL,
+    views INTEGER,
+    reach INTEGER,
+    likes INTEGER,
+    comments INTEGER,
+    shares INTEGER,
+    saves INTEGER,
+    avg_watch_s REAL,
+    retention TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (channel_slug, number, platform, cut, captured_on),
+    FOREIGN KEY (channel_slug, number) REFERENCES episodes (channel_slug, number)
+        ON DELETE CASCADE
+);
+INSERT INTO post_snapshots_by_cut
+    (position, id, channel_slug, number, platform, cut, captured_on, views, reach, likes,
+     comments, shares, saves, avg_watch_s, retention, created_at, updated_at)
+SELECT position, id, channel_slug, number, platform,
+    COALESCE((SELECT json_extract(post.value, '$.cut')
+        FROM episode_deliveries AS delivery, json_each(delivery.text, '$.posts') AS post
+        WHERE delivery.channel_slug = old.channel_slug AND delivery.number = old.number
+        AND json_extract(post.value, '$.platform') = old.platform), ''),
+    captured_on, views, reach, likes, comments, shares, saves, avg_watch_s, retention,
+    created_at, updated_at
+FROM post_snapshots AS old;
+DROP TABLE post_snapshots;
+ALTER TABLE post_snapshots_by_cut RENAME TO post_snapshots;
+CREATE INDEX post_snapshots_by_channel
+    ON post_snapshots (channel_slug, number, platform, cut, captured_on);
+"""
+
+
+def key_snapshots_by_cut(connection: sqlite3.Connection) -> None:
+    """Migration 7: a post is a platform and a cut, so snapshots name the cut too.
+
+    Each snapshot takes the cut of its episode's post on that platform, the only one there could
+    be before. Idempotent: a table that already has the column is left alone.
+    """
+    columns = {row["name"] for row in connection.execute("PRAGMA table_info(post_snapshots)")}
+    if "cut" in columns:
+        return
+    execute_script(connection, POST_CUT_SQL)
+
+
+POST_CUT = Migration(version=7, name="post snapshots by cut", apply=key_snapshots_by_cut)
 # Append new migrations here, numbered in order; never change one that has been released.
-MIGRATIONS = (BASELINE, SEARCH_INDEX, OAUTH_CLIENT_USE, EVENTS, EXPERIMENTS, EPISODE_REVIEWS)
+MIGRATIONS = (
+    BASELINE,
+    SEARCH_INDEX,
+    OAUTH_CLIENT_USE,
+    EVENTS,
+    EXPERIMENTS,
+    EPISODE_REVIEWS,
+    POST_CUT,
+)
 
 
 def open_connection(path: Path, *, is_autocommit: bool = False) -> sqlite3.Connection:

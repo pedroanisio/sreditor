@@ -304,7 +304,7 @@ def side_rows(result: ExperimentResult, translate: Translator) -> list[dict[str,
 def side_row(label: str, side: Side, translate: Translator) -> dict[str, Any]:
     """One side of the pair as the template draws it."""
     posts = [
-        f"{platform_name(post.platform)} · {number_text(post.value, translate)}"
+        f"{platform_name(post.platform)} ({post.cut}) · {number_text(post.value, translate)}"
         for post in side.posts
     ]
     return {

@@ -34,6 +34,7 @@ class PostValue(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     platform: Platform
+    cut: str = Field(description="The cut that was posted.")
     published_at: str | None = Field(description="When it went live (ISO 8601), if recorded.")
     captured_on: date | None = Field(description="The day of the snapshot that was read.")
     value: float | None = Field(description="The metric at the chosen age; null without one.")

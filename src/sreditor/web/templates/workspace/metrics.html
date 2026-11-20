@@ -15,7 +15,7 @@
       <p>{{ numbers }}</p>
     {% endcall %}
     {% call ui.item_side() %}
-      {{ ui.link_button(episodes_link ~ "/" ~ row.number ~ "/delivery/metrics/" ~ row.platform.value, _("Numbers"), variant="ghost", size="small") }}
+      {{ ui.link_button(episodes_link ~ "/" ~ row.number ~ "/delivery/metrics/" ~ row.platform.value ~ "/" ~ row.cut, _("Numbers"), variant="ghost", size="small") }}
     {% endcall %}
   {% endcall %}
   {% if next_cursor %}{{ ui.pager(compare_link ~ "?sort=" ~ sort ~ "&cursor=" ~ next_cursor, _("More posts")) }}{% endif %}

@@ -155,10 +155,16 @@ def test_delivery_input_with_duplicate_cut_names_is_refused() -> None:
         DeliveryInput.model_validate({"cuts": [{"name": "main"}, {"name": "main"}]})
 
 
-def test_delivery_input_with_two_posts_on_one_platform_is_refused() -> None:
+def test_delivery_input_with_two_posts_of_one_cut_on_one_platform_is_refused() -> None:
     post = {"platform": "tiktok", "cut": "main"}
     with pytest.raises(ValidationError, match="at most one post"):
         DeliveryInput.model_validate({"cuts": [{"name": "main"}], "posts": [post, post]})
+
+
+def test_delivery_input_with_two_cuts_posted_on_one_platform_is_accepted() -> None:
+    posts = [{"platform": "tiktok", "cut": "a"}, {"platform": "tiktok", "cut": "b"}]
+    found = DeliveryInput.model_validate({"cuts": [{"name": "a"}, {"name": "b"}], "posts": posts})
+    assert [post.cut for post in found.posts] == ["a", "b"]
 
 
 # API
@@ -249,6 +255,29 @@ def test_record_post_replaces_the_earlier_post(owner: TestClient) -> None:
     owner.put(POST_ON_TIKTOK, json={"cut": "main"})
     response = owner.put(POST_ON_TIKTOK, json={"cut": "main", "url": "https://tiktok.test/v/2"})
     assert len(response.json()["posts"]) == 1
+
+
+def test_record_post_of_another_cut_on_the_same_platform_keeps_the_first_post(
+    owner: TestClient,
+) -> None:
+    cuts = {"cuts": [{"name": "a"}, {"name": "b"}], "posts": []}
+    owner.put(DELIVERY, json=cuts)
+    owner.put(POST_ON_TIKTOK, json={"cut": "a", "url": "https://tiktok.test/v/a"})
+    response = owner.put(POST_ON_TIKTOK, json={"cut": "b", "url": "https://tiktok.test/v/b"})
+    links = {post["cut"]: post["url"] for post in response.json()["posts"]}
+    assert links == {"a": "https://tiktok.test/v/a", "b": "https://tiktok.test/v/b"}
+
+
+def test_record_post_of_the_same_cut_again_keeps_the_texts_of_that_cut_only(
+    owner: TestClient,
+) -> None:
+    cuts = {"cuts": [{"name": "a"}, {"name": "b"}], "posts": []}
+    owner.put(DELIVERY, json=cuts)
+    owner.put(POST_ON_TIKTOK, json={"cut": "a", "alt_text": "Alt of A"})
+    owner.put(POST_ON_TIKTOK, json={"cut": "b"})
+    response = owner.put(POST_ON_TIKTOK, json={"cut": "a", "url": "https://tiktok.test/v/a"})
+    alt = {post["cut"]: post["alt_text"] for post in response.json()["posts"]}
+    assert alt == {"a": "Alt of A", "b": ""}
 
 
 def test_record_post_for_unknown_cut_is_refused(owner: TestClient) -> None:
