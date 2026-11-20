@@ -15,11 +15,12 @@ from collections.abc import Callable, Iterable, Sequence
 from typing import Annotated, Any, Literal, Union, get_args, get_origin, override
 
 from mcp.server.mcpserver import Context, MCPServer
-from mcp.types import CallToolResult, Icon, TextContent, ToolAnnotations
-from pydantic import BaseModel, ConfigDict, Field, create_model
+from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
+from mcp.types import CallToolResult, Icon, InputRequiredResult, TextContent, ToolAnnotations
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 
-REQUEST = "request"
-OPERATION = "operation"
+from sreditor.mcp_arguments import OPERATION, REQUEST, ToolRequests
+
 RESULT = "result"
 
 
@@ -58,6 +59,29 @@ class RecordingServer(MCPServer):
         )
 
 
+class GroupedServer(MCPServer):
+    """The served server: a call whose arguments do not fit is told what its operation takes."""
+
+    def __init__(self, name: str, instructions: str) -> None:
+        super().__init__(name=name, instructions=instructions)
+        self.requests: dict[str, ToolRequests] = {}
+
+    @override
+    async def call_tool(
+        self, name: str, arguments: dict[str, Any], context: Context[Any, Any] | None = None
+    ) -> CallToolResult | InputRequiredResult:
+        """Call a tool, answering arguments outside its schema with a tool error to act on."""
+        try:
+            return await super().call_tool(name, arguments, context)
+        except ToolError as error:
+            misfit = error.__cause__
+            # A result that fails its output schema is a crash, and keeps the SDK's generic text.
+            is_crash = isinstance(error, UnexpectedToolError)
+            if is_crash or not isinstance(misfit, ValidationError) or name not in self.requests:
+                raise
+            raise ToolError(self.requests[name].explain(arguments, misfit)) from misfit
+
+
 class ToolGroup(BaseModel):
     """One served tool: its name, title, what it is for and the operations it groups."""
 
@@ -73,7 +97,8 @@ class ToolGroup(BaseModel):
         return (
             f"{self.purpose} Put the operation's name in `request.operation` and its arguments "
             "beside it in `request`; each operation's description in the input schema says what "
-            "it does, what it needs and which scope. The result is under `result`. Operations: "
+            "it does, what it needs and which scope. An operation on a channel names it in `slug`, "
+            "as list_channels gives it. The result is under `result`. Operations: "
             f"{', '.join(self.operations)}."
         )
 
@@ -161,9 +186,10 @@ def call_operation(added: AddedTool, context: Context, request: BaseModel) -> An
     return added.function(**arguments)
 
 
-def group_function(group: ToolGroup, added: dict[str, AddedTool]) -> Callable[..., CallToolResult]:
-    """The served function of a group: it validates `request` and runs that operation."""
-    members = {name: request_model(name, added[name]) for name in group.operations}
+def group_function(
+    group: ToolGroup, added: dict[str, AddedTool], members: dict[str, type[BaseModel]]
+) -> Callable[..., CallToolResult]:
+    """The served function of a group: it takes a validated `request` and runs that operation."""
     request_type: Any = union_of(members.values())
     if len(members) > 1:
         request_type = Annotated[request_type, Field(discriminator=OPERATION)]
@@ -198,11 +224,18 @@ def group_function(group: ToolGroup, added: dict[str, AddedTool]) -> Callable[..
     return run
 
 
-def add_groups(server: MCPServer, groups: Sequence[ToolGroup], added: dict[str, AddedTool]) -> None:
+def add_groups(
+    server: GroupedServer, groups: Sequence[ToolGroup], added: dict[str, AddedTool]
+) -> None:
     """Serve each group as one tool built from its recorded operations."""
+    tool_of = {operation: group.name for group in groups for operation in group.operations}
     for group in groups:
+        members = {name: request_model(name, added[name]) for name in group.operations}
+        server.requests[group.name] = ToolRequests(
+            tool=group.name, members=members, tool_of=tool_of
+        )
         server.add_tool(
-            group_function(group, added),
+            group_function(group, added, members),
             name=group.name,
             title=group.title,
             description=group.description(),
